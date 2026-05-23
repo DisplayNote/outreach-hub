@@ -1,0 +1,14 @@
+/* Outreach Hub global styles. Tailwind preflight wired up in Phase 1. */
+/* @tailwind base; */
+/* @tailwind components; */
+/* @tailwind utilities; */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}

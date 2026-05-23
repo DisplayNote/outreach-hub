@@ -1,0 +1,70 @@
+name: Infra
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'plan | apply'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TF_VAR_supabase_access_token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      TF_VAR_supabase_project_ref: ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
+      TF_VAR_supabase_db_password: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+      TF_VAR_vercel_token: ${{ secrets.VERCEL_TOKEN }}
+      TF_VAR_vercel_org_id: ${{ secrets.VERCEL_ORG_ID }}
+      TF_VAR_vercel_project_id: ${{ secrets.VERCEL_PROJECT_ID }}
+      TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      TF_VAR_ms_client_id: ${{ secrets.MS_CLIENT_ID }}
+      TF_VAR_ms_client_secret: ${{ secrets.MS_CLIENT_SECRET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.0'
+
+      - name: Format check
+        working-directory: infra
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        working-directory: infra
+        run: terraform init
+
+      - name: Validate
+        working-directory: infra
+        run: terraform validate
+
+      - name: Plan
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
+        working-directory: infra
+        run: terraform plan -var-file=envs/dev.tfvars -no-color
+
+      - name: Apply (manual gate)
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        working-directory: infra
+        run: terraform apply -var-file=envs/dev.tfvars -auto-approve

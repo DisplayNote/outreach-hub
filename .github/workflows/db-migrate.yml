@@ -1,0 +1,32 @@
+name: DB Migrate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/db-migrate.yml'
+
+jobs:
+  migrate-dev:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Push migrations to dev
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
+          supabase db push
+
+  # Prod migration is a manual workflow_dispatch in Phase 7 (separate file: db-migrate-prod.yml).
+  # Phase 0 does not auto-migrate prod — guards against accidental schema deploys.

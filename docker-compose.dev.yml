@@ -1,0 +1,15 @@
+# Local dev services that live outside Supabase's own stack (managed by `supabase start`).
+# Only Mailpit today; more services may join here as Phase 1+ work lands.
+
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: outreach-mailpit
+    restart: unless-stopped
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # Web UI
+    environment:
+      MP_MAX_MESSAGES: '5000'
+      MP_SMTP_AUTH_ACCEPT_ANY: '1'
+      MP_SMTP_AUTH_ALLOW_INSECURE: '1'

@@ -1,0 +1,2 @@
+-- Phase 0: no seed data. Phase 1 importer will hydrate this with the JSON snapshot from
+-- legacy/PaulsOutreachHub.html.
