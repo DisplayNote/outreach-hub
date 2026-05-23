@@ -68,4 +68,4 @@ PRs must keep `pnpm typecheck`, `pnpm lint`, and `pnpm test` green.
 ## Status
 
 Phase 0 — bootstrap complete.
-See [OUTREACH_HUB_EXECUTION_PLAN.md](OUTREACH_HUB_EXECUTION_PLAN.md) for the roadmap.
+See [docs/OUTREACH_HUB_EXECUTION_PLAN.md](docs/OUTREACH_HUB_EXECUTION_PLAN.md) for the roadmap.

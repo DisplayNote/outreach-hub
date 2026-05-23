@@ -2,7 +2,7 @@
 
 ## Pre-flight checklist (one-time, by an operator with admin access)
 
-Detailed steps live in §4 of [OUTREACH_HUB_EXECUTION_PLAN.md](../OUTREACH_HUB_EXECUTION_PLAN.md).
+Detailed steps live in §4 of [OUTREACH_HUB_EXECUTION_PLAN.md](./OUTREACH_HUB_EXECUTION_PLAN.md).
 Short version:
 
 1. **Accounts:** GitHub repo, two Supabase projects (`dev`, `prod`), Vercel project,

@@ -52,5 +52,5 @@
 
 ## Phase boundaries
 
-See [OUTREACH_HUB_EXECUTION_PLAN.md](../OUTREACH_HUB_EXECUTION_PLAN.md) §3 for the full roadmap.
+See [OUTREACH_HUB_EXECUTION_PLAN.md](./OUTREACH_HUB_EXECUTION_PLAN.md) §3 for the full roadmap.
 Phase 0 ships the platform skeleton; Phase 1 onwards layers the domain (campaigns → contacts → touchpoints).
