@@ -1,14 +1,19 @@
 name: DB Migrate
 
+# There is a single cloud Supabase project (production); development uses the
+# local Supabase CLI stack. Schema changes are tested locally (`supabase db
+# reset` / `db diff`) and applied to prod manually here — never automatically on
+# a main push — to guard against accidental prod schema deploys.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'supabase/migrations/**'
-      - '.github/workflows/db-migrate.yml'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "migrate-prod" to confirm pushing migrations to PRODUCTION'
+        required: true
 
 jobs:
-  migrate-dev:
+  migrate-prod:
+    if: inputs.confirm == 'migrate-prod'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -20,13 +25,10 @@ jobs:
         with:
           version: latest
 
-      - name: Push migrations to dev
+      - name: Push migrations to prod
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          supabase link --project-ref ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           supabase db push
-
-  # Prod migration is a manual workflow_dispatch in Phase 7 (separate file: db-migrate-prod.yml).
-  # Phase 0 does not auto-migrate prod — guards against accidental schema deploys.

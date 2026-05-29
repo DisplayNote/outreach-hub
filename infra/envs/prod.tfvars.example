@@ -11,10 +11,8 @@ vercel_token      = "xxx"
 vercel_org_id     = "team_xxx"
 vercel_project_id = "prj_xxx"
 
-# Cloudflare DNS
-cloudflare_api_token = "xxx"
-cloudflare_zone_id   = "xxx"
-app_subdomain        = "outreach" # → outreach.displaynote.com
+# App hosting (DNS records are created manually, outside Terraform)
+app_subdomain = "outreach" # → outreach.displaynote.com (create the CNAME by hand)
 
 # Microsoft OAuth (production tenant — requires admin consent ticket from §4.3)
 ms_client_id     = "xxx"

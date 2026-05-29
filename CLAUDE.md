@@ -24,7 +24,7 @@ single-file PWA at `legacy/PaulsOutreachHub.html`. Stack:
 - **Backend:** Supabase (Postgres + RLS + Auth + Realtime + Edge Functions + Vault + Storage).
 - **Auth:** Microsoft Entra ID via Supabase Auth (multi-tenant).
 - **Email:** `EmailDriver` abstraction → `mock` / `mailpit` / `graph-dev` / `graph-prod`.
-- **IaC:** Terraform in `infra/` (Supabase + Vercel + Cloudflare DNS).
+- **IaC:** Terraform in `infra/` (Supabase + Vercel). DNS is managed manually (outside Terraform).
 - **CI/CD:** GitHub Actions (`ci`, `infra`, `db-migrate`, `functions-deploy`).
 - **Tests:** Vitest (unit) + Playwright (e2e).
 
@@ -91,7 +91,8 @@ From spec §7.1 and the four retroactive ADRs in [docs/adr/](docs/adr/):
 
 ```bash
 make help                              # list targets
-make bootstrap                         # populate .env.local + infra/envs/dev.tfvars from .env.bootstrap
+make bootstrap                         # LOCAL dev: populate .env.local from .env.bootstrap (needs only MS_* values)
+make bootstrap-prod                    # PROD: populate infra/envs/prod.tfvars from .env.bootstrap (needs cloud creds)
 make dev                               # boot Mailpit + Supabase + next dev
 make dev-stop                          # tear down
 make typecheck                         # tsc --noEmit
@@ -117,7 +118,7 @@ supabase/
   migrations/         SQL migrations
   functions/          Deno edge functions
   config.toml         Local Supabase stack config
-infra/                Terraform (Supabase + Vercel + Cloudflare)
+infra/                Terraform (Supabase + Vercel; DNS is manual)
 .github/workflows/    CI/CD pipelines
 tests/{unit,e2e}/     Vitest + Playwright tests
 scripts/              dev-bootstrap.sh, dev.sh, teardown.sh
@@ -154,7 +155,7 @@ history is required.
 - Don't create `aidlc-docs/`, `audit.md`, or AIDLC-stage prompts.
 - Don't run `make bootstrap` or `make dev` without all four prereqs green.
 - Don't run `terraform apply` — `plan` only, per spec §5.4 Task 8.
-- Don't commit `.env.bootstrap`, `.env.local`, or `infra/envs/dev.tfvars`
+- Don't commit `.env.bootstrap`, `.env.local`, or `infra/envs/prod.tfvars`
   (all gitignored).
 - Don't push to `main` directly — every change goes through a PR.
 - Don't edit `next-env.d.ts`; use `global.d.ts` for ambient declarations.

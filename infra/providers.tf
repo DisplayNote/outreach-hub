@@ -10,10 +10,6 @@ terraform {
       source  = "vercel/vercel"
       version = "~> 2.0"
     }
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
-    }
   }
 }
 
@@ -24,8 +20,4 @@ provider "supabase" {
 provider "vercel" {
   api_token = var.vercel_token
   team      = var.vercel_org_id
-}
-
-provider "cloudflare" {
-  api_token = var.cloudflare_api_token
 }

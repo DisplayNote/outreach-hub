@@ -38,12 +38,12 @@ End-state: multi-usuario, hosted en Vercel + Supabase, IaC con Terraform, OAuth 
 | Email outbound | Microsoft Graph delegated (`Mail.Send`) per-user; SendGrid descartado |
 | Email inbound | Microsoft Graph subscriptions (`Mail.Read`) per-user con polling fallback en dev |
 | Telnyx orchestration | Supabase Edge Functions; estado en Postgres; eventos vía Realtime al frontend |
-| IaC | Terraform en `/infra` (Supabase + Vercel + DNS Cloudflare); Supabase CLI para migraciones y functions; integración Git de Vercel para deploy del app |
+| IaC | Terraform en `/infra` (Supabase + Vercel); DNS gestionado manualmente (fuera de Terraform); Supabase CLI para migraciones y functions; integración Git de Vercel para deploy del app |
 | CI/CD | GitHub Actions (`ci.yml`, `infra.yml`, `db-migrate.yml`, `functions-deploy.yml`) |
 | Audit log | Trigger Postgres con hash-encadenado por organización |
 | Tests | Vitest (unit) + Playwright (e2e) |
 | Package manager | pnpm |
-| Dev local | `supabase start` + `next dev` + Mailpit (Docker) + ngrok/Cloudflare Tunnel para webhooks |
+| Dev local | `supabase start` + `next dev` + Mailpit (Docker) + ngrok (o túnel equivalente) para webhooks |
 | Dev tenant | E5 sandbox de Mike (admin consent self-served) |
 
 ---
@@ -73,12 +73,12 @@ Estas tareas las hace Mike **antes** de lanzar Claude Code para Phase 0. Son las
 ### 4.1 Cuentas y servicios
 
 - [ ] **GitHub:** repo creado vacío en `DisplayNote/outreach-hub` (o el org que prefieras). Branch default `main`. Sin contenido inicial.
-- [ ] **Supabase:** cuenta creada. Crear dos proyectos:
-  - `outreach-dev` (región: `eu-west-2` o la más cercana a London/Belfast)
-  - `outreach-prod` (misma región)
-  - Anotar `project_ref` y database password de cada uno.
+- [ ] **Supabase:** cuenta creada. Crear **un solo** proyecto cloud:
+  - `outreach-prod` (región: `eu-west-2` o la más cercana a London/Belfast)
+  - Anotar `project_ref` y database password.
+  - **Desarrollo es local** (stack de la CLI de Supabase vía `supabase start`); no se crea proyecto cloud de dev (evita pagar dos proyectos).
 - [ ] **Vercel:** cuenta creada. Crear proyecto `outreach-hub` vinculado al repo de GitHub. Configurar dominio custom más adelante (Phase 5).
-- [ ] **Cloudflare DNS:** verificar que `displaynote.com` está bajo tu cuenta de Cloudflare. Generar API Token con scope `Zone.DNS:Edit` para el zone de `displaynote.com`. Anotar el `zone_id`.
+- [ ] **DNS (manual):** el DNS de `displaynote.com` se gestiona manualmente, fuera de Terraform. Cuando se elija el subdominio (Phase 2), crear a mano un `CNAME` `<subdominio>` → `cname.vercel-dns.com`. Los records de Mail (SPF/DKIM/DMARC) se añaden a mano en Phase 5. **No se necesita ningún token de DNS en el bootstrap.**
 - [ ] **Telnyx:** verificar acceso. (No se toca en Phase 0, sólo confirmar que existe la cuenta y un número UK asignado.)
 
 ### 4.2 Microsoft App Registration
@@ -115,7 +115,6 @@ En el **tenant E5 sandbox de Mike** (donde eres Global Admin):
 
 - [ ] **Supabase Personal Access Token:** Account → Access Tokens. Crear uno con nombre `outreach-hub-terraform`. Copiar.
 - [ ] **Vercel Personal Access Token:** Account Settings → Tokens. Crear uno con nombre `outreach-hub-ci`. Copiar.
-- [ ] **Cloudflare API Token:** ya generado en 4.1.
 
 ### 4.5 GitHub Actions Secrets
 
@@ -123,15 +122,12 @@ Configurar en el repo (Settings → Secrets and variables → Actions):
 
 ```
 SUPABASE_ACCESS_TOKEN           # del 4.4
-SUPABASE_DEV_PROJECT_REF        # del 4.1
-SUPABASE_PROD_PROJECT_REF       # del 4.1
-SUPABASE_DEV_DB_PASSWORD        # del 4.1
-SUPABASE_PROD_DB_PASSWORD       # del 4.1
+SUPABASE_PROJECT_REF            # del 4.1 (proyecto cloud único = prod)
+SUPABASE_DB_PASSWORD            # del 4.1
+SUPABASE_ANON_KEY               # opcional; del dashboard. Usado por ci.yml para el build (si falta, usa 'placeholder')
 VERCEL_TOKEN                    # del 4.4
 VERCEL_ORG_ID                   # de Vercel dashboard
 VERCEL_PROJECT_ID               # de Vercel dashboard
-CLOUDFLARE_API_TOKEN            # del 4.1
-CLOUDFLARE_ZONE_ID              # del 4.1
 MS_CLIENT_ID                    # del 4.2
 MS_CLIENT_SECRET                # del 4.2 (sensitive)
 MS_DEV_TENANT_ID                # del 4.2 (sandbox)
@@ -140,27 +136,23 @@ TF_STATE_KEY                    # generar random hex 32 chars; para cifrar TF st
 
 ### 4.6 Archivo `.env.bootstrap` local (para Claude Code)
 
-Crear un archivo `.env.bootstrap` en la máquina donde correrá Claude Code, con todos los valores anteriores. Claude Code lo leerá durante Phase 0 y poblará `.env.local`, `infra/envs/dev.tfvars`, etc. **Este archivo no se commitea.** Plantilla:
+Crear un archivo `.env.bootstrap` en la máquina donde correrá Claude Code. Para **dev local** sólo hacen falta los valores `MS_*` (`make bootstrap` → `.env.local`); las credenciales cloud (Supabase/Vercel) sólo se necesitan para el deploy de prod (`make bootstrap-prod` → `infra/envs/prod.tfvars`). **Este archivo no se commitea.** Plantilla:
 
 ```bash
 # GitHub
 GITHUB_REPO=DisplayNote/outreach-hub
 
-# Supabase
+# Supabase (proyecto cloud único = prod; dev es local con `supabase start`)
 SUPABASE_ACCESS_TOKEN=sbp_xxx
-SUPABASE_DEV_PROJECT_REF=xxx
-SUPABASE_PROD_PROJECT_REF=xxx
-SUPABASE_DEV_DB_PASSWORD=xxx
-SUPABASE_PROD_DB_PASSWORD=xxx
+SUPABASE_PROJECT_REF=xxx
+SUPABASE_DB_PASSWORD=xxx
 
 # Vercel
 VERCEL_TOKEN=xxx
 VERCEL_ORG_ID=xxx
 VERCEL_PROJECT_ID=xxx
 
-# Cloudflare DNS
-CLOUDFLARE_API_TOKEN=xxx
-CLOUDFLARE_ZONE_ID=xxx
+# DNS se gestiona manualmente — no se necesita token aquí.
 
 # Microsoft (sandbox dev tenant)
 MS_CLIENT_ID=xxx
@@ -179,7 +171,7 @@ TF_STATE_KEY=xxx
 
 ### 5.1 Objetivo
 
-Repo `DisplayNote/outreach-hub` con scaffolding completo: Next.js + Supabase + Terraform + GitHub Actions + EmailDriver abstraction + Microsoft OAuth login funcionando en local contra el sandbox tenant + un `make dev` que arranca todo en una sola línea + CI verde en main + primer Vercel preview deployment automático.
+Repo `DisplayNote/outreach-hub` con scaffolding completo: Next.js + Supabase + Terraform + GitHub Actions + EmailDriver abstraction + Microsoft OAuth login funcionando en local contra el sandbox tenant + un `make dev` que arranca todo en una sola línea + CI verde en main + primer deploy de producción automático desde `main` (no hay preview deploys; dev es local).
 
 ### 5.2 Entradas requeridas
 
@@ -461,38 +453,33 @@ terraform init  # se hace después de escribir backend.tf
   terraform {
     required_version = ">= 1.7"
     required_providers {
-      supabase   = { source = "supabase/supabase", version = "~> 1.9" }
-      vercel     = { source = "vercel/vercel", version = "~> 2.0" }
-      cloudflare = { source = "cloudflare/cloudflare", version = "~> 4.0" }
+      supabase = { source = "supabase/supabase", version = "~> 1.9" }
+      vercel   = { source = "vercel/vercel", version = "~> 2.0" }
     }
   }
 
-  provider "supabase"   { access_token = var.supabase_access_token }
-  provider "vercel"     { api_token    = var.vercel_token }
-  provider "cloudflare" { api_token    = var.cloudflare_api_token }
+  provider "supabase" { access_token = var.supabase_access_token }
+  provider "vercel"   { api_token    = var.vercel_token }
   ```
 - `infra/backend.tf`:
   - Para empezar: backend local con `terraform.tfstate` gitignored. Migración a remote backend (Terraform Cloud o S3) marcada como TODO en Phase 7. Es aceptable para Phase 0 con 1 dev.
   - Comentario explicando esto.
-- `infra/variables.tf`: definir todas las vars que aparecen en `dev.tfvars`/`prod.tfvars`.
+- `infra/variables.tf`: definir todas las vars que aparecen en `prod.tfvars`.
 - `infra/supabase.tf`:
   - Importar proyecto existente: `resource "supabase_project" "this" { ... }` con `lifecycle.ignore_changes` apropiado.
   - `resource "supabase_settings" "auth"`: configurar site_url, redirect URLs, Azure provider.
 - `infra/vercel.tf`:
   - `resource "vercel_project" "this"`: vincula al repo GitHub, configura build settings.
   - `resource "vercel_project_environment_variable"` para cada env var del runtime.
-- `infra/dns.tf`:
-  - `resource "cloudflare_record" "vercel_root"`: CNAME del subdominio app → cname.vercel-dns.com. (Configuración del subdominio efectivo se decide en Phase 2; por ahora sólo el resource templated.)
-  - Comentario marcando que records para Mail (Phase 5) se añaden cuando llegue ese momento.
+- **DNS (manual, fuera de Terraform):** no hay `infra/dns.tf`. Cuando el subdominio se fije (Phase 2), crear a mano el `CNAME` `<subdominio>` → `cname.vercel-dns.com`; los records de Mail (SPF/DKIM/DMARC) se añaden a mano en Phase 5.
 - `infra/outputs.tf`: outputs útiles (URLs).
-- `infra/envs/dev.tfvars.example` y `infra/envs/prod.tfvars.example`: plantillas commiteadas con placeholders.
-- `infra/envs/dev.tfvars`: poblado por Claude Code desde `.env.bootstrap`. **Gitignored.**
-- `infra/envs/prod.tfvars`: idem.
+- `infra/envs/prod.tfvars.example`: plantilla commiteada con placeholders (única — no hay dev cloud).
+- `infra/envs/prod.tfvars`: poblado por Claude Code desde `.env.bootstrap`. **Gitignored.**
 
 **Validación:**
 - `terraform -chdir=infra fmt -check` → 0 cambios
 - `terraform -chdir=infra validate` → success
-- `terraform -chdir=infra plan -var-file=envs/dev.tfvars` → plan sin errores; outputs visibles
+- `terraform -chdir=infra plan -var-file=envs/prod.tfvars` → plan sin errores; outputs visibles
 - **No correr `terraform apply` automáticamente.** Eso lo hace el workflow `infra.yml` cuando se mergee a main, y Mike lo aprueba la primera vez manualmente.
 
 **Escalar en:**
@@ -511,8 +498,8 @@ terraform init  # se hace después de escribir backend.tf
   - Triggers: PR que toque `infra/**`, push a main que toque `infra/**`
   - Steps: setup terraform → fmt check → init → plan (PR) o apply (main, con `workflow_dispatch` para approval gate)
 - `.github/workflows/db-migrate.yml`:
-  - Triggers: push a main que toque `supabase/migrations/**`
-  - Steps: setup-supabase-cli → `supabase db push --linked --project-ref ${{ secrets.SUPABASE_DEV_PROJECT_REF }}` (en main → dev; para prod hay un workflow separado con manual trigger en Phase 7)
+  - Trigger: `workflow_dispatch` **manual** con confirmación (no auto en push). Como sólo hay proyecto cloud de prod, las migraciones se prueban en local (`supabase db reset`/`db diff`) y se aplican a prod a mano para evitar deploys de esquema accidentales.
+  - Steps: setup-supabase-cli → `supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}` → `supabase db push`
 - `.github/workflows/functions-deploy.yml`:
   - Triggers: push a main que toque `supabase/functions/**`
   - Steps: deploy de funciones modificadas
@@ -535,7 +522,8 @@ terraform init  # se hace después de escribir backend.tf
   - `mailpit` service en puerto 1025 (SMTP) / 8025 (Web UI)
   - Sin servicios duplicados de Supabase (eso lo gestiona `supabase start`)
 - `scripts/dev.sh`: script bash que arranca docker compose, supabase, y ejecuta concurrently next dev + supabase functions serve.
-- `scripts/dev-bootstrap.sh`: lee `.env.bootstrap` y popula `.env.local`, `infra/envs/dev.tfvars` y otros archivos generados. Idempotente.
+- `scripts/dev-bootstrap.sh`: lee `.env.bootstrap` y popula `.env.local` para **dev local** (sólo requiere los valores `MS_*`; nada de Supabase cloud / Vercel). Idempotente.
+- `scripts/bootstrap-prod.sh`: lee `.env.bootstrap` y popula `infra/envs/prod.tfvars` para el **deploy cloud de prod** (requiere las credenciales cloud). Idempotente. (`.ps1` equivalentes para Windows.)
 - `scripts/teardown.sh`: `supabase stop` + `docker compose -f docker-compose.dev.yml down -v`.
 
 **Validación:**
@@ -557,8 +545,11 @@ terraform init  # se hace después de escribir backend.tf
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN{FS=":.*?## "}{printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-bootstrap:  ## Bootstrap del entorno desde .env.bootstrap
+bootstrap:  ## Bootstrap dev LOCAL (.env.local) desde .env.bootstrap — sólo requiere MS_*
 	@bash scripts/dev-bootstrap.sh
+
+bootstrap-prod:  ## Genera infra/envs/prod.tfvars desde .env.bootstrap — requiere creds cloud
+	@bash scripts/bootstrap-prod.sh
 
 dev:  ## Arranca todo el stack local
 	@bash scripts/dev.sh
@@ -641,9 +632,9 @@ Antes de declarar Phase 0 completa, ejecutar:
 4. [ ] `make lint` 0 errores.
 5. [ ] `make test` y `make test-e2e` todos verdes.
 6. [ ] OAuth flow contra sandbox tenant funciona end-to-end (validación manual descrita en Task 6).
-7. [ ] PR con un cambio cosmético (e.g. typo en README) abre → CI verde → Vercel preview deploya → URL preview accesible.
+7. [ ] PR con un cambio cosmético (e.g. typo en README) abre → CI verde. (No hay preview deploys por diseño; el deploy de producción ocurre al mergear a `main`.)
 8. [ ] Merge del PR a main → CI verde → Vercel production deploy → URL prod accesible.
-9. [ ] `terraform -chdir=infra plan -var-file=envs/dev.tfvars` → "No changes" (idempotencia).
+9. [ ] `terraform -chdir=infra plan -var-file=envs/prod.tfvars` → "No changes" (idempotencia).
 10. [ ] Supabase Studio (prod) muestra el primer user creado tras OAuth login en preview.
 
 ### 5.6 Escalar en (resumen consolidado)
@@ -714,7 +705,7 @@ Estimación gross para alcanzar Phase 7 (producto multi-usuario productivo): 8�
 | Microsoft Graph API | $0 (incluido en licencias E5/E1 de los usuarios) |
 | Sentry Team (Phase 7) | $26 |
 | Sandbox E5 (dev) | $0 (ya tienes) |
-| Cloudflare DNS | $0 |
+| DNS (gestionado manualmente) | $0 |
 | Terraform state local | $0 |
 | **Total Phase 0–6** | **~$60–80/mes** |
 | **Total Phase 7+** | **~$95–120/mes** |

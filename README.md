@@ -13,10 +13,13 @@ and an `.env.bootstrap` file (copy `.env.bootstrap.example`; see
 git clone https://github.com/DisplayNote/outreach-hub.git
 cd outreach-hub
 cp .env.bootstrap.example .env.bootstrap
-# Fill .env.bootstrap with real values.
-make bootstrap   # populates .env.local and infra/envs/*.tfvars
-make dev         # boots Mailpit + Supabase + Next.js
+# For local dev, fill ONLY the Microsoft values (MS_CLIENT_ID/SECRET/TENANT).
+make bootstrap   # LOCAL: writes .env.local (no Supabase cloud / Vercel needed)
+make dev         # boots Mailpit + Supabase (local CLI stack) + Next.js
 ```
+
+Deploying the prod cloud environment later needs the Supabase/Vercel creds in
+`.env.bootstrap`, then `make bootstrap-prod` (writes `infra/envs/prod.tfvars`).
 
 For a production-style local app container instead of host `next dev`:
 
@@ -51,7 +54,7 @@ The first run pulls Supabase container images (1–5 min). After that:
 - **Auth** — Microsoft Entra ID (Azure OIDC) via Supabase Auth, multi-tenant
 - **Email** — pluggable `EmailDriver` interface: `mock` / `mailpit` / `graph-dev` / `graph-prod`
 - **Local runtime** — Supabase CLI-managed stack plus Mailpit; optional Next.js app container
-- **IaC** — Terraform in `infra/` (Supabase + Vercel + Cloudflare DNS)
+- **IaC** — Terraform in `infra/` (Supabase + Vercel); DNS managed manually
 - **CI/CD** — GitHub Actions (`ci`, `infra`, `db-migrate`, `functions-deploy`)
 - **Tests** — Vitest (unit) + Playwright (e2e)
 
@@ -71,7 +74,7 @@ supabase/
   migrations/    SQL migrations
   functions/     Deno edge functions
   config.toml    Local Supabase stack config
-infra/           Terraform (Supabase + Vercel + Cloudflare)
+infra/           Terraform (Supabase + Vercel; DNS is manual)
 .github/workflows/  CI/CD pipelines
 tests/{unit,e2e}/   Vitest + Playwright tests
 scripts/         Bootstrap, dev runtime, Docker runtime, and teardown scripts

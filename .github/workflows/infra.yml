@@ -28,13 +28,11 @@ jobs:
     timeout-minutes: 15
     env:
       TF_VAR_supabase_access_token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      TF_VAR_supabase_project_ref: ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
-      TF_VAR_supabase_db_password: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+      TF_VAR_supabase_project_ref: ${{ secrets.SUPABASE_PROJECT_REF }}
+      TF_VAR_supabase_db_password: ${{ secrets.SUPABASE_DB_PASSWORD }}
       TF_VAR_vercel_token: ${{ secrets.VERCEL_TOKEN }}
       TF_VAR_vercel_org_id: ${{ secrets.VERCEL_ORG_ID }}
       TF_VAR_vercel_project_id: ${{ secrets.VERCEL_PROJECT_ID }}
-      TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
       TF_VAR_ms_client_id: ${{ secrets.MS_CLIENT_ID }}
       TF_VAR_ms_client_secret: ${{ secrets.MS_CLIENT_SECRET }}
 
@@ -62,9 +60,9 @@ jobs:
       - name: Plan
         if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
         working-directory: infra
-        run: terraform plan -var-file=envs/dev.tfvars -no-color
+        run: terraform plan -var-file=envs/prod.tfvars -no-color
 
       - name: Apply (manual gate)
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
         working-directory: infra
-        run: terraform apply -var-file=envs/dev.tfvars -auto-approve
+        run: terraform apply -var-file=envs/prod.tfvars -auto-approve

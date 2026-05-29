@@ -31,7 +31,6 @@ yarn-error.log*
 .env.bootstrap
 
 # Bootstrap-generated tfvars (never commit real values)
-infra/envs/dev.tfvars
 infra/envs/prod.tfvars
 
 # Terraform
@@ -74,3 +73,6 @@ next-env.d.ts
 # OS
 .cache/
 .turbo/
+
+# Claude Code local session state
+.claude/scheduled_tasks.lock

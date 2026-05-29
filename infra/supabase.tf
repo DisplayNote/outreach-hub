@@ -23,8 +23,8 @@ resource "supabase_settings" "this" {
   project_ref = var.supabase_project_ref
 
   auth = jsonencode({
-    SITE_URL                   = var.env == "prod" ? "https://${var.app_subdomain}.displaynote.com" : "http://localhost:3000"
-    URI_ALLOW_LIST             = var.env == "prod" ? "https://${var.app_subdomain}.displaynote.com/auth/callback" : "http://localhost:3000/auth/callback"
+    SITE_URL                   = "https://${var.app_subdomain}.displaynote.com"
+    URI_ALLOW_LIST             = "https://${var.app_subdomain}.displaynote.com/auth/callback"
     JWT_EXP                    = 3600
     EXTERNAL_AZURE_ENABLED     = true
     EXTERNAL_AZURE_CLIENT_ID   = var.ms_client_id

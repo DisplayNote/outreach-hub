@@ -1,9 +1,13 @@
+# Terraform manages the production cloud environment only. Development runs
+# entirely against the local Supabase CLI stack (`supabase start`), which is not
+# managed here — so there is no cloud "dev" project to provision or pay for.
 variable "env" {
-  description = "Environment name (dev or prod)."
+  description = "Environment name. Only \"prod\" is managed by Terraform; dev is local-only."
   type        = string
+  default     = "prod"
   validation {
-    condition     = contains(["dev", "prod"], var.env)
-    error_message = "env must be \"dev\" or \"prod\"."
+    condition     = var.env == "prod"
+    error_message = "env must be \"prod\"; development is local-only and not managed by Terraform."
   }
 }
 
@@ -54,20 +58,12 @@ variable "vercel_git_repo" {
   default     = "DisplayNote/outreach-hub"
 }
 
-# ─── Cloudflare DNS ─────────────────────────────────────────────────────────────
-variable "cloudflare_api_token" {
-  description = "Cloudflare API token scoped to Zone.DNS:Edit on displaynote.com."
-  type        = string
-  sensitive   = true
-}
-
-variable "cloudflare_zone_id" {
-  description = "Cloudflare zone id for displaynote.com."
-  type        = string
-}
-
+# ─── App hosting ──────────────────────────────────────────────────────────────
+# DNS is managed manually (outside Terraform). After Vercel is provisioned,
+# create a CNAME for this subdomain pointing at `cname.vercel-dns.com`, and the
+# Phase 5 mail records (SPF / DKIM / DMARC), by hand in the DNS provider.
 variable "app_subdomain" {
-  description = "Subdomain (without the zone) where the app is hosted. Filled in Phase 2+."
+  description = "Subdomain (without the zone) where the app is hosted. Filled in Phase 2+. DNS record is created manually."
   type        = string
   default     = ""
 }

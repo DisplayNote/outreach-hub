@@ -5,13 +5,14 @@
 Detailed steps live in §4 of [OUTREACH_HUB_EXECUTION_PLAN.md](./OUTREACH_HUB_EXECUTION_PLAN.md).
 Short version:
 
-1. **Accounts:** GitHub repo, two Supabase projects (`dev`, `prod`), Vercel project,
-   Cloudflare zone for `displaynote.com`, Telnyx (for Phase 3+).
+1. **Accounts:** GitHub repo, one Supabase **prod** project (dev runs locally via the Supabase
+   CLI), Vercel project, Telnyx (for Phase 3+). DNS for `displaynote.com` is managed manually
+   (outside Terraform).
 2. **Microsoft App Registration** in the sandbox tenant - multi-tenant, redirect URIs for local +
    both Supabase projects. Local Phase 0 login requests `email openid profile User.Read
    offline_access`; delegated Graph send/read scopes land in Phase 5. Grant admin consent on the
    sandbox. File a ticket for the prod tenant in parallel (Phase 5 needs it).
-3. **Tokens:** Supabase PAT, Vercel PAT, Cloudflare API token (scope `Zone.DNS:Edit`).
+3. **Tokens:** Supabase PAT, Vercel PAT. (No DNS token — DNS records are created by hand.)
 4. **GitHub Secrets** (Settings → Secrets and variables → Actions) — listed in §4.5 of the plan.
 5. **`.env.bootstrap`** locally (gitignored) with the same values for `make bootstrap`.
    Start from `.env.bootstrap.example`.
@@ -33,8 +34,9 @@ Production migrations are deliberately **not** automatic. Phase 7 introduces a s
 `db-migrate-prod.yml` with a manual gate. Until then, prod migrations are run by hand and
 recorded in `aidlc-docs/audit.md`.
 
-Vercel deployments happen via the Git integration: every PR gets a preview URL, every `main`
-commit deploys to production.
+Vercel deployments happen via the Git integration: every `main` commit deploys to production.
+Preview deployments are disabled — development runs locally against the Supabase CLI stack, so
+there is no non-prod backend for previews to use.
 
 ## Secret rotation
 
@@ -45,11 +47,11 @@ commit deploys to production.
    - GitHub Actions secrets
    - Vercel project env vars (production + preview + development)
    - Local `.env.bootstrap` (then `make bootstrap` to regenerate `.env.local` / `infra/envs/*.tfvars`)
-3. `terraform -chdir=infra apply -var-file=envs/dev.tfvars` to push the new secret to Supabase auth settings.
+3. `terraform -chdir=infra apply -var-file=envs/prod.tfvars` to push the new secret to Supabase auth settings.
 4. Verify a fresh OAuth login in dev before pushing prod.
 5. Delete the previous secret in Microsoft.
 
-Other rotations (`SUPABASE_ACCESS_TOKEN`, `VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN`) follow the same
+Other rotations (`SUPABASE_ACCESS_TOKEN`, `VERCEL_TOKEN`) follow the same
 "create new → update everywhere → verify → delete old" sequence.
 
 ## State file

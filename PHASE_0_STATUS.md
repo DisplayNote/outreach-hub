@@ -13,8 +13,9 @@ prereq checks each session prevents acting on stale assumptions.
 ## Mode
 
 Phase 0 was executed in **credential-safe mode**: real `.env*` files are operator-only and were
-not inspected. Anything that depends on real Supabase / Vercel / Microsoft / Cloudflare values
-must be run by the operator or with a safe process environment. The platform code, configs,
+not inspected. Anything that depends on real Supabase / Vercel / Microsoft values
+must be run by the operator or with a safe process environment. (DNS is managed manually,
+outside Terraform, so no DNS credentials are needed.) The platform code, configs,
 infra-as-code, CI workflows, Docker image, and tests are in place; credentialed validations are
 still outstanding.
 
@@ -28,9 +29,9 @@ still outstanding.
 | 4 | `make lint` — 0 errors | ✅ | `pnpm lint` passed 2026-05-29 00:19 +02:00 with the 2 known stylistic warnings on config files. |
 | 5 | `make test` + `make test-e2e` green | ⏳ partial | `npm test` passed 8/8 on 2026-05-29 00:19 +02:00. E2E not rerun in this secret-safe pass. |
 | 6 | OAuth flow against sandbox tenant works end-to-end | ⏸ blocked | Needs operator-run local SSO with real Microsoft app values; assistant must not inspect real `.env*` files. |
-| 7 | PR with cosmetic change → CI green → Vercel preview deploys | ⏸ blocked | GitHub remote exists; PR/Vercel preview still needs push and repo secrets. |
-| 8 | Merge → CI green → Vercel production deploys | ⏸ blocked | Same as #7. |
-| 9 | `terraform -chdir=infra plan -var-file=envs/dev.tfvars` → "No changes" (idempotence) | ⏸ blocked | Terraform CLI is not installed on PATH; real tfvars are operator-only. |
+| 7 | PR with cosmetic change → CI green | ⏸ blocked | GitHub remote exists; still needs push. (No Vercel preview deploys by design — dev is local.) |
+| 8 | Merge to `main` → CI green → Vercel production deploys | ⏸ blocked | Needs repo secrets + Vercel project. Production deploys from `main` only. |
+| 9 | `terraform -chdir=infra plan -var-file=envs/prod.tfvars` → "No changes" (idempotence) | ⏸ blocked | Terraform CLI is not installed on PATH; real tfvars are operator-only. Single cloud env (prod); dev is local. |
 | 10 | Supabase Studio (prod) shows first user after preview OAuth login | ⏸ blocked | Needs #6 + #7. |
 
 ## Docker readiness validation
@@ -90,16 +91,17 @@ Future deviations land in `docs/adr/NNN-short-name.md` using the same pattern.
 
 The (a)–(f) sequence from the operator's resume prompt:
 
-- **(a)** `make bootstrap` — populates `.env.local`, `infra/envs/dev.tfvars`, `infra/envs/prod.tfvars` from `.env.bootstrap`.
+- **(a)** `make bootstrap` — populates `.env.local` for local dev from `.env.bootstrap` (needs only the `MS_*` values; no Supabase cloud / Vercel). Run `make bootstrap-prod` separately to write `infra/envs/prod.tfvars` when deploying the prod cloud env.
 - **(b)** `make dev` — boots Mailpit + Supabase + next dev. Confirm all four URLs respond:
   http://localhost:3000, http://localhost:54321 (Supabase API), http://localhost:54323 (Studio), http://localhost:8025 (Mailpit).
 - **(c)** Task 6 manual OAuth validation per spec §5.4 Task 6 — operator drives the browser; the
   assistant walks them through steps 1–6 (sign-in flow → Studio check that `auth.users`, `public.organizations`,
   `public.users` each have 1 row linked).
-- **(d)** `terraform -chdir=infra init` then `terraform -chdir=infra plan -var-file=envs/dev.tfvars`. Report
+- **(d)** `terraform -chdir=infra init` then `terraform -chdir=infra plan -var-file=envs/prod.tfvars`. Report
   the plan output. **Do NOT run `terraform apply`** — Mike approves it manually the first time.
 - **(e)** Push a trivial commit on a branch (`chore/ci-smoke`), open a PR. Confirm CI runs and goes
-  green; confirm a Vercel preview URL is generated and accessible. This validates items §5.5 #7 and #8.
+  green. There are **no Vercel preview deploys** (by design); validate the production deploy only after
+  merging to `main`. This validates items §5.5 #7 and #8.
 - **(f)** Update this file: flip the ⏸ items to ✅ with their verification timestamps. Commit as
   `docs: close out Phase 0 §5.5 validations`.
 

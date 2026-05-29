@@ -1,11 +1,11 @@
 resource "vercel_project" "this" {
-  name      = "outreach-hub${var.env == "prod" ? "" : "-${var.env}"}"
+  name      = "outreach-hub"
   framework = "nextjs"
 
   git_repository = {
     type              = "github"
     repo              = var.vercel_git_repo
-    production_branch = var.env == "prod" ? "main" : null
+    production_branch = "main"
   }
 
   build_command    = "pnpm build"
@@ -22,11 +22,13 @@ resource "vercel_project" "this" {
   }
 }
 
+# Only production deploys exist (no PR previews); development runs locally against
+# the Supabase CLI stack. All env vars therefore target "production" only.
 locals {
   runtime_env = {
     NEXT_PUBLIC_SUPABASE_URL      = "https://${var.supabase_project_ref}.supabase.co"
     NEXT_PUBLIC_SUPABASE_ANON_KEY = "" # Read from Supabase via dashboard or `supabase status`.
-    EMAIL_DRIVER                  = var.env == "prod" ? "graph-prod" : "graph-dev"
+    EMAIL_DRIVER                  = "graph-prod"
   }
 }
 
@@ -35,14 +37,14 @@ resource "vercel_project_environment_variable" "runtime" {
   project_id = vercel_project.this.id
   key        = each.key
   value      = each.value
-  target     = ["production", "preview", "development"]
+  target     = ["production"]
 }
 
 resource "vercel_project_environment_variable" "service_role" {
   project_id = vercel_project.this.id
   key        = "SUPABASE_SERVICE_ROLE_KEY"
   value      = "" # Populated manually post-bootstrap; rotate on every Phase 7 secret rotation.
-  target     = ["production", "preview"]
+  target     = ["production"]
   sensitive  = true
 }
 
@@ -50,13 +52,13 @@ resource "vercel_project_environment_variable" "ms_client_id" {
   project_id = vercel_project.this.id
   key        = "MS_CLIENT_ID"
   value      = var.ms_client_id
-  target     = ["production", "preview", "development"]
+  target     = ["production"]
 }
 
 resource "vercel_project_environment_variable" "ms_client_secret" {
   project_id = vercel_project.this.id
   key        = "MS_CLIENT_SECRET"
   value      = var.ms_client_secret
-  target     = ["production", "preview", "development"]
+  target     = ["production"]
   sensitive  = true
 }

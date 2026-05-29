@@ -1,11 +1,14 @@
-.PHONY: help bootstrap dev dev-docker dev-stop test test-e2e lint typecheck build \
+.PHONY: help bootstrap bootstrap-prod dev dev-docker dev-stop test test-e2e lint typecheck build \
         db-reset db-migration db-diff fns-serve tunnel clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN{FS=":.*?## "}{printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-bootstrap:  ## Bootstrap the environment from .env.bootstrap
+bootstrap:  ## Bootstrap LOCAL dev (.env.local) from .env.bootstrap — needs only the Microsoft values
 	@bash scripts/dev-bootstrap.sh
+
+bootstrap-prod:  ## Generate infra/envs/prod.tfvars from .env.bootstrap — needs the cloud creds (Supabase/Vercel)
+	@bash scripts/bootstrap-prod.sh
 
 dev:  ## Start the full local stack
 	@bash scripts/dev.sh

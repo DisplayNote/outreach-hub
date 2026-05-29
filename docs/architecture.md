@@ -36,7 +36,7 @@
 | Microsoft OAuth as the only IdP | We need the app registration for Mail anyway; reusing it for login removes a system. |
 | pnpm | Faster, disk-efficient; deterministic lockfile. |
 | Vitest + Playwright | Vite-native unit speed; multi-browser e2e on CI. |
-| Terraform | Mature providers for Supabase, Vercel, Cloudflare. |
+| Terraform | Mature providers for Supabase and Vercel. (DNS is managed manually, outside Terraform.) |
 | `EmailDriver` interface | Lets us iterate UI without Graph for weeks; switching providers is type-safe. |
 | Supabase CLI owns local Supabase | Avoids maintaining a fragile custom Compose copy of Supabase's internal service graph. |
 | Single-file dev (`PaulsOutreachHub.html`) → migration target | Battle-tested domain model is preserved — only the platform layer changes. |

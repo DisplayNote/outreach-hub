@@ -18,10 +18,14 @@ Setup:
 git clone https://github.com/DisplayNote/outreach-hub.git
 cd outreach-hub
 cp .env.bootstrap.example .env.bootstrap
-# Fill .env.bootstrap with the values from §4.6 of the execution plan.
-make bootstrap   # populates .env.local + infra/envs/dev.tfvars
-make dev         # Mailpit + Supabase + Next.js
+# For local dev, fill ONLY the Microsoft values (MS_CLIENT_ID/SECRET/TENANT).
+# The cloud creds (Supabase/Vercel) are needed only for `make bootstrap-prod`.
+make bootstrap   # LOCAL: writes .env.local (no Supabase cloud / Vercel needed)
+make dev         # Mailpit + Supabase (local CLI stack) + Next.js
 ```
+
+To generate the prod cloud Terraform variables later: `make bootstrap-prod`
+(this needs the Supabase/Vercel creds in `.env.bootstrap`).
 
 PowerShell equivalent when GNU Make is unavailable:
 
@@ -80,7 +84,7 @@ isolation.
 
 (Lands in Phase 3.) You'll need:
 
-- An ngrok / Cloudflare tunnel exposing your local Supabase Edge Functions at a stable URL
+- An ngrok (or equivalent) tunnel exposing your local Supabase Edge Functions at a stable URL
   (`make tunnel` once `OUTREACH_DEV_TUNNEL_URL` is set in `.env.local`)
 - Telnyx Call Control Application's webhook pointing at `<tunnel>/functions/v1/telnyx-webhook`
 - `pnpm exec supabase functions serve --env-file .env.local`
