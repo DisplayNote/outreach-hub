@@ -24,6 +24,7 @@ foreach ($Line in Get-Content -LiteralPath '.env.local') {
 
 Write-Host '[1/2] Starting Supabase through the CLI...'
 pnpm exec supabase start
+if ($LASTEXITCODE -ne 0) { throw "Supabase failed to start (supabase start exited $LASTEXITCODE)." }
 
 Write-Host '[2/2] Starting Next.js app container and Mailpit...'
 Write-Host 'App:             http://localhost:3000'

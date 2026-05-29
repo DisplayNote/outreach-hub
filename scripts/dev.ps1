@@ -24,9 +24,11 @@ foreach ($Line in Get-Content -LiteralPath '.env.local') {
 
 Write-Host '[1/3] Starting Mailpit...'
 docker compose -f docker-compose.dev.yml up -d
+if ($LASTEXITCODE -ne 0) { throw "Mailpit failed to start (docker compose exited $LASTEXITCODE)." }
 
 Write-Host '[2/3] Starting Supabase...'
 pnpm exec supabase start
+if ($LASTEXITCODE -ne 0) { throw "Supabase failed to start (supabase start exited $LASTEXITCODE)." }
 
 Write-Host '[3/3] Starting Next.js dev server...'
 Write-Host 'App:             http://localhost:3000'
