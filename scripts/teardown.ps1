@@ -10,6 +10,7 @@ Set-Location $Root
 
 try {
   pnpm exec supabase stop
+  if ($LASTEXITCODE -ne 0) { throw "supabase stop exited $LASTEXITCODE" }
 } catch {
   Write-Warning "supabase stop failed: $($_.Exception.Message)"
 }
@@ -20,6 +21,7 @@ if ($Volumes) {
 }
 try {
   docker @DownArgs
+  if ($LASTEXITCODE -ne 0) { throw "docker compose down exited $LASTEXITCODE" }
 } catch {
   Write-Warning "docker compose down for docker-compose.dev.yml failed: $($_.Exception.Message)"
 }
@@ -30,6 +32,7 @@ if ($Volumes) {
 }
 try {
   docker @FullDownArgs
+  if ($LASTEXITCODE -ne 0) { throw "docker compose down exited $LASTEXITCODE" }
 } catch {
   Write-Warning "docker compose down for docker-compose.full.yml failed: $($_.Exception.Message)"
 }
