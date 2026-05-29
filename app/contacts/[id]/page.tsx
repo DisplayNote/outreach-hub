@@ -6,6 +6,7 @@ import type { Contact, ContactStatus, Touchpoint, TouchpointChannel } from '@/li
 import { CONTACT_STATUSES, TOUCHPOINT_CHANNELS } from '@/lib/types/domain';
 import { logTouchpointForm } from '@/app/contacts/[id]/actions';
 import StatusSelect from '@/app/contacts/[id]/status-select';
+import ClickToCall from '@/components/click-to-call';
 
 // Auth state + contact data change per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -303,6 +304,13 @@ export default async function ContactDetailPage({
 
         {/* Log touchpoint + history */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <ClickToCall
+            contactId={contact.id}
+            contactName={contactName(contact)}
+            phone={contact.phone}
+            mobile={contact.mobile}
+          />
+
           <section style={cardStyle}>
             <h2 style={sectionTitleStyle}>Log touchpoint</h2>
             <form action={logTouchpointForm} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
