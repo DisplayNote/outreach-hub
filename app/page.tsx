@@ -23,23 +23,17 @@ export default async function Home() {
         margin: '0 auto',
       }}
     >
-      <h1>Hola {user.email}</h1>
-      <p>Outreach Hub — Phase 0 OK.</p>
+      <h1>Welcome, {user.email}</h1>
+      <p style={{ color: '#666' }}>DisplayNote Outreach Hub.</p>
 
-      <form action="/auth/signout" method="post" style={{ marginTop: '1.5rem' }}>
-        <button
-          type="submit"
-          style={{
-            padding: '0.5rem 1rem',
-            cursor: 'pointer',
-            background: '#eee',
-            border: '1px solid #ccc',
-            borderRadius: 4,
-          }}
-        >
-          Sign out
-        </button>
-      </form>
+      <ul style={{ marginTop: '1.5rem', lineHeight: 1.9 }}>
+        <li>
+          <a href="/today">Today</a> — contacts due or overdue for follow-up.
+        </li>
+        <li>
+          <a href="/pipeline">Pipeline</a> — contacts by status, across campaigns.
+        </li>
+      </ul>
     </main>
   );
 }
