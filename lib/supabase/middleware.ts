@@ -1,15 +1,17 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { getPublicEnv } from '@/lib/env';
+import { getServerEnv } from '@/lib/env';
+import { SUPABASE_AUTH_COOKIE_NAME } from '@/lib/supabase/cookie-name';
 
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let supabaseResponse = NextResponse.next({ request });
-  const env = getPublicEnv();
+  const env = getServerEnv();
 
   const supabase = createServerClient(
-    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVER_URL,
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
+      cookieOptions: { name: SUPABASE_AUTH_COOKIE_NAME },
       cookies: {
         getAll() {
           return request.cookies.getAll();

@@ -6,14 +6,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOTSTRAP="$ROOT/.env.bootstrap"
 
 if [ ! -f "$BOOTSTRAP" ]; then
-  echo "ERROR: $BOOTSTRAP not found. Copy .env.example or follow §4.6 of the execution plan." >&2
+  echo "ERROR: $BOOTSTRAP not found. Copy .env.bootstrap.example or follow section 4.6 of the execution plan." >&2
   exit 1
 fi
 
-# shellcheck disable=SC1090
-set -a
-. "$BOOTSTRAP"
-set +a
+# shellcheck source=scripts/lib/load-dotenv.sh
+. "$ROOT/scripts/lib/load-dotenv.sh"
+load_dotenv "$BOOTSTRAP"
 
 require() {
   local var="$1"
@@ -23,9 +22,11 @@ require() {
   fi
 }
 
-for v in SUPABASE_DEV_PROJECT_REF SUPABASE_ACCESS_TOKEN VERCEL_TOKEN VERCEL_ORG_ID \
-         VERCEL_PROJECT_ID CLOUDFLARE_API_TOKEN CLOUDFLARE_ZONE_ID \
-         MS_CLIENT_ID MS_CLIENT_SECRET MS_DEV_TENANT_ID; do
+for v in GITHUB_REPO SUPABASE_ACCESS_TOKEN SUPABASE_DEV_PROJECT_REF \
+         SUPABASE_PROD_PROJECT_REF SUPABASE_DEV_DB_PASSWORD SUPABASE_PROD_DB_PASSWORD \
+         VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID CLOUDFLARE_API_TOKEN \
+         CLOUDFLARE_ZONE_ID MS_CLIENT_ID MS_CLIENT_SECRET MS_DEV_TENANT_ID \
+         TF_STATE_KEY; do
   require "$v"
 done
 
@@ -88,4 +89,4 @@ EOF
 echo "✓ wrote infra/envs/prod.tfvars"
 
 echo
-echo "Bootstrap complete. Next: \`make dev\`."
+echo "Bootstrap complete. Next: \`make dev\` or \`make dev-docker\`."

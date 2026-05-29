@@ -38,6 +38,7 @@
 | Vitest + Playwright | Vite-native unit speed; multi-browser e2e on CI. |
 | Terraform | Mature providers for Supabase, Vercel, Cloudflare. |
 | `EmailDriver` interface | Lets us iterate UI without Graph for weeks; switching providers is type-safe. |
+| Supabase CLI owns local Supabase | Avoids maintaining a fragile custom Compose copy of Supabase's internal service graph. |
 | Single-file dev (`PaulsOutreachHub.html`) → migration target | Battle-tested domain model is preserved — only the platform layer changes. |
 
 ## Module map
@@ -49,6 +50,8 @@
 - `middleware.ts` — refreshes Supabase session cookies on every page request.
 - `supabase/config.toml` — declarative config for the local stack (auth providers, ports, etc.).
 - `supabase/migrations/*.sql` — schema lives here; the live DB is recreated from these.
+- `Dockerfile` / `docker-compose.full.yml` — production-style local app container plus Mailpit.
+  Supabase is still started by the CLI, and app-container server calls use `SUPABASE_INTERNAL_URL`.
 
 ## Phase boundaries
 

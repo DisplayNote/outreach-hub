@@ -1,4 +1,4 @@
-.PHONY: help bootstrap dev dev-stop test test-e2e lint typecheck build \
+.PHONY: help bootstrap dev dev-docker dev-stop test test-e2e lint typecheck build \
         db-reset db-migration db-diff fns-serve tunnel clean
 
 help:  ## Show this help
@@ -9,6 +9,9 @@ bootstrap:  ## Bootstrap the environment from .env.bootstrap
 
 dev:  ## Start the full local stack
 	@bash scripts/dev.sh
+
+dev-docker:  ## Start Supabase plus production app container and Mailpit
+	@bash scripts/dev-docker.sh
 
 dev-stop:  ## Stop the full local stack
 	@bash scripts/teardown.sh
