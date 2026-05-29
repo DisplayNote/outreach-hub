@@ -10,10 +10,9 @@ if [ ! -f "$BOOTSTRAP" ]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
-set -a
-. "$BOOTSTRAP"
-set +a
+# shellcheck source=scripts/lib/load-dotenv.sh
+. "$ROOT/scripts/lib/load-dotenv.sh"
+load_dotenv "$BOOTSTRAP"
 
 require() {
   local var="$1"

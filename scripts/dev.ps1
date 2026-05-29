@@ -19,7 +19,16 @@ foreach ($Line in Get-Content -LiteralPath '.env.local') {
     continue
   }
 
-  [Environment]::SetEnvironmentVariable($Parts[0].Trim(), $Parts[1].Trim(), 'Process')
+  $Key = $Parts[0].Trim()
+  $Value = $Parts[1].Trim()
+  if (
+    ($Value.StartsWith('"') -and $Value.EndsWith('"')) -or
+    ($Value.StartsWith("'") -and $Value.EndsWith("'"))
+  ) {
+    $Value = $Value.Substring(1, $Value.Length - 2)
+  }
+
+  [Environment]::SetEnvironmentVariable($Key, $Value, 'Process')
 }
 
 Write-Host '[1/3] Starting Mailpit...'
