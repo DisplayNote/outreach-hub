@@ -54,7 +54,13 @@ export function parseServerEnv(env: EnvRecord): ServerEnv {
 }
 
 export function getPublicEnv(): PublicEnv {
-  return parsePublicEnv(process.env);
+  // Read each NEXT_PUBLIC_* var directly so Next.js inlines its value into the
+  // client bundle at build time. Passing `process.env` wholesale would not be
+  // inlined and would be empty in the browser (see Next.js env handling).
+  return parsePublicEnv({
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  });
 }
 
 export function getServerEnv(): ServerEnv {
