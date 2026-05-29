@@ -10,10 +10,9 @@ if [ ! -f .env.local ]; then
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1091
-. ./.env.local
-set +a
+# shellcheck source=scripts/lib/load-dotenv.sh
+. "$ROOT/scripts/lib/load-dotenv.sh"
+load_dotenv .env.local
 
 echo "[1/3] Starting Mailpit (docker compose)…"
 docker compose -f docker-compose.dev.yml up -d
