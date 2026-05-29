@@ -22,7 +22,7 @@ still outstanding.
 
 | # | Criterion | Status | Notes |
 |---|---|---|---|
-| 1 | `git status` clean | ⏳ in progress | Working branch `docker-azure-sso-readiness` has uncommitted Docker/readiness changes. |
+| 1 | `git status` clean | ✅ | Docker/readiness changes are committed on `docker-azure-sso-readiness` and delivered through PR #1; no untracked working-tree state. |
 | 2 | `make clean && make bootstrap && make dev` boots from scratch | ⏸ blocked | Make unavailable on PATH; real `.env*` files are operator-only. Use PowerShell script equivalents. |
 | 3 | `make typecheck` — 0 errors | ✅ | `pnpm typecheck` passed 2026-05-29 00:19 +02:00. |
 | 4 | `make lint` — 0 errors | ✅ | `pnpm lint` passed 2026-05-29 00:19 +02:00 with the 2 known stylistic warnings on config files. |

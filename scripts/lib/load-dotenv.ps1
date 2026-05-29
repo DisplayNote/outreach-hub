@@ -12,29 +12,34 @@ function Read-DotenvFile {
   }
 
   foreach ($Line in Get-Content -LiteralPath $Path) {
-    $Trimmed = $Line.Trim()
-    if ($Trimmed.Length -eq 0 -or $Trimmed.StartsWith('#')) {
+    # Strip leading whitespace only (mirrors the Bash loader). The value after
+    # the first '=' is kept verbatim so intentional surrounding spaces survive;
+    # only the key side is trimmed.
+    $Stripped = $Line.TrimStart()
+    if ($Stripped.Length -eq 0 -or $Stripped.StartsWith('#')) {
       continue
     }
 
-    # Drop an optional leading `export `.
-    if ($Trimmed.StartsWith('export ')) {
-      $Trimmed = $Trimmed.Substring(7).TrimStart()
+    # Drop an optional leading `export ` (literal prefix, as in the Bash loader).
+    if ($Stripped.StartsWith('export ')) {
+      $Stripped = $Stripped.Substring(7)
     }
 
-    $Parts = $Trimmed -split '=', 2
+    $Parts = $Stripped -split '=', 2
     if ($Parts.Length -ne 2) {
       continue
     }
 
-    $Key = $Parts[0].Trim()
+    # Trim trailing whitespace from the key only (handles `KEY = value`).
+    $Key = $Parts[0].TrimEnd()
     # Skip anything that is not a valid environment-variable identifier.
     if ($Key -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
       continue
     }
 
-    $Value = $Parts[1].Trim()
-    # Strip one layer of matching surrounding quotes, if present.
+    # Take the value verbatim after the first '=' and strip only one layer of
+    # matching surrounding quotes, if present.
+    $Value = $Parts[1]
     if (
       $Value.Length -ge 2 -and (
         ($Value.StartsWith('"') -and $Value.EndsWith('"')) -or
