@@ -17,6 +17,8 @@ import type {
   Contact,
   ContactStatus,
   PipelineStatusCount,
+  Touchpoint,
+  TouchpointChannel,
 } from '@/lib/types/domain';
 import { CONTACT_STATUSES } from '@/lib/types/domain';
 
@@ -54,6 +56,25 @@ interface ContactRow {
   created_at: string;
   updated_at: string;
 }
+
+interface TouchpointRow {
+  id: string;
+  org_id: string;
+  contact_id: string;
+  channel: TouchpointChannel;
+  note: string | null;
+  occurred_at: string;
+  legacy_id: string | null;
+  created_at: string;
+}
+
+// --- Selects -----------------------------------------------------------------
+
+const CONTACT_SELECT =
+  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, created_at, updated_at';
+
+const TOUCHPOINT_SELECT =
+  'id, org_id, contact_id, channel, note, occurred_at, legacy_id, created_at';
 
 // --- Row -> domain mappers ----------------------------------------------------
 
@@ -94,6 +115,19 @@ function toContact(row: ContactRow): Contact {
   };
 }
 
+function toTouchpoint(row: TouchpointRow): Touchpoint {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    contactId: row.contact_id,
+    channel: row.channel,
+    note: row.note,
+    occurredAt: row.occurred_at,
+    legacyId: row.legacy_id,
+    createdAt: row.created_at,
+  };
+}
+
 // --- Helpers -----------------------------------------------------------------
 
 /** Today's date as a `YYYY-MM-DD` string, in UTC, for comparison with `follow_up` (a `date`). */
@@ -113,9 +147,7 @@ export async function getTodayContacts(): Promise<Contact[]> {
 
   const { data, error } = await supabase
     .from('contacts')
-    .select(
-      'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, created_at, updated_at',
-    )
+    .select(CONTACT_SELECT)
     .not('follow_up', 'is', null)
     .lte('follow_up', todayDateString())
     .order('follow_up', { ascending: true });
@@ -171,4 +203,101 @@ export async function listCampaigns(): Promise<Campaign[]> {
   }
 
   return (data as CampaignRow[] | null)?.map(toCampaign) ?? [];
+}
+
+/**
+ * A single contact by id, or `null` if it does not exist / is not visible to
+ * the caller's org (RLS returns no row for other orgs, which we surface as a
+ * 404 at the page level). Uses `maybeSingle` so "no row" is not an error.
+ */
+export async function getContact(id: string): Promise<Contact | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('contacts')
+    .select(CONTACT_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getContact: failed to load contact ${id}: ${error.message}`);
+  }
+
+  return data ? toContact(data as ContactRow) : null;
+}
+
+/**
+ * The full touchpoint history for one contact, most recent first. Ordered by
+ * `occurred_at` descending (ties broken by `created_at` descending). RLS scopes
+ * this to the caller's org; an unknown / cross-org contact id yields `[]`.
+ */
+export async function getContactTouchpoints(contactId: string): Promise<Touchpoint[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('touchpoints')
+    .select(TOUCHPOINT_SELECT)
+    .eq('contact_id', contactId)
+    .order('occurred_at', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(
+      `getContactTouchpoints: failed to load touchpoints for contact ${contactId}: ${error.message}`,
+    );
+  }
+
+  return (data as TouchpointRow[] | null)?.map(toTouchpoint) ?? [];
+}
+
+/**
+ * A contact plus the name of its parent campaign, for the contacts list view.
+ * The campaign name is resolved via a PostgREST embedded join; it is non-null
+ * because `contacts.campaign_id` is NOT NULL and references `campaigns`.
+ */
+export interface ContactWithCampaign extends Contact {
+  campaignName: string;
+}
+
+/**
+ * Raw row for the contacts-with-campaign join (snake_case from PostgREST).
+ *
+ * The embed is logically to-one (`contacts.campaign_id` is NOT NULL and
+ * references `campaigns`), but PostgREST can serialise it as either a single
+ * object or a single-row array; we normalise both in `campaignNameOf`.
+ */
+interface ContactWithCampaignRow extends ContactRow {
+  campaigns: { name: string } | { name: string }[] | null;
+}
+
+/** Pull the campaign name out of PostgREST's embed (object or single-row array). */
+function campaignNameOf(embed: ContactWithCampaignRow['campaigns']): string {
+  if (!embed) return '—';
+  const row = Array.isArray(embed) ? embed[0] : embed;
+  return row?.name ?? '—';
+}
+
+/**
+ * All contacts visible to the caller's org, newest-touched first, each with the
+ * name of its parent campaign. RLS scopes the result to the caller's org, so we
+ * don't filter by `org_id` here. Ordered by `updated_at` descending.
+ */
+export async function listContacts(): Promise<ContactWithCampaign[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('contacts')
+    .select(`${CONTACT_SELECT}, campaigns ( name )`)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`listContacts: failed to load contacts: ${error.message}`);
+  }
+
+  return (
+    (data as unknown as ContactWithCampaignRow[] | null)?.map((row) => ({
+      ...toContact(row),
+      campaignName: campaignNameOf(row.campaigns),
+    })) ?? []
+  );
 }
