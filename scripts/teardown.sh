@@ -7,10 +7,12 @@ cd "$ROOT"
 
 pnpm exec supabase stop || true
 
+volume_arg=()
 if [ "${1:-}" = "-v" ]; then
-  docker compose -f docker-compose.dev.yml down -v
-else
-  docker compose -f docker-compose.dev.yml down
+  volume_arg=(-v)
 fi
 
-echo "✓ local stack stopped"
+docker compose -f docker-compose.dev.yml down "${volume_arg[@]}" || true
+docker compose -f docker-compose.full.yml down "${volume_arg[@]}" || true
+
+echo "local stack stopped"

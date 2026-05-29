@@ -5,44 +5,58 @@ const publicEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
 });
 
-const serverEnvSchema = publicEnvSchema.extend({
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
-  EMAIL_DRIVER: z
-    .enum(['mock', 'mailpit', 'graph-dev', 'graph-prod'])
-    .default('mock'),
-});
+const emptyStringAsUndefined = (value: unknown) => (value === '' ? undefined : value);
+
+const serverEnvSchema = publicEnvSchema
+  .extend({
+    SUPABASE_INTERNAL_URL: z.preprocess(
+      emptyStringAsUndefined,
+      z.string().url().optional(),
+    ),
+    SUPABASE_SERVICE_ROLE_KEY: z.preprocess(
+      emptyStringAsUndefined,
+      z.string().min(1).optional(),
+    ),
+    EMAIL_DRIVER: z
+      .enum(['mock', 'mailpit', 'graph-dev', 'graph-prod'])
+      .default('mock'),
+  })
+  .transform((env) => ({
+    ...env,
+    SUPABASE_SERVER_URL: env.SUPABASE_INTERNAL_URL ?? env.NEXT_PUBLIC_SUPABASE_URL,
+  }));
 
 export type PublicEnv = z.infer<typeof publicEnvSchema>;
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
-export function getPublicEnv(): PublicEnv {
-  const parsed = publicEnvSchema.safeParse({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  });
+function formatEnvIssues(error: z.ZodError): string {
+  return error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+}
 
+type EnvRecord = Record<string, string | undefined>;
+
+export function parsePublicEnv(env: EnvRecord): PublicEnv {
+  const parsed = publicEnvSchema.safeParse(env);
   if (!parsed.success) {
-    throw new Error(
-      `Invalid public env: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
-    );
+    throw new Error(`Invalid public env: ${formatEnvIssues(parsed.error)}`);
   }
 
   return parsed.data;
 }
 
-export function getServerEnv(): ServerEnv {
-  const parsed = serverEnvSchema.safeParse({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    EMAIL_DRIVER: process.env.EMAIL_DRIVER,
-  });
-
+export function parseServerEnv(env: EnvRecord): ServerEnv {
+  const parsed = serverEnvSchema.safeParse(env);
   if (!parsed.success) {
-    throw new Error(
-      `Invalid server env: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
-    );
+    throw new Error(`Invalid server env: ${formatEnvIssues(parsed.error)}`);
   }
 
   return parsed.data;
+}
+
+export function getPublicEnv(): PublicEnv {
+  return parsePublicEnv(process.env);
+}
+
+export function getServerEnv(): ServerEnv {
+  return parseServerEnv(process.env);
 }

@@ -7,13 +7,18 @@ Short version:
 
 1. **Accounts:** GitHub repo, two Supabase projects (`dev`, `prod`), Vercel project,
    Cloudflare zone for `displaynote.com`, Telnyx (for Phase 3+).
-2. **Microsoft App Registration** in the sandbox tenant — multi-tenant, redirect URIs for local +
-   both Supabase projects, scopes `User.Read` / `Mail.Send` / `Mail.Read` / `MailboxSettings.Read`
-   / `offline_access`. Grant admin consent on the sandbox. File a ticket for the prod tenant
-   in parallel (Phase 5 needs it).
+2. **Microsoft App Registration** in the sandbox tenant - multi-tenant, redirect URIs for local +
+   both Supabase projects. Local Phase 0 login requests `email openid profile User.Read
+   offline_access`; delegated Graph send/read scopes land in Phase 5. Grant admin consent on the
+   sandbox. File a ticket for the prod tenant in parallel (Phase 5 needs it).
 3. **Tokens:** Supabase PAT, Vercel PAT, Cloudflare API token (scope `Zone.DNS:Edit`).
 4. **GitHub Secrets** (Settings → Secrets and variables → Actions) — listed in §4.5 of the plan.
 5. **`.env.bootstrap`** locally (gitignored) with the same values for `make bootstrap`.
+   Start from `.env.bootstrap.example`.
+
+Secret handling rule: do not paste, print, or ask an assistant to inspect real `.env*` files.
+Use the committed examples for review; let local scripts consume real env files on the operator's
+machine.
 
 ## CI/CD
 

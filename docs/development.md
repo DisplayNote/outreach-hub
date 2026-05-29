@@ -1,28 +1,67 @@
 # Development guide
 
-Four common dev scenarios. Pick the one that matches your task.
+Common dev scenarios. Pick the one that matches your task.
 
 ## Scenario A — First time on a clean machine
 
 Prerequisites:
 
-- Node 20.18+ (use `nvm install` against `.nvmrc`)
+- Node 24.13+ (use `nvm install` against `.nvmrc`)
 - pnpm 11+ (`npm install -g pnpm@11` or via corepack)
 - Docker Desktop (running)
 - Git
-- Make (Linux/macOS ship it; Windows: `winget install GnuWin32.Make` or use WSL)
+- Make (Linux/macOS ship it; Windows can use the PowerShell commands below instead)
 
 Setup:
 
 ```bash
 git clone https://github.com/DisplayNote/outreach-hub.git
 cd outreach-hub
-# Drop your .env.bootstrap into the repo root — see §4.6 of the execution plan.
+cp .env.bootstrap.example .env.bootstrap
+# Fill .env.bootstrap with the values from §4.6 of the execution plan.
 make bootstrap   # populates .env.local + infra/envs/dev.tfvars
 make dev         # Mailpit + Supabase + Next.js
 ```
 
+PowerShell equivalent when GNU Make is unavailable:
+
+```powershell
+git clone https://github.com/DisplayNote/outreach-hub.git
+Set-Location outreach-hub
+Copy-Item .env.bootstrap.example .env.bootstrap
+# Fill .env.bootstrap with the values from section 4.6 of the execution plan.
+.\scripts\dev-bootstrap.ps1
+.\scripts\dev.ps1
+```
+
 Open http://localhost:3000.
+
+## Scenario A2 — Full Docker app runtime
+
+This path runs the production-style Next.js standalone image locally while keeping Supabase under
+the Supabase CLI. It does not hand-maintain Supabase's internal Docker services.
+
+```bash
+make bootstrap
+make dev-docker
+```
+
+PowerShell:
+
+```powershell
+.\scripts\dev-bootstrap.ps1
+.\scripts\dev-docker.ps1
+```
+
+Runtime details:
+
+- App container: http://localhost:3000
+- Supabase API, started by `pnpm exec supabase start`: http://localhost:54321
+- Supabase Studio: http://localhost:54323
+- Mailpit SMTP/UI: `localhost:1025`, http://localhost:8025
+- Browser Supabase URL stays `http://localhost:54321`.
+- Server-side Supabase calls inside the app container use `SUPABASE_INTERNAL_URL`, defaulting to
+  `http://host.docker.internal:54321` in `docker-compose.full.yml`.
 
 ## Scenario B — UI-only work (no auth, no DB writes)
 
@@ -59,12 +98,28 @@ Webhook signatures are HMAC-verified server-side; do not expose the shared secre
 
 Until then, use `EMAIL_DRIVER=mock` (in-memory) or `mailpit` (real SMTP into the local Web UI).
 
+## Microsoft SSO validation
+
+For local/dev readiness, Microsoft SSO means identity login through Supabase Auth, not delegated
+Graph email send/read.
+
+Required local app registration values:
+
+- Supabase provider redirect URI: `http://localhost:54321/auth/v1/callback`
+- App callback: `http://localhost:3000/auth/callback`
+- Scopes requested by the app today: `email openid profile User.Read offline_access`
+
+After the first local login, verify Supabase Studio has one linked row in each table:
+`auth.users`, `public.organizations`, and `public.users`.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `supabase start` fails with port conflict | 54321/54322/54323 in use | Stop the conflicting service or change the port in `supabase/config.toml`. |
 | `pnpm dev` exits with env validation error | `.env.local` missing or incomplete | `make bootstrap` or `cp .env.example .env.local` then fill in. |
+| App container cannot reach Supabase | Container is trying to use browser `localhost` internally | Use `make dev-docker`; it sets `SUPABASE_INTERNAL_URL=http://host.docker.internal:54321`. |
+| `docker compose` cannot connect | Docker Desktop is stopped or still starting | Start Docker Desktop, then confirm `docker ps` works. |
 | OAuth redirect mismatch | Redirect URI not registered in the Microsoft app | Add the URI to App Registrations → Authentication. |
 | Playwright never gets `Ready in` | `next dev` crashed early — check stderr | Run `pnpm dev` directly to see the crash. |
 | `pnpm install` complains about ignored build scripts | New native dep added | Add the dep name to `allowBuilds:` in `pnpm-workspace.yaml`. |
@@ -80,4 +135,5 @@ make build       # next build
 make db-reset    # nukes local Supabase data (CAUTION)
 make db-migration name=add_contacts  # scaffolds a new migration file
 make dev-stop    # tears the stack down (keeps volumes)
+make dev-docker  # production app container + Mailpit, with Supabase started by CLI
 ```
