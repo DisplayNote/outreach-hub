@@ -8,29 +8,8 @@ if (-not (Test-Path -LiteralPath $Bootstrap)) {
   throw "ERROR: $Bootstrap not found. Copy .env.bootstrap.example or follow section 4.6 of the execution plan."
 }
 
-$Vars = @{}
-foreach ($Line in Get-Content -LiteralPath $Bootstrap) {
-  $Trimmed = $Line.Trim()
-  if ($Trimmed.Length -eq 0 -or $Trimmed.StartsWith('#')) {
-    continue
-  }
-
-  $Parts = $Trimmed -split '=', 2
-  if ($Parts.Length -ne 2) {
-    continue
-  }
-
-  $Key = $Parts[0].Trim()
-  $Value = $Parts[1].Trim()
-  if (
-    ($Value.StartsWith('"') -and $Value.EndsWith('"')) -or
-    ($Value.StartsWith("'") -and $Value.EndsWith("'"))
-  ) {
-    $Value = $Value.Substring(1, $Value.Length - 2)
-  }
-
-  $Vars[$Key] = $Value
-}
+. (Join-Path $PSScriptRoot 'lib/load-dotenv.ps1')
+$Vars = Read-DotenvFile -Path $Bootstrap
 
 function Require-BootstrapValue {
   param([Parameter(Mandatory = $true)][string] $Name)
