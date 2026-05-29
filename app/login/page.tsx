@@ -1,31 +1,10 @@
-'use client';
+import { isAuthMockEnabled } from '@/lib/env';
+import MicrosoftSignIn from './microsoft-sign-in';
 
-import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+export const dynamic = 'force-dynamic';
 
 export default function LoginPage() {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSignIn() {
-    setPending(true);
-    setError(null);
-
-    const supabase = createClient();
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'azure',
-      options: {
-        // Phase 0: User.Read only. Mail.Send / Mail.Read are requested incrementally in Phase 5.
-        scopes: 'email openid profile User.Read offline_access',
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-
-    if (oauthError) {
-      setError(oauthError.message);
-      setPending(false);
-    }
-  }
+  const mockEnabled = isAuthMockEnabled();
 
   return (
     <main
@@ -39,27 +18,36 @@ export default function LoginPage() {
       <h1>Sign in</h1>
       <p>Outreach Hub uses your Microsoft 365 account.</p>
 
-      <button
-        onClick={handleSignIn}
-        disabled={pending}
-        style={{
-          marginTop: '1.5rem',
-          padding: '0.75rem 1.25rem',
-          fontSize: '1rem',
-          cursor: pending ? 'not-allowed' : 'pointer',
-          background: '#2f2f2f',
-          color: 'white',
-          border: 0,
-          borderRadius: 4,
-        }}
-      >
-        {pending ? 'Redirecting…' : 'Sign in with Microsoft'}
-      </button>
+      <MicrosoftSignIn />
 
-      {error ? (
-        <p role="alert" style={{ color: '#b00020', marginTop: '1rem' }}>
-          {error}
-        </p>
+      {mockEnabled ? (
+        <div
+          style={{
+            marginTop: '2rem',
+            paddingTop: '1.5rem',
+            borderTop: '1px dashed #ccc',
+          }}
+        >
+          <p style={{ color: '#666', fontSize: '0.9rem', margin: '0 0 0.75rem' }}>
+            Local development only — signs in as a seeded test user, no Microsoft required.
+          </p>
+          <form action="/auth/mock" method="post">
+            <button
+              type="submit"
+              style={{
+                padding: '0.6rem 1rem',
+                fontSize: '0.95rem',
+                cursor: 'pointer',
+                background: '#f3f4f6',
+                color: '#111',
+                border: '1px solid #d1d5db',
+                borderRadius: 4,
+              }}
+            >
+              Dev sign-in (mock)
+            </button>
+          </form>
+        </div>
       ) : null}
     </main>
   );

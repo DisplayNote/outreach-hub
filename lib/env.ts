@@ -66,3 +66,15 @@ export function getPublicEnv(): PublicEnv {
 export function getServerEnv(): ServerEnv {
   return parseServerEnv(process.env);
 }
+
+/**
+ * Dev-only mock authentication toggle. Double-gated: it requires both a
+ * non-production NODE_ENV and an explicit `AUTH_MOCK_ENABLED=true`, so it can
+ * never be switched on in a production deployment (Vercel sets
+ * NODE_ENV=production, and the flag is only ever written into local
+ * `.env.local`). When true, `/login` offers a dev sign-in and `/auth/mock`
+ * establishes a session for a seeded local test user — no Microsoft round-trip.
+ */
+export function isAuthMockEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' && process.env.AUTH_MOCK_ENABLED === 'true';
+}

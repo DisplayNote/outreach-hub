@@ -47,6 +47,8 @@ MS_CLIENT_ID=$MS_CLIENT_ID
 MS_CLIENT_SECRET=$MS_CLIENT_SECRET
 MS_DEV_TENANT_ID=$MS_DEV_TENANT_ID
 EMAIL_DRIVER=mailpit
+# Local dev only: enables the /auth/mock dev sign-in. NODE_ENV=production ignores it.
+AUTH_MOCK_ENABLED=true
 EOF
 echo "✓ wrote .env.local"
 
