@@ -85,6 +85,12 @@ export interface Contact {
   followUp: string | null;
   notes: string | null;
   legacyId: number | null;
+  /**
+   * public.contacts.metadata (jsonb, NOT NULL default '{}'). Free-form
+   * extension map for enrichment fields (e.g. Apollo) that have no dedicated
+   * column. Always present (never null); an empty row is `{}`.
+   */
+  metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,4 +117,78 @@ export interface Touchpoint {
 export interface PipelineStatusCount {
   status: ContactStatus;
   count: number;
+}
+
+/**
+ * public.templates row.
+ *
+ * Reusable email template. `subject` and `body` are nullable text (a template
+ * may be created as a stub before its content is filled in). `name` is NOT
+ * NULL.
+ */
+export interface Template {
+  id: string;
+  orgId: string;
+  name: string;
+  subject: string | null;
+  body: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * public.sequences row.
+ *
+ * A named outreach cadence; its ordered steps live in `sequence_steps`. `name`
+ * is NOT NULL.
+ */
+export interface Sequence {
+  id: string;
+  orgId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * public.sequence_steps row.
+ *
+ * One ordered step of a `Sequence`. `stepOrder` (NOT NULL, unique per
+ * sequence) is the 1-based position; `dayOffset` (NOT NULL) is days from
+ * sequence start. `channel` is NOT NULL. `templateId` is nullable — a step may
+ * have no template, and the FK is `on delete set null`. There is no
+ * `updatedAt`: rows are replaced rather than mutated in place.
+ */
+export interface SequenceStep {
+  id: string;
+  orgId: string;
+  sequenceId: string;
+  stepOrder: number;
+  dayOffset: number;
+  channel: TouchpointChannel;
+  templateId: string | null;
+  createdAt: string;
+}
+
+/**
+ * public.organizations.settings (jsonb, NOT NULL default '{}').
+ *
+ * A loose record of known, all-optional org-level settings. Every field is
+ * optional because the stored object may be `{}` or carry only a subset; under
+ * exactOptionalPropertyTypes an absent key means "unset", so readers must
+ * tolerate `undefined`. Unknown keys are permitted via the index signature so
+ * the type does not have to enumerate every future setting.
+ */
+export interface OrgSettings {
+  dailyGoal?: number;
+  weeklyCallsGoal?: number;
+  weeklyEmailsGoal?: number;
+  rhythmGreen?: number;
+  rhythmAmber?: number;
+  rhythmRed?: number;
+  rhythmNone?: number;
+  signature?: string;
+  defaultCountryCode?: string;
+  seqSkipWeekends?: boolean;
+  [key: string]: unknown;
 }

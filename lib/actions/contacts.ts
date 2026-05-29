@@ -40,6 +40,7 @@ interface ContactRow {
   follow_up: string | null;
   notes: string | null;
   legacy_id: number | null;
+  metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -56,7 +57,7 @@ interface TouchpointRow {
 }
 
 const CONTACT_SELECT =
-  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, created_at, updated_at';
+  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, metadata, created_at, updated_at';
 
 const TOUCHPOINT_SELECT =
   'id, org_id, contact_id, channel, note, occurred_at, legacy_id, created_at';
@@ -83,6 +84,7 @@ function toContact(row: ContactRow): Contact {
     followUp: row.follow_up,
     notes: row.notes,
     legacyId: row.legacy_id,
+    metadata: row.metadata ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

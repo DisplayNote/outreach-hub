@@ -136,3 +136,17 @@ export async function updateCampaign(
   revalidateCampaignRoutes();
   return campaign;
 }
+
+export async function deleteCampaign(id: string): Promise<{ id: string }> {
+  const campaignId = uuid.parse(id);
+  const supabase = await createClient();
+
+  const { error } = await supabase.from('campaigns').delete().eq('id', campaignId);
+
+  if (error) {
+    throw new Error(`deleteCampaign: failed to delete campaign ${campaignId}: ${error.message}`);
+  }
+
+  revalidateCampaignRoutes();
+  return { id: campaignId };
+}

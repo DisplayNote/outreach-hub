@@ -16,7 +16,10 @@ import type {
   Campaign,
   Contact,
   ContactStatus,
+  OrgSettings,
   PipelineStatusCount,
+  Sequence,
+  Template,
   Touchpoint,
   TouchpointChannel,
 } from '@/lib/types/domain';
@@ -53,6 +56,7 @@ interface ContactRow {
   follow_up: string | null;
   notes: string | null;
   legacy_id: number | null;
+  metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -71,7 +75,7 @@ interface TouchpointRow {
 // --- Selects -----------------------------------------------------------------
 
 const CONTACT_SELECT =
-  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, created_at, updated_at';
+  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, metadata, created_at, updated_at';
 
 const TOUCHPOINT_SELECT =
   'id, org_id, contact_id, channel, note, occurred_at, legacy_id, created_at';
@@ -110,6 +114,9 @@ function toContact(row: ContactRow): Contact {
     followUp: row.follow_up,
     notes: row.notes,
     legacyId: row.legacy_id,
+    // `metadata` is NOT NULL default '{}' in Postgres, but coalesce defensively
+    // in case a projection ever omits it.
+    metadata: row.metadata ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -300,4 +307,109 @@ export async function listContacts(): Promise<ContactWithCampaign[]> {
       campaignName: campaignNameOf(row.campaigns),
     })) ?? []
   );
+}
+
+// --- Phase 2: org settings, templates, sequences -----------------------------
+
+interface OrgSettingsRow {
+  settings: Record<string, unknown> | null;
+}
+
+interface TemplateRow {
+  id: string;
+  org_id: string;
+  name: string;
+  subject: string | null;
+  body: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface SequenceRow {
+  id: string;
+  org_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const TEMPLATE_SELECT = 'id, org_id, name, subject, body, created_at, updated_at';
+
+const SEQUENCE_SELECT = 'id, org_id, name, created_at, updated_at';
+
+function toTemplate(row: TemplateRow): Template {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    name: row.name,
+    subject: row.subject,
+    body: row.body,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toSequence(row: SequenceRow): Sequence {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    name: row.name,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * The caller's org settings (`organizations.settings`, jsonb). RLS scopes the
+ * organizations table to the caller's own org, so the single visible row is the
+ * caller's — we use `maybeSingle` and coalesce a missing row / null column to an
+ * empty `{}`. The stored shape is loose; we widen it to `OrgSettings`, whose
+ * fields are all optional.
+ */
+export async function getOrgSettings(): Promise<OrgSettings> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('settings')
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getOrgSettings: failed to load org settings: ${error.message}`);
+  }
+
+  const settings = (data as OrgSettingsRow | null)?.settings;
+  return (settings ?? {}) as OrgSettings;
+}
+
+/** All templates visible to the caller's org, ordered by name ascending. */
+export async function listTemplates(): Promise<Template[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('templates')
+    .select(TEMPLATE_SELECT)
+    .order('name', { ascending: true });
+
+  if (error) {
+    throw new Error(`listTemplates: failed to load templates: ${error.message}`);
+  }
+
+  return (data as TemplateRow[] | null)?.map(toTemplate) ?? [];
+}
+
+/** All sequences visible to the caller's org, ordered by name ascending. */
+export async function listSequences(): Promise<Sequence[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('sequences')
+    .select(SEQUENCE_SELECT)
+    .order('name', { ascending: true });
+
+  if (error) {
+    throw new Error(`listSequences: failed to load sequences: ${error.message}`);
+  }
+
+  return (data as SequenceRow[] | null)?.map(toSequence) ?? [];
 }
