@@ -192,3 +192,46 @@ export interface OrgSettings {
   seqSkipWeekends?: boolean;
   [key: string]: unknown;
 }
+
+/**
+ * A `Sequence` with its ordered `sequence_steps` resolved. `steps` is sorted by
+ * `stepOrder` ascending and may be empty (a sequence with no steps yet).
+ */
+export interface SequenceWithSteps extends Sequence {
+  steps: SequenceStep[];
+}
+
+/**
+ * One entry in the cross-contact activity feed: a `Touchpoint` joined with the
+ * display fields of its parent contact, for rendering a recent-activity list
+ * without a second lookup. `contactName` is a best-effort label derived from the
+ * contact's first/last name (falling back to email, then a dash); `contactCompany`
+ * is the parent contact's company (nullable, as on the contact row).
+ */
+export interface ActivityItem extends Touchpoint {
+  contactName: string;
+  contactCompany: string | null;
+}
+
+/**
+ * Aggregate metrics for the reports view. All counts are RLS-scoped to the
+ * caller's org.
+ *
+ * - `totalContacts` — every contact in the org.
+ * - `byStatus` — the pipeline rollup (one bucket per status, in schema order).
+ * - `meetings` / `bounced` — convenience extracts of the `meeting` / `bounced`
+ *   status buckets.
+ * - `touchpointsLast7Days` — touchpoints with `occurred_at` within the last 7
+ *   days (a simple recent-cadence signal).
+ * - `contactsDueToday` / `contactsOverdue` — contacts whose `follow_up` is today,
+ *   resp. strictly before today.
+ */
+export interface ReportMetrics {
+  totalContacts: number;
+  byStatus: PipelineStatusCount[];
+  meetings: number;
+  bounced: number;
+  touchpointsLast7Days: number;
+  contactsDueToday: number;
+  contactsOverdue: number;
+}

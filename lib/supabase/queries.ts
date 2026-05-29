@@ -13,12 +13,16 @@
  */
 import { createClient } from '@/lib/supabase/server';
 import type {
+  ActivityItem,
   Campaign,
   Contact,
   ContactStatus,
   OrgSettings,
   PipelineStatusCount,
+  ReportMetrics,
   Sequence,
+  SequenceStep,
+  SequenceWithSteps,
   Template,
   Touchpoint,
   TouchpointChannel,
@@ -412,4 +416,228 @@ export async function listSequences(): Promise<Sequence[]> {
   }
 
   return (data as SequenceRow[] | null)?.map(toSequence) ?? [];
+}
+
+// --- Reports, activity, and sequence-with-steps ------------------------------
+
+interface SequenceStepRow {
+  id: string;
+  org_id: string;
+  sequence_id: string;
+  step_order: number;
+  day_offset: number;
+  channel: TouchpointChannel;
+  template_id: string | null;
+  created_at: string;
+}
+
+const SEQUENCE_STEP_SELECT =
+  'id, org_id, sequence_id, step_order, day_offset, channel, template_id, created_at';
+
+function toSequenceStep(row: SequenceStepRow): SequenceStep {
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    sequenceId: row.sequence_id,
+    stepOrder: row.step_order,
+    dayOffset: row.day_offset,
+    channel: row.channel,
+    templateId: row.template_id,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * A single template by id, or `null` if it does not exist / is not visible to
+ * the caller's org (RLS returns no row for other orgs). Uses `maybeSingle` so
+ * "no row" is not an error.
+ */
+export async function getTemplate(id: string): Promise<Template | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('templates')
+    .select(TEMPLATE_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getTemplate: failed to load template ${id}: ${error.message}`);
+  }
+
+  return data ? toTemplate(data as TemplateRow) : null;
+}
+
+/**
+ * A single sequence by id with its ordered steps, or `null` if the sequence
+ * does not exist / is not visible to the caller's org. Steps are ordered by
+ * `step_order` ascending and may be empty. RLS scopes both reads to the caller's
+ * org; we query the steps separately (rather than via an embed) to keep the
+ * ordering explicit.
+ */
+export async function getSequenceWithSteps(id: string): Promise<SequenceWithSteps | null> {
+  const supabase = await createClient();
+
+  const { data: sequenceData, error: sequenceError } = await supabase
+    .from('sequences')
+    .select(SEQUENCE_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (sequenceError) {
+    throw new Error(
+      `getSequenceWithSteps: failed to load sequence ${id}: ${sequenceError.message}`,
+    );
+  }
+
+  if (!sequenceData) {
+    return null;
+  }
+
+  const { data: stepData, error: stepError } = await supabase
+    .from('sequence_steps')
+    .select(SEQUENCE_STEP_SELECT)
+    .eq('sequence_id', id)
+    .order('step_order', { ascending: true });
+
+  if (stepError) {
+    throw new Error(
+      `getSequenceWithSteps: failed to load steps for sequence ${id}: ${stepError.message}`,
+    );
+  }
+
+  return {
+    ...toSequence(sequenceData as SequenceRow),
+    steps: (stepData as SequenceStepRow[] | null)?.map(toSequenceStep) ?? [],
+  };
+}
+
+/**
+ * Raw row for the activity feed: a touchpoint joined with its parent contact's
+ * display fields (snake_case from PostgREST).
+ *
+ * The embed is logically to-one (`touchpoints.contact_id` is NOT NULL and
+ * references `contacts`), but PostgREST may serialise it as either a single
+ * object or a single-row array; we normalise both in `toActivityItem`.
+ */
+interface ActivityRow extends TouchpointRow {
+  contacts:
+    | { first_name: string | null; last_name: string | null; email: string | null; company: string | null }
+    | { first_name: string | null; last_name: string | null; email: string | null; company: string | null }[]
+    | null;
+}
+
+/** Best-effort display label for a contact: name, else email, else a dash. */
+function contactLabelOf(
+  embed: ActivityRow['contacts'],
+): { name: string; company: string | null } {
+  const row = Array.isArray(embed) ? embed[0] : embed;
+  if (!row) return { name: '—', company: null };
+
+  const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim();
+  return {
+    name: name !== '' ? name : (row.email ?? '—'),
+    company: row.company,
+  };
+}
+
+function toActivityItem(row: ActivityRow): ActivityItem {
+  const { name, company } = contactLabelOf(row.contacts);
+  return {
+    ...toTouchpoint(row),
+    contactName: name,
+    contactCompany: company,
+  };
+}
+
+/**
+ * The most recent touchpoints across the caller's org, newest first, each with
+ * its parent contact's name and company resolved via a PostgREST embed. RLS
+ * scopes the result to the caller's org. Ordered by `occurred_at` descending
+ * (ties broken by `created_at` descending) and capped at `limit` (default 50).
+ */
+export async function getActivityFeed(limit = 50): Promise<ActivityItem[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('touchpoints')
+    .select(`${TOUCHPOINT_SELECT}, contacts ( first_name, last_name, email, company )`)
+    .order('occurred_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`getActivityFeed: failed to load activity feed: ${error.message}`);
+  }
+
+  return (data as unknown as ActivityRow[] | null)?.map(toActivityItem) ?? [];
+}
+
+/**
+ * Aggregate report metrics for the caller's org: the funnel rollup plus a few
+ * simple cadence counts. PostgREST has no GROUP BY, so we pull the bounded,
+ * RLS-scoped columns and aggregate in memory (mirroring `getPipelineSummary`).
+ */
+export async function getReportMetrics(): Promise<ReportMetrics> {
+  const supabase = await createClient();
+
+  const today = todayDateString();
+
+  // Contact-side aggregation: status buckets + follow-up cadence.
+  const { data: contactData, error: contactError } = await supabase
+    .from('contacts')
+    .select('status, follow_up');
+
+  if (contactError) {
+    throw new Error(`getReportMetrics: failed to load contacts: ${contactError.message}`);
+  }
+
+  const counts = new Map<ContactStatus, number>(
+    CONTACT_STATUSES.map((status) => [status, 0]),
+  );
+  let totalContacts = 0;
+  let contactsDueToday = 0;
+  let contactsOverdue = 0;
+
+  const contactRows =
+    (contactData as Array<{ status: ContactStatus; follow_up: string | null }> | null) ?? [];
+  for (const row of contactRows) {
+    totalContacts += 1;
+    counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+    if (row.follow_up !== null) {
+      if (row.follow_up === today) {
+        contactsDueToday += 1;
+      } else if (row.follow_up < today) {
+        contactsOverdue += 1;
+      }
+    }
+  }
+
+  const byStatus: PipelineStatusCount[] = CONTACT_STATUSES.map((status) => ({
+    status,
+    count: counts.get(status) ?? 0,
+  }));
+
+  // Touchpoint-side aggregation: count of touchpoints in the last 7 days.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { count: touchpointsLast7Days, error: touchpointError } = await supabase
+    .from('touchpoints')
+    .select('id', { count: 'exact', head: true })
+    .gte('occurred_at', sevenDaysAgo);
+
+  if (touchpointError) {
+    throw new Error(
+      `getReportMetrics: failed to count recent touchpoints: ${touchpointError.message}`,
+    );
+  }
+
+  return {
+    totalContacts,
+    byStatus,
+    meetings: counts.get('meeting') ?? 0,
+    bounced: counts.get('bounced') ?? 0,
+    touchpointsLast7Days: touchpointsLast7Days ?? 0,
+    contactsDueToday,
+    contactsOverdue,
+  };
 }
