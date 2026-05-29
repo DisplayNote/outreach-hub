@@ -5,7 +5,7 @@ Source of truth for what landed, what's still blocked, and what's needed to unbl
 **Spec:** [docs/OUTREACH_HUB_EXECUTION_PLAN.md](docs/OUTREACH_HUB_EXECUTION_PLAN.md) §5
 **Bootstrap commit:** `83b47dd` — *chore(bootstrap): scaffold Phase 0 platform skeleton*
 **Docs backfill commit:** `cd87b9b` — *docs: backfill PHASE_0_STATUS, ADRs 001-004, move plan into docs/*
-**Last prerequisite check:** 2026-05-29 00:18 +02:00 — Docker reachable, GitHub remote present;
+**Last prerequisite check:** 2026-05-29 08:54 +02:00 — Docker reachable, GitHub remote present;
 Make and Terraform still missing. Real `.env*` files were not inspected.
 **Session protocol:** see [CLAUDE.md](CLAUDE.md) → *Session start protocol*. Don't skip — re-running the
 prereq checks each session prevents acting on stale assumptions.
@@ -33,6 +33,14 @@ still outstanding.
 | 9 | `terraform -chdir=infra plan -var-file=envs/dev.tfvars` → "No changes" (idempotence) | ⏸ blocked | Terraform CLI is not installed on PATH; real tfvars are operator-only. |
 | 10 | Supabase Studio (prod) shows first user after preview OAuth login | ⏸ blocked | Needs #6 + #7. |
 
+## Docker readiness validation
+
+Non-secret Docker verification completed on 2026-05-29 08:54 +02:00:
+
+- `docker build --build-arg NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder-anon-key -t outreach-hub:local-test .` passed.
+- Temporary container smoke test passed: `http://localhost:3005/login` returned HTTP 200.
+- The smoke test used placeholder env values and did not inspect real `.env*` files.
+
 ## Prerequisites still missing (re-checked each resume)
 
 Current state as of 2026-05-29 — re-run the checks in CLAUDE.md → *Session start protocol* before
@@ -42,7 +50,7 @@ trusting this.
 |---|---|---|---|
 | 1 | `.env.bootstrap` at repo root with every var from §4.6 | ⏸ not inspected | Real `.env*` files are operator-only. Start from `.env.bootstrap.example`; do not ask assistants to read it. |
 | 2 | `terraform -version` succeeds | ❌ not installed | Windows: `winget install Hashicorp.Terraform`. macOS: `brew install terraform`. Linux: download from hashicorp.com. |
-| 3 | `docker ps` succeeds (Docker Desktop running) | ✅ available | `docker ps` succeeded 2026-05-29 00:18 +02:00. |
+| 3 | `docker ps` succeeds (Docker Desktop running) | ✅ available | `docker ps` succeeded 2026-05-29 08:54 +02:00. |
 | 4 | `git remote -v` shows GitHub origin | ✅ present | `origin git@github.com:DisplayNote/outreach-hub.git`. |
 | 5 | Make available on PATH | ❌ not installed | Use PowerShell equivalents in `docs/development.md` or install Make. |
 | 6 | GitHub Actions secrets per §4.5 | ⏸ cannot introspect | Set in repo Settings → Secrets and variables → Actions (full list in §4.5). Operator confirms. |
