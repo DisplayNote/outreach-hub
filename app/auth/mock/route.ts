@@ -34,11 +34,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     email_confirm: true,
     user_metadata: { full_name: 'Dev User', org_name: 'Dev Org' },
   });
-  // A repeat sign-in is expected to hit "already registered" — that's fine.
-  if (createError && !/already (been )?registered|exists/i.test(createError.message)) {
-    return new NextResponse(`Mock auth: could not seed user: ${createError.message}`, {
-      status: 500,
-    });
+  // A repeat sign-in is expected to find the seed user already present. Match on
+  // the stable AuthApiError contract (HTTP 422 / code 'email_exists') rather than
+  // the human-readable message, which Supabase may reword.
+  if (createError) {
+    const status = (createError as { status?: number }).status;
+    const code = (createError as { code?: string }).code;
+    const alreadyExists = status === 422 || code === 'email_exists';
+    if (!alreadyExists) {
+      return new NextResponse(`Mock auth: could not seed user: ${createError.message}`, {
+        status: 500,
+      });
+    }
   }
 
   // Sign in on the SSR client so the session cookies are written on the response.
