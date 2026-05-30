@@ -40,7 +40,8 @@ interface ContactRow {
   follow_up: string | null;
   notes: string | null;
   legacy_id: number | null;
-  metadata: Record<string, unknown> | null;
+  // jsonb NOT NULL DEFAULT '{}' (Phase 2 migration), so reads never return null.
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -84,7 +85,7 @@ function toContact(row: ContactRow): Contact {
     followUp: row.follow_up,
     notes: row.notes,
     legacyId: row.legacy_id,
-    metadata: row.metadata ?? {},
+    metadata: row.metadata,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -157,16 +157,24 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
   const startCall = useCallback(() => {
     if (!current) return;
     setCallError(null);
-    const driver = getDiallerDriver();
-    const control = driver.placeCall(current.dialNumber, {
-      onStateChange: (call) => setCallState(call.state),
-      onEnded: () => setCallState('awaiting-outcome'),
-      onError: (err) => {
-        setCallError(err.message);
-        setCallState('idle');
-      },
-    });
-    controlRef.current = control;
+    try {
+      // getDiallerDriver()/placeCall can throw synchronously (e.g. the Telnyx
+      // stub), which the onError callback would never see — catch it here so a
+      // misconfigured driver surfaces an error state instead of crashing.
+      const driver = getDiallerDriver();
+      const control = driver.placeCall(current.dialNumber, {
+        onStateChange: (call) => setCallState(call.state),
+        onEnded: () => setCallState('awaiting-outcome'),
+        onError: (err) => {
+          setCallError(err.message);
+          setCallState('idle');
+        },
+      });
+      controlRef.current = control;
+    } catch (err) {
+      setCallError(err instanceof Error ? err.message : 'Could not start the call');
+      setCallState('idle');
+    }
   }, [current]);
 
   const hangup = useCallback(() => {

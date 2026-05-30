@@ -164,39 +164,49 @@ export default function ClickToCall({
     setWasConnected(false);
     connectedAtRef.current = null;
 
-    const driver = driverRef.current ?? getDiallerDriver();
-    driverRef.current = driver;
+    try {
+      // getDiallerDriver()/placeCall can throw synchronously (e.g. the Telnyx
+      // stub), which the onError callback would never see — catch it here so a
+      // misconfigured driver surfaces an error state instead of crashing.
+      const driver = driverRef.current ?? getDiallerDriver();
+      driverRef.current = driver;
 
-    controlRef.current = driver.placeCall(dialNumber, {
-      onStateChange: (call) => {
-        setState(call.state);
-        if (call.state === 'connected' && connectedAtRef.current === null) {
-          connectedAtRef.current = Date.now();
-          setWasConnected(true);
+      controlRef.current = driver.placeCall(dialNumber, {
+        onStateChange: (call) => {
+          setState(call.state);
+          if (call.state === 'connected' && connectedAtRef.current === null) {
+            connectedAtRef.current = Date.now();
+            setWasConnected(true);
+            stopTicking();
+            tickRef.current = setInterval(() => {
+              if (connectedAtRef.current !== null) {
+                setElapsedMs(Date.now() - connectedAtRef.current);
+              }
+            }, 250);
+          }
+        },
+        onEnded: () => {
           stopTicking();
-          tickRef.current = setInterval(() => {
-            if (connectedAtRef.current !== null) {
-              setElapsedMs(Date.now() - connectedAtRef.current);
-            }
-          }, 250);
-        }
-      },
-      onEnded: () => {
-        stopTicking();
-        if (connectedAtRef.current !== null) {
-          setElapsedMs(Date.now() - connectedAtRef.current);
-        }
-        // Move to the disposition step once the call is over.
-        setState('awaiting-outcome');
-        controlRef.current = null;
-      },
-      onError: (err) => {
-        stopTicking();
-        setError(err.message);
-        setState('idle');
-        controlRef.current = null;
-      },
-    });
+          if (connectedAtRef.current !== null) {
+            setElapsedMs(Date.now() - connectedAtRef.current);
+          }
+          // Move to the disposition step once the call is over.
+          setState('awaiting-outcome');
+          controlRef.current = null;
+        },
+        onError: (err) => {
+          stopTicking();
+          setError(err.message);
+          setState('idle');
+          controlRef.current = null;
+        },
+      });
+    } catch (err) {
+      stopTicking();
+      setError(err instanceof Error ? err.message : 'Could not start the call');
+      setState('idle');
+      controlRef.current = null;
+    }
   }, [dialNumber, stopTicking]);
 
   const hangup = useCallback(() => {

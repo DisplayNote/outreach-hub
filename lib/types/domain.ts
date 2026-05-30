@@ -156,8 +156,9 @@ export interface Sequence {
  * One ordered step of a `Sequence`. `stepOrder` (NOT NULL, unique per
  * sequence) is the 1-based position; `dayOffset` (NOT NULL) is days from
  * sequence start. `channel` is NOT NULL. `templateId` is nullable — a step may
- * have no template, and the FK is `on delete set null`. There is no
- * `updatedAt`: rows are replaced rather than mutated in place.
+ * have no template, and the FK is `on delete set null`. The table tracks only
+ * `createdAt` (no `updatedAt`); steps can be edited in place via
+ * `updateSequenceStep`.
  */
 export interface SequenceStep {
   id: string;
