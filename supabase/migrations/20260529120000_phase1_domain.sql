@@ -160,7 +160,10 @@ create policy "contacts delete own org"
   on public.contacts for delete
   using (org_id = public.current_org_id());
 
--- touchpoints
+-- touchpoints — an immutable, append-only log (no updated_at). Org clients may
+-- only read and insert; UPDATE/DELETE are intentionally NOT granted so RLS
+-- enforces immutability. The legacy importer mutates via the service role,
+-- which bypasses RLS.
 create policy "touchpoints select own org"
   on public.touchpoints for select
   using (org_id = public.current_org_id());
@@ -168,12 +171,3 @@ create policy "touchpoints select own org"
 create policy "touchpoints insert own org"
   on public.touchpoints for insert
   with check (org_id = public.current_org_id());
-
-create policy "touchpoints update own org"
-  on public.touchpoints for update
-  using (org_id = public.current_org_id())
-  with check (org_id = public.current_org_id());
-
-create policy "touchpoints delete own org"
-  on public.touchpoints for delete
-  using (org_id = public.current_org_id());
