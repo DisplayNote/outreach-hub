@@ -13,9 +13,26 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrgId } from '@/lib/supabase/org';
+import { normaliseCallingCode } from '@/lib/dialler/normalise';
 import type { OrgSettings } from '@/lib/types/domain';
 
 // --- Validation ---------------------------------------------------------------
+
+// `defaultCountryCode` is consumed by phone normalisation/dialling as a numeric
+// calling code (e.g. `+44`), NOT an ISO country code. Validate + normalise it
+// to a canonical `+<digits>` form so a non-numeric value (e.g. "GB") can never
+// be persisted and silently break `normalisePhone`.
+const callingCodeSchema = z.string().transform((value, ctx) => {
+  const normalised = normaliseCallingCode(value);
+  if (normalised === null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Default country code must be a numeric calling code, e.g. +44',
+    });
+    return z.NEVER;
+  }
+  return normalised;
+});
 
 // Known, all-optional settings mirroring `OrgSettings`. `.passthrough()` keeps
 // any unknown keys the caller supplies (the type carries an index signature),
@@ -31,7 +48,7 @@ const orgSettingsPatchSchema = z
     rhythmRed: z.number().int().nonnegative().optional(),
     rhythmNone: z.number().int().nonnegative().optional(),
     signature: z.string().optional(),
-    defaultCountryCode: z.string().trim().optional(),
+    defaultCountryCode: callingCodeSchema.optional(),
     seqSkipWeekends: z.boolean().optional(),
   })
   .passthrough();

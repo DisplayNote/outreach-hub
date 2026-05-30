@@ -24,7 +24,9 @@ create table public.templates (
   subject text,
   body text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- Composite key so child rows can enforce same-org references (see below).
+  unique (id, org_id)
 );
 
 create table public.sequences (
@@ -32,18 +34,30 @@ create table public.sequences (
   org_id uuid not null references public.organizations(id),
   name text not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- Composite key so child rows can enforce same-org references (see below).
+  unique (id, org_id)
 );
 
+-- sequence_steps references its parent sequence/template by (id, org_id), not by
+-- id alone. RLS only checks the step's own org_id, so a plain id FK would let a
+-- step point at ANOTHER org's sequence/template if the UUID were known. The
+-- composite FKs below close that cross-org integrity gap. `template_id` is
+-- nullable; MATCH SIMPLE skips the FK when it is null, and ON DELETE SET NULL
+-- (template_id) clears only that column (org_id stays NOT NULL).
 create table public.sequence_steps (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id),
-  sequence_id uuid not null references public.sequences(id) on delete cascade,
+  sequence_id uuid not null,
   step_order int not null,
   day_offset int not null,
   channel public.touchpoint_channel not null,
-  template_id uuid references public.templates(id) on delete set null,
-  created_at timestamptz not null default now()
+  template_id uuid,
+  created_at timestamptz not null default now(),
+  foreign key (sequence_id, org_id)
+    references public.sequences (id, org_id) on delete cascade,
+  foreign key (template_id, org_id)
+    references public.templates (id, org_id) on delete set null (template_id)
 );
 
 -- Indexes ---------------------------------------------------------------------

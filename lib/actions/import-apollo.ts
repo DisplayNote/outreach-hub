@@ -20,6 +20,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrgId } from '@/lib/supabase/org';
+import { escapeLike } from '@/lib/supabase/like';
 
 // --- Inputs -------------------------------------------------------------------
 
@@ -228,13 +229,14 @@ export async function importApolloCsv(input: ImportApolloCsvInput): Promise<Impo
       continue;
     }
 
-    // Dedupe on (org_id, lower(email)) via explicit lookup. ilike with no
-    // wildcards is a case-insensitive equality match on the email text.
+    // Dedupe on (org_id, lower(email)) via explicit lookup. LIKE metacharacters
+    // are escaped so `ilike` behaves as case-insensitive equality, never a
+    // wildcard match against another contact.
     const { data: existingRows, error: lookupError } = await supabase
       .from('contacts')
       .select('id, metadata')
       .eq('org_id', orgId)
-      .ilike('email', email)
+      .ilike('email', escapeLike(email))
       .limit(1);
 
     if (lookupError) {

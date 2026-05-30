@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalisePhone, pickDialNumber } from '@/lib/dialler/normalise';
+import { normaliseCallingCode, normalisePhone, pickDialNumber } from '@/lib/dialler/normalise';
 
 describe('normalisePhone', () => {
   // The §4 table from docs/PHASE_3_SPEC.md, plus the no-double-CC case.
@@ -40,5 +40,27 @@ describe('pickDialNumber', () => {
   it('returns null when neither number is usable', () => {
     expect(pickDialNumber({ mobile: null, phone: null })).toBeNull();
     expect(pickDialNumber({ mobile: '', phone: '' })).toBeNull();
+  });
+});
+
+describe('normaliseCallingCode', () => {
+  it.each([
+    ['+44', '+44', 'already canonical'],
+    ['44', '+44', 'bare digits → prepend +'],
+    [' +1 ', '+1', 'trims surrounding whitespace'],
+    ['353', '+353', 'three-digit calling code'],
+  ])('normalises %s → %s (%s)', (input, expected) => {
+    expect(normaliseCallingCode(input)).toBe(expected);
+  });
+
+  it.each([
+    ['GB', 'ISO country code, not a calling code'],
+    ['US', 'ISO country code'],
+    ['', 'empty string'],
+    ['+', 'plus with no digits'],
+    ['12345', 'too many digits'],
+    ['+44a', 'trailing non-digit'],
+  ])('rejects %s (%s)', (input) => {
+    expect(normaliseCallingCode(input)).toBeNull();
   });
 });

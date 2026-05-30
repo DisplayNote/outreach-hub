@@ -45,6 +45,19 @@ export function normalisePhone(raw: string, defaultCountryCode = '+44'): string 
 }
 
 /**
+ * Validate and normalise a user-entered default calling code to canonical
+ * `+<digits>` form. Accepts an optional leading `+` followed by 1–4 digits
+ * (e.g. `"44"` or `"+44"`). Returns `null` for anything non-numeric — notably
+ * ISO country codes like `"GB"`, which {@link normalisePhone} cannot use as a
+ * calling code — so callers can reject bad input rather than persist it.
+ */
+export function normaliseCallingCode(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!/^\+?\d{1,4}$/.test(trimmed)) return null;
+  return trimmed.startsWith('+') ? trimmed : `+${trimmed}`;
+}
+
+/**
  * Pick the number to dial for a contact: mobile is preferred over the landline
  * `phone`. Returns the normalised E.164 string, or `null` when the contact has
  * no usable number. `defaultCountryCode` is forwarded to {@link normalisePhone}.

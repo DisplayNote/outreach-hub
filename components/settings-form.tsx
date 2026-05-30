@@ -248,7 +248,9 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
             defaultValue={settings.defaultCountryCode ?? ''}
             style={fieldStyle}
           />
-          <span style={helpStyle}>e.g. GB, US, ES — applied to new contacts.</span>
+          <span style={helpStyle}>
+            Calling code used to normalise phone numbers, e.g. +44, +1, +34.
+          </span>
         </div>
 
         <div style={fieldGroupStyle}>
