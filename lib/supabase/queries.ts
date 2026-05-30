@@ -131,30 +131,31 @@ export async function getTodayContacts(): Promise<Contact[]> {
  * Pipeline rollup: contact counts grouped by status. Returns one bucket per
  * known status (in schema order), including statuses with a zero count, so the
  * UI can render a stable set of columns.
+ *
+ * Counts come from the database (one `head: true, count: 'exact'` request per
+ * status) rather than from fetching every row and aggregating in memory — the
+ * latter silently undercounts past PostgREST's `max_rows` cap (1000, see
+ * supabase/config.toml). RLS scopes each count to the caller's org.
  */
 export async function getPipelineSummary(): Promise<PipelineStatusCount[]> {
   const supabase = await createClient();
 
-  // PostgREST has no GROUP BY; pull the status column and aggregate in memory.
-  // RLS already scopes this to the caller's org, so the row set is bounded.
-  const { data, error } = await supabase.from('contacts').select('status');
+  return Promise.all(
+    CONTACT_STATUSES.map(async (status): Promise<PipelineStatusCount> => {
+      const { count, error } = await supabase
+        .from('contacts')
+        .select('*', { head: true, count: 'exact' })
+        .eq('status', status);
 
-  if (error) {
-    throw new Error(`getPipelineSummary: failed to load pipeline counts: ${error.message}`);
-  }
+      if (error) {
+        throw new Error(
+          `getPipelineSummary: failed to count contacts with status "${status}": ${error.message}`,
+        );
+      }
 
-  const counts = new Map<ContactStatus, number>(
-    CONTACT_STATUSES.map((status) => [status, 0]),
+      return { status, count: count ?? 0 };
+    }),
   );
-
-  for (const row of (data as Array<{ status: ContactStatus }> | null) ?? []) {
-    counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
-  }
-
-  return CONTACT_STATUSES.map((status) => ({
-    status,
-    count: counts.get(status) ?? 0,
-  }));
 }
 
 /** All campaigns visible to the caller's org, ordered by name ascending. */

@@ -53,14 +53,20 @@ function formatDate(isoDate: string): string {
   });
 }
 
-/** Format an ISO timestamp for the last-touchpoint column. */
+/**
+ * Format an ISO timestamp (date + time) for the last-touchpoint column.
+ * `occurred_at` is a `timestamptz`, so include the time — otherwise multiple
+ * touchpoints on the same day are indistinguishable.
+ */
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 

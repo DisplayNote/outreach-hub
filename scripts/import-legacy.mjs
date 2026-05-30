@@ -59,15 +59,20 @@ const CHANNEL_MAP = {
 // --- Argument parsing ---------------------------------------------------------
 
 function parseArgs(argv) {
-  /** @type {{ file?: string; orgId?: string }} */
+  /** @type {{ file?: string; orgId?: string; help?: boolean }} */
   const out = {};
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--file') {
-      out.file = argv[i + 1];
-      i += 1;
-    } else if (arg === '--org-id') {
-      out.orgId = argv[i + 1];
+    if (arg === '--file' || arg === '--org-id') {
+      const value = argv[i + 1];
+      // Require a real value (not missing, not the next flag) so e.g.
+      // `--file --org-id <uuid>` fails clearly instead of treating `--org-id`
+      // as the file path.
+      if (value === undefined || value.startsWith('--')) {
+        fail(`expected a value after ${arg}`);
+      }
+      if (arg === '--file') out.file = value;
+      else out.orgId = value;
       i += 1;
     } else if (arg === '--help' || arg === '-h') {
       out.help = true;
@@ -288,11 +293,24 @@ async function main() {
           );
           continue;
         }
+        // Map the channel; if a non-empty legacy channel (e.g. WhatsApp, Video)
+        // isn't in the Phase 1 enum it collapses to 'other' — warn and preserve
+        // the original label in the note so the information isn't lost.
+        const rawChannel = typeof tp?.channel === 'string' ? tp.channel.trim() : '';
+        const channel = mapChannel(rawChannel);
+        let note = nullableText(tp?.note);
+        if (rawChannel !== '' && channel === 'other' && rawChannel.toLowerCase() !== 'other') {
+          console.warn(
+            `import-legacy: unmapped channel "${rawChannel}" → 'other' (contact legacy_id=${contactLegacyId}); original preserved in note.`,
+          );
+          note = note === null ? `[${rawChannel}]` : `[${rawChannel}] ${note}`;
+        }
+
         touchpointRows.push({
           org_id: orgId,
           contact_id: contactId,
-          channel: mapChannel(tp?.channel),
-          note: nullableText(tp?.note),
+          channel,
+          note,
           occurred_at: toIsoTimestamp(tp?.date) ?? new Date().toISOString(),
           legacy_id: tpLegacyId,
         });

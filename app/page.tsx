@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 
@@ -28,10 +29,10 @@ export default async function Home() {
 
       <ul style={{ marginTop: '1.5rem', lineHeight: 1.9 }}>
         <li>
-          <a href="/today">Today</a> — contacts due or overdue for follow-up.
+          <Link href="/today">Today</Link> — contacts due or overdue for follow-up.
         </li>
         <li>
-          <a href="/pipeline">Pipeline</a> — contacts by status, across campaigns.
+          <Link href="/pipeline">Pipeline</Link> — contacts by status, across campaigns.
         </li>
       </ul>
     </main>
