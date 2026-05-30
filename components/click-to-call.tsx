@@ -35,6 +35,8 @@ interface ClickToCallProps {
   phone: string | null;
   /** Mobile, preferred over `phone` when both are present. */
   mobile: string | null;
+  /** Org default calling code (e.g. `+44`), forwarded to number normalisation. */
+  defaultCountryCode?: string;
 }
 
 const STATE_LABELS: Record<CallState, string> = {
@@ -113,8 +115,14 @@ function formatElapsed(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-export default function ClickToCall({ contactId, contactName, phone, mobile }: ClickToCallProps) {
-  const dialNumber = pickDialNumber({ phone, mobile });
+export default function ClickToCall({
+  contactId,
+  contactName,
+  phone,
+  mobile,
+  defaultCountryCode = '+44',
+}: ClickToCallProps) {
+  const dialNumber = pickDialNumber({ phone, mobile }, defaultCountryCode);
 
   // Fresh per instance (getDiallerOutcomes returns a new array by contract).
   const outcomes = useMemo<readonly CallOutcome[]>(() => getDiallerOutcomes(), []);

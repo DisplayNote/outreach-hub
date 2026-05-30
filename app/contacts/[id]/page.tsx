@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getContact, getContactTouchpoints } from '@/lib/supabase/queries';
+import { getContact, getContactTouchpoints, getOrgSettings } from '@/lib/supabase/queries';
 import type { Contact, ContactStatus, Touchpoint, TouchpointChannel } from '@/lib/types/domain';
 import { CONTACT_STATUSES, TOUCHPOINT_CHANNELS } from '@/lib/types/domain';
 import { logTouchpointForm } from '@/app/contacts/[id]/actions';
@@ -184,6 +184,8 @@ export default async function ContactDetailPage({
   }
 
   const touchpoints: Touchpoint[] = await getContactTouchpoints(contact.id);
+  const settings = await getOrgSettings();
+  const defaultCountryCode = settings.defaultCountryCode ?? '+44';
   const detailFields = buildDetailFields(contact);
 
   return (
@@ -309,6 +311,7 @@ export default async function ContactDetailPage({
             contactName={contactName(contact)}
             phone={contact.phone}
             mobile={contact.mobile}
+            defaultCountryCode={defaultCountryCode}
           />
 
           <section style={cardStyle}>
