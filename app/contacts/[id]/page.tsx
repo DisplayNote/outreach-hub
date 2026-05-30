@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getContact, getContactTouchpoints } from '@/lib/supabase/queries';
+import { getContact, getContactTouchpoints, getOrgSettings } from '@/lib/supabase/queries';
 import type { Contact, ContactStatus, Touchpoint, TouchpointChannel } from '@/lib/types/domain';
 import { CONTACT_STATUSES, TOUCHPOINT_CHANNELS } from '@/lib/types/domain';
 import { logTouchpointForm } from '@/app/contacts/[id]/actions';
 import StatusSelect from '@/app/contacts/[id]/status-select';
+import ClickToCall from '@/components/click-to-call';
 
 // Auth state + contact data change per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -183,6 +184,8 @@ export default async function ContactDetailPage({
   }
 
   const touchpoints: Touchpoint[] = await getContactTouchpoints(contact.id);
+  const settings = await getOrgSettings();
+  const defaultCountryCode = settings.defaultCountryCode ?? '+44';
   const detailFields = buildDetailFields(contact);
 
   return (
@@ -303,6 +306,14 @@ export default async function ContactDetailPage({
 
         {/* Log touchpoint + history */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <ClickToCall
+            contactId={contact.id}
+            contactName={contactName(contact)}
+            phone={contact.phone}
+            mobile={contact.mobile}
+            defaultCountryCode={defaultCountryCode}
+          />
+
           <section style={cardStyle}>
             <h2 style={sectionTitleStyle}>Log touchpoint</h2>
             <form action={logTouchpointForm} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
