@@ -157,6 +157,11 @@ export default function ClickToCall({
 
   const startCall = useCallback(() => {
     if (dialNumber === null) return;
+    // Re-entry guard: placeCall sets controlRef synchronously and onEnded/
+    // onError/catch clear it, so a non-null handle means a call is already live.
+    // Without this, a double-click before the async onStateChange fires would
+    // start a second call and orphan the first by overwriting controlRef.
+    if (controlRef.current !== null) return;
 
     setError(null);
     setConfirmation(null);
