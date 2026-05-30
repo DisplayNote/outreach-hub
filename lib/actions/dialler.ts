@@ -18,72 +18,20 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrgId } from '@/lib/supabase/org';
+import {
+  CALL_OUTCOME_KEYS,
+  getOutcomeDef,
+  outcomeSchedulesCallback,
+  resolveStatusEffect,
+} from '@/lib/dialler/outcomes';
+import type { CallOutcomeKey } from '@/lib/dialler/types';
 import type { Contact, Touchpoint } from '@/lib/types/domain';
 
-// --- Outcome model ------------------------------------------------------------
-
-/**
- * The eight call outcomes the dialler can record. Each maps to a default
- * touchpoint note and a `statusEffect`: a real `ContactStatus` advances the
- * contact, while `'none'` means "log only, leave status untouched".
- *
- * `statusEffect` is intentionally widened to include `'none'` (not a member of
- * `ContactStatus`) so the sentinel is expressible; the runtime guard below
- * narrows it back to a real status before any contact UPDATE.
- */
-interface CallOutcomeDef {
-  readonly label: string;
-  readonly statusEffect: Contact['status'] | 'none';
-  readonly defaultNote: string;
-}
-
-const CALL_OUTCOMES = {
-  connected: {
-    label: 'Connected — had conversation',
-    statusEffect: 'green',
-    defaultNote: 'Call connected',
-  },
-  'callback-requested': {
-    label: 'Callback requested',
-    statusEffect: 'green',
-    defaultNote: 'Callback requested',
-  },
-  'meeting-booked': {
-    label: 'Meeting booked',
-    statusEffect: 'meeting',
-    defaultNote: 'Meeting booked',
-  },
-  'left-voicemail': {
-    label: 'Left voicemail',
-    statusEffect: 'none',
-    defaultNote: 'Voicemail reached',
-  },
-  'no-answer': {
-    label: 'No answer',
-    statusEffect: 'none',
-    defaultNote: 'No answer',
-  },
-  gatekeeper: {
-    label: 'Gatekeeper / wrong person',
-    statusEffect: 'none',
-    defaultNote: 'Reached gatekeeper',
-  },
-  'not-interested': {
-    label: 'Not interested',
-    statusEffect: 'notinterested',
-    defaultNote: 'Not interested',
-  },
-  'wrong-number': {
-    label: 'Wrong number',
-    statusEffect: 'bounced',
-    defaultNote: 'Wrong number',
-  },
-} as const satisfies Record<string, CallOutcomeDef>;
-
-export type CallOutcomeKey = keyof typeof CALL_OUTCOMES;
-
-/** The outcome keys, for building the dialler UI's option list. */
-export const CALL_OUTCOME_KEYS = Object.keys(CALL_OUTCOMES) as CallOutcomeKey[];
+// The outcome catalogue + status-precedence rules live in @/lib/dialler/outcomes
+// (the single source of truth shared with the dialler UI). Re-exported so
+// existing importers (e.g. components/dialler-run.tsx) keep their import path.
+export type { CallOutcomeKey };
+export { CALL_OUTCOME_KEYS };
 
 // --- Raw row shape (snake_case, exactly as returned by PostgREST) -------------
 
@@ -124,6 +72,13 @@ function revalidateDiallerRoutes(contactId: string): void {
   revalidatePath('/dialler');
 }
 
+/** Tomorrow as a YYYY-MM-DD string (UTC) for the contact's `follow_up` date column. */
+function tomorrowDate(): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // --- Validation ---------------------------------------------------------------
 
 const uuid = z.string().uuid();
@@ -162,7 +117,7 @@ export async function logCallOutcome(
 ): Promise<CallOutcomeResult> {
   const id = uuid.parse(contactId);
   const parsed = logCallOutcomeSchema.parse(input);
-  const outcome = CALL_OUTCOMES[parsed.outcome];
+  const outcome = getOutcomeDef(parsed.outcome);
   const orgId = await getCurrentOrgId();
   const supabase = await createClient();
 
@@ -189,21 +144,48 @@ export async function logCallOutcome(
 
   const touchpoint = toTouchpoint(tpData as TouchpointRow);
 
-  // 2. Advance the contact's status when the outcome maps to a real status.
+  // 2. Apply the contact-level effects in one UPDATE:
+  //    - status, with precedence (never downgrade a stronger terminal state); and
+  //    - a next-day follow-up for callback-requested, so it resurfaces in /today.
   let status: Contact['status'] | null = null;
-  if (outcome.statusEffect !== 'none') {
-    const nextStatus: Contact['status'] = outcome.statusEffect;
-    const { error: statusError } = await supabase
-      .from('contacts')
-      .update({ status: nextStatus })
-      .eq('id', id);
+  const contactUpdate: Record<string, unknown> = {};
 
-    if (statusError) {
+  if (outcome.statusEffect !== 'none') {
+    const { data: currentRow, error: readError } = await supabase
+      .from('contacts')
+      .select('status')
+      .eq('id', id)
+      .single();
+
+    if (readError) {
       throw new Error(
-        `logCallOutcome: failed to set status on contact ${id}: ${statusError.message}`,
+        `logCallOutcome: failed to read contact ${id}: ${readError.message}`,
       );
     }
-    status = nextStatus;
+
+    const current = (currentRow as { status: Contact['status'] }).status;
+    const next = resolveStatusEffect(current, outcome.statusEffect);
+    if (next !== null) {
+      contactUpdate.status = next;
+      status = next;
+    }
+  }
+
+  if (outcomeSchedulesCallback(parsed.outcome)) {
+    contactUpdate.follow_up = tomorrowDate();
+  }
+
+  if (Object.keys(contactUpdate).length > 0) {
+    const { error: updateError } = await supabase
+      .from('contacts')
+      .update(contactUpdate)
+      .eq('id', id);
+
+    if (updateError) {
+      throw new Error(
+        `logCallOutcome: failed to update contact ${id}: ${updateError.message}`,
+      );
+    }
   }
 
   revalidateDiallerRoutes(id);

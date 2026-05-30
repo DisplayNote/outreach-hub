@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { getDiallerOutcomes, MockDiallerDriver } from '@/lib/dialler';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getDiallerDriver, getDiallerOutcomes } from '@/lib/dialler';
 import { pickDialNumber } from '@/lib/dialler/normalise';
-import type { CallControl, CallOutcome, CallState } from '@/lib/dialler/types';
+import type { CallControl, CallOutcome, CallState, DiallerDriver } from '@/lib/dialler/types';
 import { logCallOutcome } from '@/lib/actions/dialler';
 
 /**
@@ -36,8 +36,6 @@ interface ClickToCallProps {
   /** Mobile, preferred over `phone` when both are present. */
   mobile: string | null;
 }
-
-const OUTCOMES: readonly CallOutcome[] = getDiallerOutcomes();
 
 const STATE_LABELS: Record<CallState, string> = {
   idle: 'Idle',
@@ -118,6 +116,9 @@ function formatElapsed(ms: number): string {
 export default function ClickToCall({ contactId, contactName, phone, mobile }: ClickToCallProps) {
   const dialNumber = pickDialNumber({ phone, mobile });
 
+  // Fresh per instance (getDiallerOutcomes returns a new array by contract).
+  const outcomes = useMemo<readonly CallOutcome[]>(() => getDiallerOutcomes(), []);
+
   const [state, setState] = useState<CallState>('idle');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [wasConnected, setWasConnected] = useState(false);
@@ -126,7 +127,7 @@ export default function ClickToCall({ contactId, contactName, phone, mobile }: C
   const [error, setError] = useState<string | null>(null);
 
   // Driver + live call handle live in refs so re-renders don't recreate them.
-  const driverRef = useRef<MockDiallerDriver | null>(null);
+  const driverRef = useRef<DiallerDriver | null>(null);
   const controlRef = useRef<CallControl | null>(null);
   const connectedAtRef = useRef<number | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -155,7 +156,7 @@ export default function ClickToCall({ contactId, contactName, phone, mobile }: C
     setWasConnected(false);
     connectedAtRef.current = null;
 
-    const driver = driverRef.current ?? new MockDiallerDriver();
+    const driver = driverRef.current ?? getDiallerDriver();
     driverRef.current = driver;
 
     controlRef.current = driver.placeCall(dialNumber, {
@@ -199,11 +200,11 @@ export default function ClickToCall({ contactId, contactName, phone, mobile }: C
       setLogging(outcome.key);
       setError(null);
       try {
-        await logCallOutcome(contactId, { outcome: outcome.key });
+        const result = await logCallOutcome(contactId, { outcome: outcome.key });
         setConfirmation(
-          outcome.statusEffect === 'none'
+          result.status === null
             ? `Logged: ${outcome.label}.`
-            : `Logged: ${outcome.label}. Status set to ${outcome.statusEffect}.`,
+            : `Logged: ${outcome.label}. Status set to ${result.status}.`,
         );
         setState('idle');
         setElapsedMs(0);
@@ -305,7 +306,7 @@ export default function ClickToCall({ contactId, contactName, phone, mobile }: C
                   gap: '0.5rem',
                 }}
               >
-                {OUTCOMES.map((outcome) => (
+                {outcomes.map((outcome) => (
                   <button
                     key={outcome.key}
                     type="button"
