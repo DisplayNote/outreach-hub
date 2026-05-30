@@ -151,7 +151,13 @@ export default function ClickToCall({
   useEffect(() => {
     return () => {
       stopTicking();
-      controlRef.current?.hangup();
+      // Clear the handle BEFORE hangup: the mock driver's hangup() fires
+      // onStateChange/onEnded synchronously, and the callback guards below treat
+      // a null controlRef as "teardown in progress" and no-op — avoiding a
+      // setState on an unmounted component.
+      const control = controlRef.current;
+      controlRef.current = null;
+      control?.hangup();
     };
   }, [stopTicking]);
 
@@ -178,6 +184,8 @@ export default function ClickToCall({
 
       controlRef.current = driver.placeCall(dialNumber, {
         onStateChange: (call) => {
+          // No-op once teardown has cleared the handle (see the unmount cleanup).
+          if (controlRef.current === null) return;
           setState(call.state);
           if (call.state === 'connected' && connectedAtRef.current === null) {
             connectedAtRef.current = Date.now();
@@ -191,6 +199,8 @@ export default function ClickToCall({
           }
         },
         onEnded: () => {
+          // No-op once teardown has cleared the handle (see the unmount cleanup).
+          if (controlRef.current === null) return;
           stopTicking();
           if (connectedAtRef.current !== null) {
             setElapsedMs(Date.now() - connectedAtRef.current);
@@ -200,6 +210,8 @@ export default function ClickToCall({
           controlRef.current = null;
         },
         onError: (err) => {
+          // No-op once teardown has cleared the handle (see the unmount cleanup).
+          if (controlRef.current === null) return;
           stopTicking();
           setError(err.message);
           setState('idle');

@@ -135,7 +135,8 @@ function parseCsv(text: string): string[][] {
       continue;
     }
     if (ch === '\r') {
-      // Swallow CR; the following LF (if any) drives the row break.
+      // CR (or CRLF) is one row break: break here and consume the paired LF too
+      // when present, so CRLF does not produce a spurious empty second row.
       if (text[i + 1] === '\n') {
         pushRow();
         i += 2;

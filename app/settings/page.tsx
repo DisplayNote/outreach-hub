@@ -77,7 +77,8 @@ export default async function SettingsPage() {
       rhythmNone: intField(formData, 'rhythmNone'),
       signature: textField(formData, 'signature'),
       defaultCountryCode: textField(formData, 'defaultCountryCode'),
-      // The checkbox is always submitted (boolean), so it's always set.
+      // boolField always returns a boolean (false when the checkbox is absent,
+      // i.e. unchecked), so this key is always set.
       seqSkipWeekends: boolField(formData, 'seqSkipWeekends'),
     };
 
