@@ -67,14 +67,35 @@ export function getServerEnv(): ServerEnv {
   return parseServerEnv(process.env);
 }
 
+/** Loopback hosts that identify the local Supabase dev stack. */
+const LOCAL_SUPABASE_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** True only when `url` points at the local Supabase dev stack (loopback host). */
+function isLocalSupabaseUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    return LOCAL_SUPABASE_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Dev-only mock authentication toggle. Double-gated: it requires both a
- * non-production NODE_ENV and an explicit `AUTH_MOCK_ENABLED=true`, so it can
- * never be switched on in a production deployment (Vercel sets
- * NODE_ENV=production, and the flag is only ever written into local
- * `.env.local`). When true, `/login` offers a dev sign-in and `/auth/mock`
- * establishes a session for a seeded local test user — no Microsoft round-trip.
+ * Dev-only mock authentication toggle. Triple-gated, so the `/auth/mock`
+ * backdoor (which signs in a seeded user with a hard-coded password) can never
+ * be activated against shared infrastructure:
+ *   1. NODE_ENV must not be `production` (Vercel sets NODE_ENV=production),
+ *   2. `AUTH_MOCK_ENABLED` must be explicitly `true`, and
+ *   3. NEXT_PUBLIC_SUPABASE_URL must point at the local stack (loopback host),
+ *      so a staging/self-hosted deploy aimed at a remote Supabase project
+ *      (e.g. `*.supabase.co`) cannot enable it even if the flag is set.
+ * When true, `/login` offers a dev sign-in and `/auth/mock` establishes a
+ * session for a seeded local test user — no Microsoft round-trip.
  */
-export function isAuthMockEnabled(): boolean {
-  return process.env.NODE_ENV !== 'production' && process.env.AUTH_MOCK_ENABLED === 'true';
+export function isAuthMockEnabled(env: EnvRecord = process.env): boolean {
+  return (
+    env.NODE_ENV !== 'production' &&
+    env.AUTH_MOCK_ENABLED === 'true' &&
+    isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
+  );
 }
