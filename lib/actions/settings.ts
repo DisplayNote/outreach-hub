@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrgId } from '@/lib/supabase/org';
 import { normaliseCallingCode } from '@/lib/dialler/normalise';
+import { mergeOrgSettingsPatch } from '@/lib/org-settings';
 import type { OrgSettings } from '@/lib/types/domain';
 
 // --- Validation ---------------------------------------------------------------
@@ -79,7 +80,9 @@ export async function updateOrgSettings(patch: UpdateOrgSettingsInput): Promise<
 
   const existing = ((current as { settings: Record<string, unknown> | null } | null)?.settings ??
     {}) as Record<string, unknown>;
-  const merged: Record<string, unknown> = { ...existing, ...parsed };
+  // Skip `undefined` patch values so blank form fields mean "no change" rather
+  // than deleting the stored value — see mergeOrgSettingsPatch for the why.
+  const merged = mergeOrgSettingsPatch(existing, parsed);
 
   const { data, error } = await supabase
     .from('organizations')

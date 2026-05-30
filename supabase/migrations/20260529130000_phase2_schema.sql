@@ -95,6 +95,16 @@ create trigger set_sequences_updated_at
 
 -- RLS -------------------------------------------------------------------------
 
+-- organizations had RLS enabled in Phase 0 with only a SELECT policy. Phase 2
+-- introduces the `settings` column and `updateOrgSettings`, which UPDATEs the
+-- caller's own organization row — without an UPDATE policy that write is
+-- silently blocked by RLS (0 rows affected). Add an org-scoped UPDATE policy so
+-- members can update their own org row, matching the per-table pattern below.
+create policy "organizations update own org"
+  on public.organizations for update
+  using (id = public.current_org_id())
+  with check (id = public.current_org_id());
+
 alter table public.templates enable row level security;
 alter table public.sequences enable row level security;
 alter table public.sequence_steps enable row level security;
