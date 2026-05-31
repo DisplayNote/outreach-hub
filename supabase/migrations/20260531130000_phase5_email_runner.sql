@@ -15,9 +15,19 @@
 
 -- The runner reads cadence from the linked sequence's sequence_steps. The
 -- free-text campaigns.sequence column stays for legacy/display but is no longer
--- load-bearing. ON DELETE SET NULL detaches campaigns rather than cascading.
+-- load-bearing.
+--
+-- The FK is COMPOSITE on (sequence_id, org_id) → sequences(id, org_id), not a
+-- plain id reference: RLS only checks the campaign's own org_id, so a plain id
+-- FK would let a campaign point at ANOTHER org's sequence if the UUID were
+-- known. sequences carries a unique (id, org_id) (Phase 2) to support this.
+-- ON DELETE SET NULL (sequence_id) clears only that column when the sequence is
+-- removed (org_id stays NOT NULL), matching the Phase-2 composite-FK pattern.
+alter table public.campaigns add column sequence_id uuid;
 alter table public.campaigns
-  add column sequence_id uuid references public.sequences(id) on delete set null;
+  add constraint campaigns_sequence_id_fkey
+  foreign key (sequence_id, org_id)
+  references public.sequences (id, org_id) on delete set null (sequence_id);
 
 create index campaigns_sequence_id_idx on public.campaigns (sequence_id);
 

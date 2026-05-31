@@ -57,7 +57,6 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
       campaignId: match.campaignId,
       kind,
       message,
-      email: message.from,
       now: message.receivedAt,
     });
     if (kind === 'reply') result.replies += 1;

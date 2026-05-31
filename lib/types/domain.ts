@@ -189,6 +189,8 @@ export interface OrgSettings {
   rhythmRed?: number;
   rhythmNone?: number;
   signature?: string;
+  /** The mailbox the email runner sends from (a real address, unlike `signature`). */
+  senderEmail?: string;
   defaultCountryCode?: string;
   seqSkipWeekends?: boolean;
   [key: string]: unknown;

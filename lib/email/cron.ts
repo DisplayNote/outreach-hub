@@ -25,8 +25,11 @@ export async function runSenderAllOrgs(client: SupabaseClient): Promise<{ orgs: 
   let sent = 0;
   const list = await orgs(client);
   for (const org of list) {
+    // Fail closed: a cron send needs a real configured mailbox (settings.signature
+    // is a human-readable string, not an address). Skip orgs without one.
+    const from = org.settings.senderEmail;
+    if (!from) continue;
     const store = supabaseEmailStore(client, { orgId: org.id, provider: driver.name, settings: org.settings });
-    const from = org.settings.signature ?? 'noreply@local';
     const res = await runSender(
       { store, driver, settings: org.settings, from, now: () => new Date().toISOString() },
       { today: todayUtc() },

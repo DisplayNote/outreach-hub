@@ -337,9 +337,11 @@ surfaces. Classify an inbound as a **bounce** when (handover §6.2 bounceScanner
 "Bounced — address undeliverable". A bounce is **terminal** for that address.
 
 **[DECISION 7.1]:** reply-vs-bounce classification lives in a pure
-`classifyInbound(message): 'reply' | 'bounce' | 'ignore'` function, unit-tested against fixture
-messages (a normal reply, an NDR, an unrelated mail). The `mock` driver lets a test enqueue
-either kind via `MockDriver.inbound`. Confirm the NDR-detection heuristics.
+`classifyInbound(message): 'reply' | 'bounce'` function, unit-tested against fixture messages
+(a normal reply, an NDR). Whether an inbound is *relevant* (`ignore`) is the scanner's job —
+it ignores anything that doesn't correlate to a contact we emailed — so `classifyInbound`
+itself only decides the kind. The `mock` driver lets a test enqueue either kind via
+`MockDriver.inbound`. Confirm the NDR-detection heuristics.
 
 ---
 
@@ -434,7 +436,7 @@ affordance and any test-seeding route are inert otherwise.
 | `tests/unit/email/render.test.ts` | Merge fields incl. missing/unknown tokens (§3). |
 | `tests/unit/email/schedule.test.ts` | `businessDayAdd` incl. weekend roll + step deltas (§4). |
 | `tests/unit/email/runner.test.ts` | Selection, daily cap, dedup, dry-run, error-isolation (§5) against `MockDriver`. |
-| `tests/unit/email/scanner.test.ts` | `classifyInbound` (reply/bounce/ignore) + correlation + effects + dedup (§6/§7/§8). |
+| `tests/unit/email/scanner.test.ts` | scanner correlation + classify + effects + dedup; `classifyInbound` (reply/bounce) in `classify.test.ts` (§6/§7/§8). |
 | `tests/e2e/email-runner.spec.ts` | Via `/auth/mock`: enrol → run sender (send + touchpoint + step advance) → simulate reply (green + stop) → simulate bounce (bounced + suppress). |
 
 ---

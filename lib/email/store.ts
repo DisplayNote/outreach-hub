@@ -51,8 +51,6 @@ export interface RecordInboundInput {
   campaignId: string | null;
   kind: 'reply' | 'bounce';
   message: InboundMessage;
-  /** Contact email, for the suppression row. */
-  email: string;
   now: string;
 }
 
@@ -101,9 +99,13 @@ export function supabaseEmailStore(
     async dueContacts(today) {
       // Candidate contacts: enrolled (follow_up set & due), non-terminal status,
       // has an email, and not already sent today. RLS scopes to the org.
+      // org_id filtered EXPLICITLY — the cron path uses the service role
+      // (bypasses RLS), so without this one org's run would process every org's
+      // contacts.
       const { data: rows, error } = await client
         .from('contacts')
         .select(CONTACT_SELECT)
+        .eq('org_id', ctx.orgId)
         .lte('follow_up', today)
         .not('follow_up', 'is', null)
         .not('email', 'is', null)
@@ -308,10 +310,12 @@ export function supabaseEmailStore(
       );
       if (evErr) throw new Error(`recordInbound.event: ${evErr.message}`);
 
-      // Status, with Phase-3 precedence (never downgrade a stronger terminal state).
+      // Read the contact's status AND email together: the suppression must use
+      // the contact's own address, NOT the inbound sender (a real NDR is from
+      // postmaster@…, not the failed prospect).
       const { data: cur, error: curErr } = await client
         .from('contacts')
-        .select('status')
+        .select('status, email')
         .eq('id', input.contactId)
         .eq('org_id', input.orgId)
         .maybeSingle();
@@ -328,17 +332,21 @@ export function supabaseEmailStore(
         }
       }
 
-      // Address-level suppression (un-idempotent insert guarded by the unique index).
-      const { error: supErr } = await client.from('suppressions').upsert(
-        {
-          org_id: input.orgId,
-          email: input.email.trim().toLowerCase(),
-          reason,
-          contact_id: input.contactId,
-        },
-        { onConflict: 'org_id,email', ignoreDuplicates: true },
-      );
-      if (supErr) throw new Error(`recordInbound.suppression: ${supErr.message}`);
+      // Address-level suppression on the CONTACT's email (deduped via the unique
+      // (org_id, email) index). Skip if the contact somehow has no address.
+      const contactEmail = (cur?.email as string | null)?.trim().toLowerCase() ?? null;
+      if (contactEmail) {
+        const { error: supErr } = await client.from('suppressions').upsert(
+          {
+            org_id: input.orgId,
+            email: contactEmail,
+            reason,
+            contact_id: input.contactId,
+          },
+          { onConflict: 'org_id,email', ignoreDuplicates: true },
+        );
+        if (supErr) throw new Error(`recordInbound.suppression: ${supErr.message}`);
+      }
 
       // Touchpoint (deduped by the provider message id).
       const { error: tpErr } = await client.from('touchpoints').upsert(
