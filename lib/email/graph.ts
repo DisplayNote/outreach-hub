@@ -85,9 +85,12 @@ export class GraphDriver implements EmailDriver {
   }
 
   async fetchReplies(opts: { since: string; mailbox?: string }): Promise<InboundMessage[]> {
-    const filter = encodeURIComponent(`receivedDateTime ge ${opts.since}`);
-    const path = `/me/mailFolders/Inbox/messages?$filter=${filter}&$top=50&$orderby=receivedDateTime asc`;
-    const resp = await this.call('GET', path);
+    const params = new URLSearchParams({
+      $filter: `receivedDateTime ge ${opts.since}`,
+      $top: '50',
+      $orderby: 'receivedDateTime asc',
+    });
+    const resp = await this.call('GET', `/me/mailFolders/Inbox/messages?${params.toString()}`);
     if (!resp.ok) {
       throw new EmailDriverError(`Graph fetchReplies failed (${resp.status})`, undefined, 'GRAPH_FETCH');
     }

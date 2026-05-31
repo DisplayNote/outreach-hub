@@ -74,9 +74,17 @@ test.beforeAll(async () => {
   // no-ops when seqSkipWeekends, and the test may run on a Sat/Sun).
   await admin.from('organizations').update({ settings: { seqSkipWeekends: false, dailyGoal: 30 } }).eq('id', orgId);
 
-  // Idempotent reseed.
+  // Idempotent reseed. Also clear the test emails' suppressions — they're keyed
+  // by address (contact_id is only ON DELETE SET NULL), so a prior run's
+  // reply/bounce would otherwise leave them suppressed and out of the queue.
   await admin.from('contacts').delete().eq('org_id', orgId).eq('company', E2E_MARKER);
+  await admin.from('campaigns').delete().eq('org_id', orgId).eq('name', 'E2E Email Campaign');
   await admin.from('sequences').delete().eq('org_id', orgId).eq('name', E2E_MARKER);
+  await admin
+    .from('suppressions')
+    .delete()
+    .eq('org_id', orgId)
+    .in('email', ['rhea@e2e.example.com', 'boris@e2e.example.com']);
 
   const { data: seq } = await admin
     .from('sequences')

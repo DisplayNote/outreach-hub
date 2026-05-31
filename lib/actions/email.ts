@@ -40,7 +40,10 @@ async function buildContext() {
   const settings = await getOrgSettings();
   const driver = getEmailDriver();
   const store = supabaseEmailStore(supabase, { orgId, provider: driver.name, settings });
-  const from = user?.email ?? settings.signature ?? 'noreply@local';
+  // Prefer the configured org mailbox (same as cron), then the signed-in user's
+  // address for a delegated send. Never the signature (a human-readable string,
+  // not an address). Falls back to a local placeholder only for the mock driver.
+  const from = settings.senderEmail ?? user?.email ?? 'noreply@local';
   return { orgId, supabase, settings, driver, store, from };
 }
 

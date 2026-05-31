@@ -17,6 +17,11 @@ import type { OrgSettings } from '@/lib/types/domain';
 
 const DEFAULT_DAILY_GOAL = 30;
 
+/** Escape HTML so rendered template/contact text can't alter the email markup. */
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export interface RunSenderDeps {
   store: EmailStore;
   driver: EmailDriver;
@@ -97,7 +102,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       to: [contact.email],
       subject: rendered.subject,
       bodyText: rendered.body,
-      bodyHtml: rendered.body.replace(/\n/g, '<br>'),
+      bodyHtml: escapeHtml(rendered.body).replace(/\n/g, '<br>'),
     };
 
     try {
