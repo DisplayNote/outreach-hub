@@ -105,9 +105,9 @@ export interface SettingsFormProps {
   settings: OrgSettings;
 }
 
-/** Coerce a nullable number to a string for a controlled-ish number input. */
+/** Coerce an optional number to a string for a controlled-ish number input. */
 function numValue(v: number | undefined): string {
-  if (v === null || v === undefined) return '';
+  if (v === undefined) return '';
   return String(v);
 }
 

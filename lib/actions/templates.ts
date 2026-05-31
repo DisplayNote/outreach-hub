@@ -45,8 +45,8 @@ function toTemplate(row: TemplateRow): Template {
 /** Routes whose rendered output depends on template data. */
 function revalidateTemplateRoutes(): void {
   revalidatePath('/templates');
+  // Sequence steps can reference a template, so the sequences view may change.
   revalidatePath('/sequences');
-  revalidatePath('/settings');
 }
 
 // --- Validation schemas -------------------------------------------------------

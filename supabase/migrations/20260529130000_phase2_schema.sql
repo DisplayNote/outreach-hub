@@ -105,6 +105,14 @@ create policy "organizations update own org"
   using (id = public.current_org_id())
   with check (id = public.current_org_id());
 
+-- Least privilege: the only org column users edit is `settings`. The row policy
+-- above scopes WHICH row; these column grants scope WHICH columns, so a member
+-- cannot rename their org (or touch `id`/`created_at`) by crafting a request.
+-- `name` is set once by the handle_new_user trigger (SECURITY DEFINER, owner
+-- privileges) and service_role keeps full UPDATE for admin paths.
+revoke update on public.organizations from anon, authenticated;
+grant update (settings) on public.organizations to authenticated;
+
 alter table public.templates enable row level security;
 alter table public.sequences enable row level security;
 alter table public.sequence_steps enable row level security;

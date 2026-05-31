@@ -74,7 +74,6 @@ function toSequenceStep(row: SequenceStepRow): SequenceStep {
 /** Routes whose rendered output depends on sequence / step data. */
 function revalidateSequenceRoutes(): void {
   revalidatePath('/sequences');
-  revalidatePath('/settings');
 }
 
 // --- Validation schemas -------------------------------------------------------
