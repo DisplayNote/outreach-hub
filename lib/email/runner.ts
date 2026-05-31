@@ -124,7 +124,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
     // per-send message id won't let email_events dedupe a double-send. The loser
     // of the claim skips silently — the winner sends.
     const claimNow = deps.now();
-    if (!(await deps.store.claimForSend(contact.id, opts.today, claimNow))) {
+    if (!(await deps.store.claimForSend(contact.id, opts.today, claimNow, dailyGoal))) {
       continue;
     }
 

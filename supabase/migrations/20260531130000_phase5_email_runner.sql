@@ -293,21 +293,25 @@ $$;
 -- Atomic send claim ----------------------------------------------------------
 -- Claim a single contact for sending: set last_emailed_at = p_now in ONE
 -- conditional UPDATE that re-checks the SAME stop conditions as the due query
--- (not-sent-today, non-terminal status, AND not suppressed). The row lock
--- serialises overlapping runs, and re-checking inside the update closes the race
--- where a late reply/bounce/manual suppression lands between selection and send —
--- such a contact fails the predicate and is NOT claimed/sent. Returns whether
--- this call won the claim. SECURITY INVOKER (caller RLS / service role).
+-- (not-sent-today, non-terminal status, AND not suppressed) AND enforces the
+-- daily cap. The row lock serialises overlapping runs, and re-checking inside the
+-- update closes the race where a late reply/bounce/manual suppression lands
+-- between selection and send. Enforcing the cap HERE (count of contacts already
+-- claimed today < p_daily_goal) — rather than once per run before claiming — is
+-- what stops two concurrent runs from collectively exceeding the goal via their
+-- over-fetch buffers. Returns whether this call won. SECURITY INVOKER.
 create or replace function public.claim_email_send(
   p_org_id uuid,
   p_contact_id uuid,
   p_today date,
-  p_now timestamptz
+  p_now timestamptz,
+  p_daily_goal int
 ) returns boolean
   language plpgsql
 as $$
 declare
   claimed_rows int;
+  day_start timestamptz := p_today::timestamp at time zone 'UTC';
 begin
   -- Re-check the FULL due_email_contacts predicate under the row lock, not just
   -- status/last_emailed/suppression: if the contact was unenrolled, had its
@@ -322,7 +326,7 @@ begin
      and c.follow_up is not null
      and c.follow_up <= p_today
      and c.status not in ('notinterested', 'bounced', 'meeting')
-     and (c.last_emailed_at is null or c.last_emailed_at < (p_today::timestamp at time zone 'UTC'))
+     and (c.last_emailed_at is null or c.last_emailed_at < day_start)
      and not exists (
        select 1 from public.suppressions s
         where s.org_id = c.org_id and s.email = lower(btrim(c.email))
@@ -334,7 +338,12 @@ begin
            on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
           and ss.day_offset = c.sequence_day and ss.channel = 'email'
         where cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
-     );
+     )
+     -- Daily cap, enforced atomically across runs: contacts already claimed today.
+     and (
+       select count(*) from public.contacts cc
+        where cc.org_id = p_org_id and cc.last_emailed_at >= day_start
+     ) < p_daily_goal;
   get diagnostics claimed_rows = row_count;
   return claimed_rows > 0;
 end;

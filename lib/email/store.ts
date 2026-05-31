@@ -75,13 +75,14 @@ export interface EmailStore {
   countDue(today: string): Promise<number>;
   /**
    * Atomically claim a contact for sending: set last_emailed_at = `now` only if
-   * it still passes the FULL due predicate, returning whether THIS call won. Two
+   * it still passes the FULL due predicate AND fewer than `dailyGoal` contacts
+   * have already been claimed today, returning whether THIS call won. Two
    * overlapping runs that both fetched the same due row can't both send — the
-   * loser gets false. (The provider message id is per-send, so the email_events
-   * unique index can't dedupe a concurrent double-send; this is the guard.) On a
-   * TRANSPORT failure the caller must {@link releaseClaim} to undo this marker.
+   * loser gets false — and the in-claim cap check stops concurrent runs from
+   * collectively exceeding the goal via their over-fetch buffers. On a TRANSPORT
+   * failure the caller must {@link releaseClaim} to undo this marker.
    */
-  claimForSend(contactId: string, today: string, now: string): Promise<boolean>;
+  claimForSend(contactId: string, today: string, now: string, dailyGoal: number): Promise<boolean>;
   /**
    * Undo a claim when the send never left (transport error): restore
    * last_emailed_at to `priorLastEmailedAt`, but only if it still equals
@@ -181,18 +182,20 @@ export function supabaseEmailStore(
       return (data as number | null) ?? 0;
     },
 
-    async claimForSend(contactId, today, now) {
+    async claimForSend(contactId, today, now, dailyGoal) {
       // Atomic claim via the claim_email_send RPC: one conditional UPDATE that
       // re-checks ALL the due stop conditions (not-sent-today, non-terminal
-      // status, not suppressed) under the row lock — so a late reply/bounce/manual
-      // suppression that landed after selection can't be raced into a send, and
-      // two overlapping runs can't both win. A claim-then-send-failure leaves the
-      // contact marked today (retried next day, not double-sent today).
+      // status, not suppressed, sequence-linked email step) AND the daily cap
+      // under the row lock — so a late reply/bounce/manual suppression can't be
+      // raced into a send, two overlapping runs can't both win, and concurrent
+      // runs can't collectively exceed dailyGoal. A claim-then-send-failure leaves
+      // the contact marked today (retried next day, not double-sent today).
       const { data, error } = await client.rpc('claim_email_send', {
         p_org_id: ctx.orgId,
         p_contact_id: contactId,
         p_today: today,
         p_now: now,
+        p_daily_goal: dailyGoal,
       });
       if (error) throw new Error(`claimForSend: ${error.message}`);
       return data === true;
