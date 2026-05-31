@@ -356,16 +356,19 @@ inbound message:
    append an `email` touchpoint "Reply received". (Status `green` = engaged; the rep
    triages — no content classification, **[RESOLVED]**.)
 
-`since` defaults to the persisted inbox-scan cursor: a high-water timestamp
-(`organizations.settings.lastInboxScanAt`) PLUS the message-ids seen at exactly that
-timestamp (`lastInboxScanIds`). Each scan advances the cursor to the newest message it
-fetched — even when nothing correlated — so a quiet mailbox doesn't re-fetch the whole inbox
-every cron tick. Drivers fetch `receivedAt >= since`, so a message at the boundary timestamp
-is re-fetched; the id set is the tie-breaker — boundary ids already seen are skipped, while a
+`since` defaults to the persisted inbox-scan cursor, keyed **per mailbox** at
+`organizations.settings.inboxScanCursors[<mailbox>]` (the scan mailbox is the signed-in user's
+own mailbox for a manual scan, the configured org mailbox for cron — so one mailbox's scan can
+never advance another's). Each entry is a high-water timestamp (`at`) PLUS the message-ids seen
+at exactly that timestamp (`ids`). Each scan advances its mailbox's cursor to the newest message
+it fetched — even when nothing correlated — so a quiet mailbox doesn't re-fetch the whole inbox
+every cron tick. Drivers fetch `receivedAt >= at`, so a message at the boundary timestamp is
+re-fetched; the id set is the tie-breaker — boundary ids already seen are skipped, while a
 genuinely new message sharing that millisecond (a different id) is still processed. This lands
-the cursor exactly on the newest timestamp without either re-processing the boundary forever
-or skipping a same-ms late arrival. The cursor only advances after a scan completes without
-error, so a mid-scan failure leaves it put and the next scan re-fetches and retries.
+the cursor exactly on the newest timestamp without either re-processing the boundary forever or
+skipping a same-ms late arrival. The advance is an atomic per-mailbox `jsonb_set`
+(`advance_inbox_scan_cursor`), and only after a scan completes without error — a mid-scan
+failure leaves the cursor put and the next scan re-fetches and retries.
 
 ---
 
