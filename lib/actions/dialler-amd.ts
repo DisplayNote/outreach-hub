@@ -19,7 +19,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getOrgSettings } from '@/lib/supabase/queries';
 import { createAmdRuntime } from '@/lib/dialler/amd/runtime';
 import { pickDialNumber } from '@/lib/dialler/normalise';
-import { AmdBackendError, type AmdScenario, type CallAttemptState } from '@/lib/dialler/amd/types';
+import type { AmdScenario, CallAttemptState } from '@/lib/dialler/amd/types';
 
 const uuid = z.string().uuid();
 
@@ -187,7 +187,10 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
       throw new Error('placeAmdCall: attempt no longer active; hung up the placed call');
     }
   } catch (cause) {
-    const message = cause instanceof AmdBackendError ? cause.message : 'dial failed';
+    // Preserve the real reason (AmdBackendError, or the explicit call_control_id
+    // persistence error) in call_attempts.error for ops triage; only fall back
+    // to a generic string for a non-Error throw.
+    const message = cause instanceof Error ? cause.message : 'dial failed';
     // Only mark failed while still non-terminal — never clobber a concurrently
     // finalised attempt (cancelled / webhook-driven ended).
     await client

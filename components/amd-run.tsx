@@ -362,7 +362,9 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
         <p style={{ margin: '0.75rem 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{current?.dialNumber}</p>
 
         <div style={{ marginTop: '1rem', display: 'flex', gap: '0.6rem' }}>
-          {currentAttempt && isLive(currentAttempt.state) ? (
+          {/* Only when a provider call exists to hang up. Pre-correlation
+              (callControlId null) there's nothing to hang up — Skip cancels it. */}
+          {currentAttempt && isLive(currentAttempt.state) && currentAttempt.callControlId ? (
             <button type="button" onClick={hangup} style={{ ...primaryBtn, background: '#b91c1c', borderColor: '#b91c1c' }}>
               Hang up
             </button>
