@@ -147,7 +147,7 @@ describe('runSender', () => {
     rec.dueList = [due('a'), due('b')];
     const failing = new MockDriver();
     let n = 0;
-    failing.send = async (m) => {
+    failing.send = async (_m) => {
       n += 1;
       if (n === 1) throw new Error('smtp down');
       return { messageId: `m${n}`, provider: 'mock', sentAt: '2026-05-29T09:00:00.000Z' };
