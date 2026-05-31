@@ -197,6 +197,7 @@ describe('runSender', () => {
     };
     const res = await runSender(deps(rec, failing), { today: '2026-05-29' });
     expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]?.stage).toBe('send'); // transport failure → safe retry
     expect(res.sent).toBe(1);
     expect(rec.sent).toHaveLength(1); // only the successful one advanced
     // The transport-failed contact's claim was released (so it retries today and

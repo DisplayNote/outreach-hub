@@ -51,8 +51,14 @@ export interface RunSenderResult {
   planned: PlannedSend[];
   sent: number;
   skipped: number;
-  /** `persisted: false` flags a sent-but-not-recorded message (transport ok, DB write failed). */
-  errors: { contactId: string; message: string; persisted?: boolean }[];
+  /**
+   * Per-contact failures. `stage` distinguishes the retry semantics:
+   *  - `'send'`   — the transport failed; NO email left the system (safe to retry).
+   *  - `'record'` — the email WAS sent but the DB write failed (at-least-once: a
+   *    retry may re-send, since the contact wasn't advanced).
+   *  - absent     — a surfaced non-send issue (e.g. a step with no template).
+   */
+  errors: { contactId: string; message: string; stage?: 'send' | 'record' }[];
   /** Eligible contacts left unsent because the daily cap was exhausted. */
   remaining: number;
 }
@@ -156,7 +162,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       result.errors.push({
         contactId: contact.id,
         message: `send: ${cause instanceof Error ? cause.message : 'failed'}`,
-        persisted: false,
+        stage: 'send', // nothing left the system — safe retry
       });
       continue;
     }
@@ -198,7 +204,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       result.errors.push({
         contactId: contact.id,
         message: `recordSent: ${cause instanceof Error ? cause.message : 'failed'}`,
-        persisted: false,
+        stage: 'record', // the email WENT OUT — at-least-once on retry
       });
     }
   }
