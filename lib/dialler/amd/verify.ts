@@ -12,7 +12,23 @@
  * caller supplies the clock, keeping the function deterministic and testable.
  * Never throws — any malformed input returns `false`.
  */
-import { createPublicKey, verify as cryptoVerify } from 'node:crypto';
+import { createPublicKey, verify as cryptoVerify, type KeyObject } from 'node:crypto';
+
+/**
+ * Cache parsed public keys by their base64 string. `createPublicKey` is pure for
+ * a given input, and the Telnyx key rarely changes, so parsing it once keeps
+ * verification on the fast path under webhook load.
+ */
+const keyCache = new Map<string, KeyObject>();
+
+function getPublicKey(publicKeyBase64: string): KeyObject {
+  let key = keyCache.get(publicKeyBase64);
+  if (key === undefined) {
+    key = createPublicKey({ key: Buffer.from(publicKeyBase64, 'base64'), format: 'der', type: 'spki' });
+    keyCache.set(publicKeyBase64, key);
+  }
+  return key;
+}
 
 export interface TelnyxSignatureHeaders {
   /** base64 Ed25519 signature (Telnyx-Signature-Ed25519). */
@@ -35,11 +51,7 @@ export function verifyTelnyxSignature(
     if (!Number.isFinite(ts)) return false;
     if (Math.abs(now - ts) > toleranceSec) return false;
 
-    const publicKey = createPublicKey({
-      key: Buffer.from(publicKeyBase64, 'base64'),
-      format: 'der',
-      type: 'spki',
-    });
+    const publicKey = getPublicKey(publicKeyBase64);
 
     const signature = Buffer.from(headers.signature, 'base64');
     const signedPayload = Buffer.from(`${headers.timestamp}|${rawBody}`);

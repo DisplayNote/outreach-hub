@@ -73,13 +73,20 @@ export async function applyEvent(
 ): Promise<ApplyEventResult> {
   const result = reduceEvent(attempt, event);
 
+  // Stamp call_control_id from the first inbound event when it isn't persisted
+  // yet (the event was correlated via the customHeaders attemptId fallback), so
+  // later events match by call_control_id and manual hangups have an id to use.
+  const needsCallControlId =
+    event.callControlId !== '' && attempt.callControlId !== event.callControlId;
+
   // No-op (duplicate / ignored event once terminal): write nothing — no attempt
   // UPDATE (avoids Realtime churn and overwriting endedAt) and no event row.
   const isNoop =
     result.nextState === attempt.state &&
     result.disposition === null &&
     result.amdResult === null &&
-    result.sideEffects.length === 0;
+    result.sideEffects.length === 0 &&
+    !needsCallControlId;
   if (isNoop) {
     return { result, actuations: [] };
   }
@@ -87,6 +94,7 @@ export async function applyEvent(
   // Persist only fields that actually change; set endedAt once, on the
   // transition INTO `ended` (not on a later duplicate).
   const patch: AttemptPatch = {};
+  if (needsCallControlId) patch.callControlId = event.callControlId;
   if (result.nextState !== attempt.state) patch.state = result.nextState;
   if (result.amdResult !== null && result.amdResult !== attempt.amdResult) patch.amdResult = result.amdResult;
   if (result.disposition !== null && result.disposition !== attempt.disposition) patch.disposition = result.disposition;
