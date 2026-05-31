@@ -41,7 +41,7 @@ interface CampaignRow {
   updated_at: string;
 }
 
-interface ContactRow {
+export interface ContactRow {
   id: string;
   org_id: string;
   campaign_id: string;
@@ -78,7 +78,7 @@ interface TouchpointRow {
 
 // --- Selects -----------------------------------------------------------------
 
-const CONTACT_SELECT =
+export const CONTACT_SELECT =
   'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, metadata, created_at, updated_at';
 
 const TOUCHPOINT_SELECT =
@@ -98,7 +98,7 @@ function toCampaign(row: CampaignRow): Campaign {
   };
 }
 
-function toContact(row: ContactRow): Contact {
+export function toContact(row: ContactRow): Contact {
   return {
     id: row.id,
     orgId: row.org_id,
@@ -421,7 +421,7 @@ export async function listSequences(): Promise<Sequence[]> {
 
 // --- Reports, activity, and sequence-with-steps ------------------------------
 
-interface SequenceStepRow {
+export interface SequenceStepRow {
   id: string;
   org_id: string;
   sequence_id: string;
@@ -432,10 +432,10 @@ interface SequenceStepRow {
   created_at: string;
 }
 
-const SEQUENCE_STEP_SELECT =
+export const SEQUENCE_STEP_SELECT =
   'id, org_id, sequence_id, step_order, day_offset, channel, template_id, created_at';
 
-function toSequenceStep(row: SequenceStepRow): SequenceStep {
+export function toSequenceStep(row: SequenceStepRow): SequenceStep {
   return {
     id: row.id,
     orgId: row.org_id,

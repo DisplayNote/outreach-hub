@@ -1,0 +1,380 @@
+/**
+ * The database surface the email runner/scanner need (PHASE_5_SPEC §5–§8),
+ * behind an interface so the cores are unit-testable with an in-memory fake. The
+ * Supabase adapter ({@link supabaseEmailStore}) backs it in production, composing
+ * the existing Phase-2 effects (status precedence, touchpoints) where relevant.
+ *
+ * Every method is org-scoped by the caller: the manual Server Actions pass an
+ * RLS-scoped client (so `current_org_id()` filters rows); the cron route passes
+ * a service-role client and the resolved `orgId`.
+ */
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Contact, OrgSettings, SequenceStep } from '@/lib/types/domain';
+import { resolveStatusEffect } from '@/lib/dialler/outcomes';
+import type { SentRef, InboundMessage } from '@/lib/email/types';
+import {
+  CONTACT_SELECT,
+  SEQUENCE_STEP_SELECT,
+  toContact,
+  toSequenceStep,
+  type ContactRow,
+  type SequenceStepRow,
+} from '@/lib/supabase/queries';
+
+/** A contact that is due to be emailed, with its sequence resolved. */
+export interface DueContact {
+  contact: Contact;
+  campaignId: string;
+  /** The step the contact is currently on (day_offset === contact.sequenceDay). */
+  step: SequenceStep;
+  /** All steps of the campaign's sequence, ascending — for next-step resolution. */
+  steps: SequenceStep[];
+  /** The template body/subject for `step`, or null when the step has none. */
+  template: { subject: string | null; body: string | null } | null;
+}
+
+export interface RecordSentInput {
+  orgId: string;
+  contact: Contact;
+  campaignId: string;
+  ref: SentRef;
+  subject: string;
+  sequenceDay: number;
+  nextSequenceDay: number | null;
+  nextFollowUp: string | null;
+  now: string;
+}
+
+export interface RecordInboundInput {
+  orgId: string;
+  contactId: string;
+  campaignId: string | null;
+  kind: 'reply' | 'bounce';
+  message: InboundMessage;
+  /** Contact email, for the suppression row. */
+  email: string;
+  now: string;
+}
+
+export interface CorrelationKeys {
+  inReplyTo: string | null;
+  conversationId: string | null;
+  from: string;
+}
+
+export interface EmailStore {
+  /** Eligible + enrolled + non-suppressed contacts due on/before `today` (§5). */
+  dueContacts(today: string): Promise<DueContact[]>;
+  /** Count of `sent` events on/after `today` (daily-cap accounting). */
+  sentCountToday(today: string): Promise<number>;
+  /** Persist a send: email_events(sent) + touchpoint + advance the contact (§4/§8). */
+  recordSent(input: RecordSentInput): Promise<void>;
+  /** Find the contact a reply/bounce correlates to, or null (§6). */
+  findSentForCorrelation(keys: CorrelationKeys): Promise<{ contactId: string; campaignId: string | null } | null>;
+  /** True if this inbound provider message was already recorded (dedup, §6/§7). */
+  inboundAlreadyRecorded(provider: string, messageId: string): Promise<boolean>;
+  /** Persist a reply/bounce: email_events + status + suppression + touchpoint (§8). */
+  recordInbound(input: RecordInboundInput): Promise<void>;
+  /** Max occurred_at across email_events, as the scan high-water mark (§6), or null. */
+  lastScanHighWater(): Promise<string | null>;
+}
+
+// --- Supabase adapter --------------------------------------------------------
+
+interface DueContactRow {
+  contact: Contact;
+  campaign_id: string;
+}
+
+/**
+ * Build the Supabase-backed store. `provider`/`settings` are captured so the
+ * adapter can stamp events and apply the org's status precedence.
+ */
+export function supabaseEmailStore(
+  client: SupabaseClient,
+  ctx: { orgId: string; provider: string; settings: OrgSettings },
+): EmailStore {
+  const skipWeekends = ctx.settings.seqSkipWeekends ?? true;
+  void skipWeekends; // scheduling is computed by the runner; kept for parity
+
+  return {
+    async dueContacts(today) {
+      // Candidate contacts: enrolled (follow_up set & due), non-terminal status,
+      // has an email, and not already sent today. RLS scopes to the org.
+      const { data: rows, error } = await client
+        .from('contacts')
+        .select(CONTACT_SELECT)
+        .lte('follow_up', today)
+        .not('follow_up', 'is', null)
+        .not('email', 'is', null)
+        .not('status', 'in', '(notinterested,bounced)')
+        .or(`last_emailed_at.is.null,last_emailed_at.lt.${today}T00:00:00.000Z`);
+      if (error) throw new Error(`dueContacts: ${error.message}`);
+      const candidates = (rows ?? []).map((r) => toContact(r as ContactRow));
+      if (candidates.length === 0) return [];
+
+      // Suppressed addresses (address-level, across campaigns).
+      const { data: supRows, error: supErr } = await client
+        .from('suppressions')
+        .select('email')
+        .eq('org_id', ctx.orgId);
+      if (supErr) throw new Error(`dueContacts.suppressions: ${supErr.message}`);
+      const suppressed = new Set((supRows ?? []).map((s) => (s.email as string).trim().toLowerCase()));
+
+      // Campaigns that link to a sequence, and that sequence's ordered steps.
+      const campaignIds = [...new Set(candidates.map((c) => c.campaignId))];
+      const { data: campRows, error: campErr } = await client
+        .from('campaigns')
+        .select('id, sequence_id')
+        .in('id', campaignIds)
+        .not('sequence_id', 'is', null);
+      if (campErr) throw new Error(`dueContacts.campaigns: ${campErr.message}`);
+      const campaignSequence = new Map<string, string>();
+      for (const c of campRows ?? []) campaignSequence.set(c.id as string, c.sequence_id as string);
+      if (campaignSequence.size === 0) return [];
+
+      const sequenceIds = [...new Set(campaignSequence.values())];
+      const { data: stepRows, error: stepErr } = await client
+        .from('sequence_steps')
+        .select(SEQUENCE_STEP_SELECT)
+        .in('sequence_id', sequenceIds)
+        .order('day_offset', { ascending: true });
+      if (stepErr) throw new Error(`dueContacts.steps: ${stepErr.message}`);
+      const stepsBySequence = new Map<string, SequenceStep[]>();
+      for (const s of stepRows ?? []) {
+        const step = toSequenceStep(s as SequenceStepRow);
+        const list = stepsBySequence.get(step.sequenceId) ?? [];
+        list.push(step);
+        stepsBySequence.set(step.sequenceId, list);
+      }
+
+      // Templates referenced by those steps.
+      const templateIds = [...new Set((stepRows ?? []).map((s) => s.template_id).filter(Boolean) as string[])];
+      const templateById = new Map<string, { subject: string | null; body: string | null }>();
+      if (templateIds.length > 0) {
+        const { data: tplRows, error: tplErr } = await client
+          .from('templates')
+          .select('id, subject, body')
+          .in('id', templateIds);
+        if (tplErr) throw new Error(`dueContacts.templates: ${tplErr.message}`);
+        for (const t of tplRows ?? [])
+          templateById.set(t.id as string, { subject: (t.subject as string) ?? null, body: (t.body as string) ?? null });
+      }
+
+      // Assemble: keep contacts whose campaign has a sequence, whose current
+      // step (day_offset === sequence_day) exists, and that aren't suppressed.
+      const due: DueContact[] = [];
+      for (const contact of candidates) {
+        if (contact.email && suppressed.has(contact.email.trim().toLowerCase())) continue;
+        const sequenceId = campaignSequence.get(contact.campaignId);
+        if (!sequenceId) continue;
+        const steps = stepsBySequence.get(sequenceId) ?? [];
+        const step = steps.find((s) => s.dayOffset === contact.sequenceDay);
+        if (!step) continue;
+        due.push({
+          contact,
+          campaignId: contact.campaignId,
+          step,
+          steps,
+          template: step.templateId ? (templateById.get(step.templateId) ?? null) : null,
+        });
+      }
+      return due;
+    },
+
+    async sentCountToday(today) {
+      const { count, error } = await client
+        .from('email_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('org_id', ctx.orgId)
+        .eq('type', 'sent')
+        .gte('occurred_at', `${today}T00:00:00.000Z`);
+      if (error) throw new Error(`sentCountToday: ${error.message}`);
+      return count ?? 0;
+    },
+
+    async recordSent(input) {
+      // email_events(sent) — deduped on (org, provider, message_id).
+      const { error: evErr } = await client.from('email_events').upsert(
+        {
+          org_id: input.orgId,
+          contact_id: input.contact.id,
+          campaign_id: input.campaignId,
+          type: 'sent',
+          provider: ctx.provider,
+          message_id: input.ref.messageId,
+          subject: input.subject,
+          sequence_day: input.sequenceDay,
+          occurred_at: input.ref.sentAt,
+        },
+        { onConflict: 'org_id,provider,message_id', ignoreDuplicates: true },
+      );
+      if (evErr) throw new Error(`recordSent.event: ${evErr.message}`);
+
+      // Sent touchpoint (deduped by a deterministic legacy key).
+      const { error: tpErr } = await client.from('touchpoints').upsert(
+        {
+          org_id: input.orgId,
+          contact_id: input.contact.id,
+          channel: 'email',
+          note: `Sent: ${input.subject}`,
+          occurred_at: input.now,
+          legacy_id: `email-sent-${ctx.provider}-${input.ref.messageId}`,
+        },
+        { onConflict: 'org_id,legacy_id', ignoreDuplicates: true },
+      );
+      if (tpErr) throw new Error(`recordSent.touchpoint: ${tpErr.message}`);
+
+      // Advance the contact: last_emailed_at + next step / follow-up.
+      const { error: cErr } = await client
+        .from('contacts')
+        .update({
+          last_emailed_at: input.now,
+          sequence_day: input.nextSequenceDay,
+          follow_up: input.nextFollowUp,
+        })
+        .eq('id', input.contact.id)
+        .eq('org_id', input.orgId);
+      if (cErr) throw new Error(`recordSent.contact: ${cErr.message}`);
+    },
+
+    async findSentForCorrelation(keys) {
+      // Match the inbound to a prior sent: by in_reply_to/conversation_id first,
+      // else by the sender address against a contact we emailed.
+      const orFilters: string[] = [];
+      if (keys.inReplyTo) orFilters.push(`message_id.eq.${keys.inReplyTo}`);
+      if (keys.conversationId) orFilters.push(`conversation_id.eq.${keys.conversationId}`);
+      if (orFilters.length > 0) {
+        const { data, error } = await client
+          .from('email_events')
+          .select('contact_id, campaign_id')
+          .eq('org_id', ctx.orgId)
+          .eq('type', 'sent')
+          .or(orFilters.join(','))
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error(`findSentForCorrelation: ${error.message}`);
+        if (data) return { contactId: data.contact_id as string, campaignId: (data.campaign_id as string) ?? null };
+      }
+      // Fallback: sender address → a contact we have a sent event for.
+      const fromEmail = extractEmail(keys.from);
+      if (fromEmail) {
+        const { data, error } = await client
+          .from('contacts')
+          .select('id, campaign_id')
+          .eq('org_id', ctx.orgId)
+          .ilike('email', fromEmail)
+          .limit(1)
+          .maybeSingle();
+        if (error) throw new Error(`findSentForCorrelation.contact: ${error.message}`);
+        if (data) return { contactId: data.id as string, campaignId: (data.campaign_id as string) ?? null };
+      }
+      return null;
+    },
+
+    async inboundAlreadyRecorded(provider, messageId) {
+      const { count, error } = await client
+        .from('email_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('org_id', ctx.orgId)
+        .eq('provider', provider)
+        .eq('message_id', messageId)
+        .in('type', ['reply', 'bounce']);
+      if (error) throw new Error(`inboundAlreadyRecorded: ${error.message}`);
+      return (count ?? 0) > 0;
+    },
+
+    async recordInbound(input) {
+      const note =
+        input.kind === 'reply' ? 'Reply received' : 'Bounced — address undeliverable';
+      const reason = input.kind === 'reply' ? 'replied' : 'bounced';
+      const nextStatus = input.kind === 'reply' ? 'green' : 'bounced';
+
+      // email_events(reply|bounce) — deduped on (org, provider, message_id).
+      const { error: evErr } = await client.from('email_events').upsert(
+        {
+          org_id: input.orgId,
+          contact_id: input.contactId,
+          campaign_id: input.campaignId,
+          type: input.kind,
+          provider: ctx.provider,
+          message_id: input.message.messageId,
+          conversation_id: input.message.conversationId ?? null,
+          in_reply_to: input.message.inReplyTo ?? null,
+          subject: input.message.subject,
+          occurred_at: input.message.receivedAt,
+        },
+        { onConflict: 'org_id,provider,message_id', ignoreDuplicates: true },
+      );
+      if (evErr) throw new Error(`recordInbound.event: ${evErr.message}`);
+
+      // Status, with Phase-3 precedence (never downgrade a stronger terminal state).
+      const { data: cur, error: curErr } = await client
+        .from('contacts')
+        .select('status')
+        .eq('id', input.contactId)
+        .eq('org_id', input.orgId)
+        .maybeSingle();
+      if (curErr) throw new Error(`recordInbound.read: ${curErr.message}`);
+      if (cur) {
+        const next = resolveStatusEffect((cur.status as Contact['status']) ?? 'none', nextStatus);
+        if (next !== null) {
+          const { error: sErr } = await client
+            .from('contacts')
+            .update({ status: next })
+            .eq('id', input.contactId)
+            .eq('org_id', input.orgId);
+          if (sErr) throw new Error(`recordInbound.status: ${sErr.message}`);
+        }
+      }
+
+      // Address-level suppression (un-idempotent insert guarded by the unique index).
+      const { error: supErr } = await client.from('suppressions').upsert(
+        {
+          org_id: input.orgId,
+          email: input.email.trim().toLowerCase(),
+          reason,
+          contact_id: input.contactId,
+        },
+        { onConflict: 'org_id,email', ignoreDuplicates: true },
+      );
+      if (supErr) throw new Error(`recordInbound.suppression: ${supErr.message}`);
+
+      // Touchpoint (deduped by the provider message id).
+      const { error: tpErr } = await client.from('touchpoints').upsert(
+        {
+          org_id: input.orgId,
+          contact_id: input.contactId,
+          channel: 'email',
+          note,
+          occurred_at: input.message.receivedAt,
+          legacy_id: `email-${input.kind}-${ctx.provider}-${input.message.messageId}`,
+        },
+        { onConflict: 'org_id,legacy_id', ignoreDuplicates: true },
+      );
+      if (tpErr) throw new Error(`recordInbound.touchpoint: ${tpErr.message}`);
+    },
+
+    async lastScanHighWater() {
+      const { data, error } = await client
+        .from('email_events')
+        .select('occurred_at')
+        .eq('org_id', ctx.orgId)
+        .order('occurred_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new Error(`lastScanHighWater: ${error.message}`);
+      return (data?.occurred_at as string) ?? null;
+    },
+  };
+}
+
+/** Extract a bare email from a possibly display-name-wrapped `From` value. */
+export function extractEmail(from: string): string | null {
+  const angle = /<([^>]+)>/.exec(from);
+  const candidate = (angle?.[1] ?? from).trim().toLowerCase();
+  return /^[^@\s]+@[^@\s]+$/.test(candidate) ? candidate : null;
+}
+
+// `DueContactRow` reserved for a future non-RPC selection path.
+export type { DueContactRow };
