@@ -45,7 +45,14 @@ export interface AmdStore {
     payload: Record<string, unknown>;
     occurredAt: string;
   }): Promise<void>;
-  insertTouchpoint(row: { orgId: string; contactId: string; note: string; occurredAt: string }): Promise<void>;
+  insertTouchpoint(row: {
+    orgId: string;
+    contactId: string;
+    note: string;
+    occurredAt: string;
+    /** Deterministic dedup key (unique per org) so retries don't double-log. */
+    legacyId: string;
+  }): Promise<void>;
   /** Mark an attempt's hangup/bridge actuation confirmed (at-least-once support). */
   markActuated(attemptId: string, occurredAt: string): Promise<void>;
 }
@@ -96,6 +103,22 @@ export async function applyEvent(
     return { result, actuations: [] };
   }
 
+  // Insert the auto-VM touchpoint BEFORE persisting the machine state, with a
+  // deterministic dedup key. If this insert fails, the state isn't yet `machine`,
+  // so the retry re-runs the fresh transition and re-emits the touchpoint; once
+  // it succeeds, the dedup key makes any later re-run a no-op. This closes the
+  // window where a transient touchpoint failure would be lost (the reducer
+  // suppresses log-vm-touchpoint once the attempt is already in `machine`).
+  if (result.sideEffects.includes('log-vm-touchpoint')) {
+    await store.insertTouchpoint({
+      orgId: attempt.orgId,
+      contactId: attempt.contactId,
+      note: AUTO_VOICEMAIL_NOTE,
+      occurredAt: now,
+      legacyId: `amd-vm-${attempt.id}`,
+    });
+  }
+
   // Persist only fields that actually change; set endedAt once, on the
   // transition INTO `ended` (not on a later duplicate).
   const patch: AttemptPatch = {};
@@ -118,15 +141,6 @@ export async function applyEvent(
     payload: trimPayload(event),
     occurredAt: now,
   });
-
-  if (result.sideEffects.includes('log-vm-touchpoint')) {
-    await store.insertTouchpoint({
-      orgId: attempt.orgId,
-      contactId: attempt.contactId,
-      note: AUTO_VOICEMAIL_NOTE,
-      occurredAt: now,
-    });
-  }
 
   const actuations = result.sideEffects.filter(
     (e): e is 'hangup' | 'bridge' => e === 'hangup' || e === 'bridge',

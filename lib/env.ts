@@ -30,6 +30,9 @@ const serverEnvSchema = publicEnvSchema
     AMD_MODE: z.enum(['premium', 'detect', 'detect_beep']).default('premium'),
     NO_ANSWER_TIMEOUT_MS: z.coerce.number().int().positive().default(22000),
   })
+  // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
+  // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So
+  // parseServerEnv succeeds with only the public URL present (see env.test.ts).
   .transform((env) => ({
     ...env,
     SUPABASE_SERVER_URL: env.SUPABASE_INTERNAL_URL ?? env.NEXT_PUBLIC_SUPABASE_URL,

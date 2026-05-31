@@ -16,6 +16,8 @@ describe('isDiallerMockEnabled', () => {
   it('is true when non-prod, flag set, and Supabase URL is loopback', () => {
     expect(isDiallerMockEnabled(enabledEnv)).toBe(true);
     expect(isDiallerMockEnabled({ ...enabledEnv, NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321' })).toBe(true);
+    // `new URL('http://[::1]:54321').hostname` === '[::1]' (brackets kept); both
+    // '[::1]' and bare '::1' are in LOCAL_SUPABASE_HOSTS, so either form matches.
     expect(isDiallerMockEnabled({ ...enabledEnv, NEXT_PUBLIC_SUPABASE_URL: 'http://[::1]:54321' })).toBe(true);
   });
 

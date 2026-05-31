@@ -65,13 +65,19 @@ export function supabaseAmdStore(client: SupabaseClient): AmdStore {
       if (error) throw new Error(`insertEvent(${row.attemptId}): ${error.message}`);
     },
     async insertTouchpoint(row) {
-      const { error } = await client.from('touchpoints').insert({
-        org_id: row.orgId,
-        contact_id: row.contactId,
-        channel: 'phone',
-        note: row.note,
-        occurred_at: row.occurredAt,
-      });
+      // Idempotent on (org_id, legacy_id): a retried webhook re-runs this insert
+      // safely without creating a duplicate touchpoint.
+      const { error } = await client.from('touchpoints').upsert(
+        {
+          org_id: row.orgId,
+          contact_id: row.contactId,
+          channel: 'phone',
+          note: row.note,
+          occurred_at: row.occurredAt,
+          legacy_id: row.legacyId,
+        },
+        { onConflict: 'org_id,legacy_id', ignoreDuplicates: true },
+      );
       if (error) throw new Error(`insertTouchpoint(${row.contactId}): ${error.message}`);
     },
     async markActuated(attemptId, occurredAt) {
