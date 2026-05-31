@@ -11,12 +11,12 @@ import { scanInboxAllOrgs } from '@/lib/email/cron';
 
 export const runtime = 'nodejs';
 
-/** Accept Vercel Cron's `Authorization: Bearer <secret>`, or an x-cron-secret / ?secret. */
+/** Accept Vercel Cron's `Authorization: Bearer <secret>`, or an `x-cron-secret`
+ * header. Header-only — never a query param (URLs leak into request logs). */
 function authorized(request: NextRequest, secret: string | undefined): boolean {
   if (!secret) return false;
   if (request.headers.get('authorization') === `Bearer ${secret}`) return true;
-  const header = request.headers.get('x-cron-secret') ?? new URL(request.url).searchParams.get('secret');
-  return header === secret;
+  return request.headers.get('x-cron-secret') === secret;
 }
 
 async function handle(request: NextRequest): Promise<NextResponse> {

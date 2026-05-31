@@ -32,6 +32,10 @@ const serverEnvSchema = publicEnvSchema
     // Phase 5 — shared secret gating the scheduled email runner/scanner routes
     // (Vercel Cron). Optional: unset in dev (manual trigger only).
     CRON_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    // The single org the cron sender/scanner serves (the org whose mailbox the
+    // configured email driver/token points at). One global driver = one mailbox,
+    // so cron must NOT fan out across orgs; set this per deployment.
+    CRON_ORG_ID: z.preprocess(emptyStringAsUndefined, z.string().uuid().optional()),
   })
   // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
   // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So

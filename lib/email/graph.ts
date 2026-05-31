@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { EmailDriver } from '@/lib/email/driver';
 import {
   EmailDriverError,
@@ -20,6 +21,7 @@ interface GraphDriverOptions {
 
 /** Shape of a Graph message in a `/messages` list response (fields we map). */
 interface GraphMessage {
+  id?: string;
   internetMessageId?: string;
   conversationId?: string;
   subject?: string;
@@ -45,7 +47,6 @@ export class GraphDriver implements EmailDriver {
   readonly name: GraphEnvironment;
   private readonly accessToken: string | undefined;
   private readonly fetchImpl: typeof fetch;
-  private sendCounter = 0;
 
   constructor(env: GraphEnvironment, opts: GraphDriverOptions = {}) {
     this.name = env;
@@ -75,10 +76,10 @@ export class GraphDriver implements EmailDriver {
     if (!resp.ok) {
       throw new EmailDriverError(`Graph sendMail failed (${resp.status})`, undefined, 'GRAPH_SEND');
     }
-    // sendMail returns 202 with no body; synthesise a correlation id for dedup.
-    this.sendCounter += 1;
+    // sendMail returns 202 with no body; synthesise a process-independent unique
+    // id for dedup (a per-instance counter + ms clock could collide).
     return {
-      messageId: message.correlationId ?? `graph-${this.name}-${Date.now()}-${this.sendCounter}`,
+      messageId: message.correlationId ?? `graph-${this.name}-${randomUUID()}`,
       provider: this.name,
       sentAt: new Date().toISOString(),
     };
@@ -119,7 +120,9 @@ export class GraphDriver implements EmailDriver {
     // the Graph path is wired against a real tenant. (The mock driver puts the
     // recipient in `from` directly, so the local loop works.)
     const out: InboundMessage = {
-      messageId: m.internetMessageId ?? '',
+      // Fall back to Graph's stable `id` so distinct messages don't collapse to
+      // one '' message_id under the (org, provider, message_id) dedup.
+      messageId: m.internetMessageId ?? m.id ?? '',
       from: m.from?.emailAddress?.address ?? '',
       to: (m.toRecipients ?? []).map((r) => r.emailAddress?.address ?? '').filter(Boolean),
       subject: m.subject ?? '',
