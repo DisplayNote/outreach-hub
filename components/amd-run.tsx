@@ -236,7 +236,7 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
 
   const record = useCallback(
     async (outcome: CallOutcomeKey) => {
-      if (!current || recording) return;
+      if (!current || recording || skipping) return;
       setRecording(outcome);
       try {
         await logCallOutcome(current.id, { outcome });
@@ -251,7 +251,7 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
         setRecording(null);
       }
     },
-    [current, recording],
+    [current, recording, skipping],
   );
 
   const hangup = useCallback(async () => {
@@ -369,7 +369,7 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
               Hang up
             </button>
           ) : null}
-          <button type="button" onClick={skip} style={secondaryBtn} disabled={recording !== null}>
+          <button type="button" onClick={skip} style={secondaryBtn} disabled={recording !== null || skipping}>
             Skip
           </button>
           <button type="button" onClick={togglePause} style={secondaryBtn}>
@@ -388,7 +388,7 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
               <button
                 key={o.key}
                 type="button"
-                disabled={recording !== null}
+                disabled={recording !== null || skipping}
                 onClick={() => record(o.key)}
                 style={{ ...outcomeBtn, cursor: recording !== null ? 'wait' : 'pointer' }}
               >
