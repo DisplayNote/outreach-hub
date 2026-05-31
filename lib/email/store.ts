@@ -9,29 +9,22 @@
  * a service-role client and the resolved `orgId`.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Contact, OrgSettings, SequenceStep } from '@/lib/types/domain';
+import type { Contact, OrgSettings } from '@/lib/types/domain';
 import { resolveStatusEffect } from '@/lib/dialler/outcomes';
 import { escapeLike } from '@/lib/supabase/like';
 import { isSystemSender } from '@/lib/email/classify';
 import type { SentRef, InboundMessage } from '@/lib/email/types';
-import {
-  CONTACT_SELECT,
-  SEQUENCE_STEP_SELECT,
-  toContact,
-  toSequenceStep,
-  type ContactRow,
-  type SequenceStepRow,
-} from '@/lib/supabase/queries';
+import { toContact, type ContactRow } from '@/lib/supabase/queries';
 
-/** A contact that is due to be emailed, with its sequence resolved. */
+/** A contact that is due to be emailed, with its sequence step resolved. */
 export interface DueContact {
   contact: Contact;
   campaignId: string;
-  /** The step the contact is currently on (day_offset === contact.sequenceDay). */
-  step: SequenceStep;
-  /** All steps of the campaign's sequence, ascending — for next-step resolution. */
-  steps: SequenceStep[];
-  /** The template body/subject for `step`, or null when the step has none. */
+  /** The current step's day_offset (=== contact.sequenceDay). */
+  sequenceDay: number;
+  /** The next step's day_offset (for scheduling the follow-up), or null at the last step. */
+  nextDayOffset: number | null;
+  /** The template subject/body for the current step, or null when the step has none. */
   template: { subject: string | null; body: string | null } | null;
 }
 
@@ -59,15 +52,14 @@ export interface RecordInboundInput {
 export interface CorrelationKeys {
   inReplyTo: string | null;
   conversationId: string | null;
+  /** The address to correlate on: the sender for a reply, the recovered failed
+   * recipient for a bounce (the scanner resolves which — an NDR's actual sender
+   * is the system mailer, never the prospect). */
   from: string;
   /** When the inbound arrived — the sender fallback only matches a `sent` event
    * that occurred no later than this (an inbound can't be a reply to a send that
    * hadn't happened yet). */
   receivedAt: string;
-  /** For a bounce/NDR: the recovered failed recipient (the prospect). The sender
-   * fallback correlates on this in preference to `from` (which is the system
-   * mailer for an NDR). */
-  failedRecipient?: string | null;
 }
 
 export interface EmailStore {
@@ -109,9 +101,15 @@ export interface ScanCursor {
 
 // --- Supabase adapter --------------------------------------------------------
 
-interface DueContactRow {
-  contact: Contact;
+/** A row returned by the due_email_contacts RPC (snake_case, `contact` is a row jsonb). */
+interface DueContactRpcRow {
+  contact: ContactRow;
   campaign_id: string;
+  sequence_day: number;
+  next_day_offset: number | null;
+  has_template: boolean;
+  template_subject: string | null;
+  template_body: string | null;
 }
 
 /**
@@ -127,126 +125,39 @@ export function supabaseEmailStore(
 
   return {
     async dueContacts(today, limit) {
-      // Candidate contacts: enrolled (follow_up set & due), non-terminal status,
-      // has an email, and not already sent today. RLS scopes to the org.
-      // org_id filtered EXPLICITLY — the cron path uses the service role
-      // (bypasses RLS), so without this one org's run would process every org's
-      // contacts. `meeting` is excluded alongside notinterested/bounced: it's a
-      // stronger terminal state (a booked meeting), so a contact who reached it
-      // must not keep receiving automated follow-ups even without a suppression.
-      let query = client
-        .from('contacts')
-        .select(CONTACT_SELECT)
-        .eq('org_id', ctx.orgId)
-        .lte('follow_up', today)
-        .not('follow_up', 'is', null)
-        .not('email', 'is', null)
-        .not('status', 'in', '(notinterested,bounced,meeting)')
-        .or(`last_emailed_at.is.null,last_emailed_at.lt.${today}T00:00:00.000Z`);
-      // Most-overdue first (matches the runner's primary sort key) + bound the
-      // fetch to the cap, so the query and the suppression `in(...)` below stay
-      // small even with a large overdue backlog.
-      if (limit !== undefined) {
-        query = query
-          .order('follow_up', { ascending: true })
-          .order('sequence_day', { ascending: true, nullsFirst: false })
-          .limit(limit);
-      }
-      const { data: rows, error } = await query;
+      // Full selection happens server-side (due_email_contacts RPC): enrolment,
+      // non-terminal status, has-email, not-emailed-today, campaign→sequence link,
+      // a step at the contact's current sequence_day, and a suppression anti-join
+      // — all filtered, ordered most-overdue, and limited in ONE query. This
+      // returns only sendable rows, so a client-side limit can't starve the batch
+      // with suppressed/unlinked leaders, and there's no giant suppression in(...).
+      // p_limit null = all rows (the queue page); the runner passes its cap.
+      const { data, error } = await client.rpc('due_email_contacts', {
+        p_org_id: ctx.orgId,
+        p_today: today,
+        p_limit: limit ?? null,
+      });
       if (error) throw new Error(`dueContacts: ${error.message}`);
-      const candidates = (rows ?? []).map((r) => toContact(r as ContactRow));
-      if (candidates.length === 0) return [];
-
-      // Which of THESE candidates are suppressed — query only the candidate
-      // addresses, not the whole org's suppression list (which can grow large).
-      const candidateEmails = [
-        ...new Set(candidates.map((c) => c.email?.trim().toLowerCase()).filter((e): e is string => !!e)),
-      ];
-      const { data: supRows, error: supErr } = await client
-        .from('suppressions')
-        .select('email')
-        .eq('org_id', ctx.orgId)
-        .in('email', candidateEmails);
-      if (supErr) throw new Error(`dueContacts.suppressions: ${supErr.message}`);
-      const suppressed = new Set((supRows ?? []).map((s) => (s.email as string).trim().toLowerCase()));
-
-      // Campaigns that link to a sequence, and that sequence's ordered steps.
-      const campaignIds = [...new Set(candidates.map((c) => c.campaignId))];
-      const { data: campRows, error: campErr } = await client
-        .from('campaigns')
-        .select('id, sequence_id')
-        .eq('org_id', ctx.orgId) // service role bypasses RLS — scope explicitly
-        .in('id', campaignIds)
-        .not('sequence_id', 'is', null);
-      if (campErr) throw new Error(`dueContacts.campaigns: ${campErr.message}`);
-      const campaignSequence = new Map<string, string>();
-      for (const c of campRows ?? []) campaignSequence.set(c.id as string, c.sequence_id as string);
-      if (campaignSequence.size === 0) return [];
-
-      const sequenceIds = [...new Set(campaignSequence.values())];
-      const { data: stepRows, error: stepErr } = await client
-        .from('sequence_steps')
-        .select(SEQUENCE_STEP_SELECT)
-        .in('sequence_id', sequenceIds)
-        .order('day_offset', { ascending: true });
-      if (stepErr) throw new Error(`dueContacts.steps: ${stepErr.message}`);
-      const stepsBySequence = new Map<string, SequenceStep[]>();
-      for (const s of stepRows ?? []) {
-        const step = toSequenceStep(s as SequenceStepRow);
-        const list = stepsBySequence.get(step.sequenceId) ?? [];
-        list.push(step);
-        stepsBySequence.set(step.sequenceId, list);
-      }
-
-      // Templates referenced by those steps.
-      const templateIds = [...new Set((stepRows ?? []).map((s) => s.template_id).filter(Boolean) as string[])];
-      const templateById = new Map<string, { subject: string | null; body: string | null }>();
-      if (templateIds.length > 0) {
-        const { data: tplRows, error: tplErr } = await client
-          .from('templates')
-          .select('id, subject, body')
-          .in('id', templateIds);
-        if (tplErr) throw new Error(`dueContacts.templates: ${tplErr.message}`);
-        for (const t of tplRows ?? [])
-          templateById.set(t.id as string, { subject: (t.subject as string) ?? null, body: (t.body as string) ?? null });
-      }
-
-      // Assemble: keep contacts whose campaign has a sequence, whose current
-      // step (day_offset === sequence_day) exists, and that aren't suppressed.
-      const due: DueContact[] = [];
-      for (const contact of candidates) {
-        if (contact.email && suppressed.has(contact.email.trim().toLowerCase())) continue;
-        const sequenceId = campaignSequence.get(contact.campaignId);
-        if (!sequenceId) continue;
-        const steps = stepsBySequence.get(sequenceId) ?? [];
-        const step = steps.find((s) => s.dayOffset === contact.sequenceDay);
-        if (!step) continue;
-        due.push({
-          contact,
-          campaignId: contact.campaignId,
-          step,
-          steps,
-          template: step.templateId ? (templateById.get(step.templateId) ?? null) : null,
-        });
-      }
-      return due;
+      return ((data ?? []) as DueContactRpcRow[]).map((r) => ({
+        contact: toContact(r.contact),
+        campaignId: r.campaign_id,
+        sequenceDay: r.sequence_day,
+        nextDayOffset: r.next_day_offset ?? null,
+        // has_template distinguishes "no template linked" (skip+surface) from a
+        // template whose subject/body are themselves null (render the signature).
+        template: r.has_template ? { subject: r.template_subject, body: r.template_body } : null,
+      }));
     },
 
     async countDue(today) {
-      // Head count (no rows) of the same pre-filter as dueContacts. Used to
-      // report how many remain beyond the cap; an upper estimate, since it
-      // doesn't subtract suppressed / sequence-unlinked candidates.
-      const { count, error } = await client
-        .from('contacts')
-        .select('id', { count: 'exact', head: true })
-        .eq('org_id', ctx.orgId)
-        .lte('follow_up', today)
-        .not('follow_up', 'is', null)
-        .not('email', 'is', null)
-        .not('status', 'in', '(notinterested,bounced,meeting)')
-        .or(`last_emailed_at.is.null,last_emailed_at.lt.${today}T00:00:00.000Z`);
+      // Same predicate as due_email_contacts (POST suppression/sequence/step
+      // filtering), so runSender().remaining is the real count beyond the cap.
+      const { data, error } = await client.rpc('count_due_email_contacts', {
+        p_org_id: ctx.orgId,
+        p_today: today,
+      });
       if (error) throw new Error(`countDue: ${error.message}`);
-      return count ?? 0;
+      return (data as number | null) ?? 0;
     },
 
     async sentCountToday(today) {
@@ -308,16 +219,12 @@ export function supabaseEmailStore(
         const hit = await byField('conversation_id', keys.conversationId);
         if (hit) return hit;
       }
-      // Fallback: the failed recipient (NDR) or sender address → a contact we
-      // have a sent event for. For a bounce, `from` is the system mailer, so the
-      // recovered failedRecipient (the prospect) is what correlates. Never
-      // correlate on a system-mailer address itself: an NDR whose failed
-      // recipient couldn't be recovered must be ignored (the InboundMessage
-      // .failedRecipient contract), not matched against a contact who happens to
-      // share the postmaster/mailer-daemon address.
-      const correlationAddr = keys.failedRecipient ?? keys.from;
-      const fromEmail = extractEmail(correlationAddr);
-      if (fromEmail && !isSystemSender(correlationAddr)) {
+      // Fallback: the correlation address (sender for a reply, failed recipient
+      // for a bounce — the scanner already resolved it) → a contact we have a
+      // sent event for. Never correlate on a system-mailer address: defends
+      // against a stray system sender slipping through as the correlation key.
+      const fromEmail = extractEmail(keys.from);
+      if (fromEmail && !isSystemSender(keys.from)) {
         const { data, error } = await client
           .from('contacts')
           .select('id, campaign_id')
@@ -477,6 +384,3 @@ export function extractEmail(from: string): string | null {
   const candidate = (angle?.[1] ?? from).trim().toLowerCase();
   return /^[^@\s]+@[^@\s]+$/.test(candidate) ? candidate : null;
 }
-
-// `DueContactRow` reserved for a future non-RPC selection path.
-export type { DueContactRow };

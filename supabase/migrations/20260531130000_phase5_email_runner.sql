@@ -215,3 +215,94 @@ as $$
       || jsonb_build_object('lastInboxScanAt', p_at, 'lastInboxScanIds', p_ids)
     where id = p_org_id;
 $$;
+
+-- Due-contact selection (server-side) -----------------------------------------
+-- The sender's candidate set, computed in ONE query so the runner fetches only
+-- sendable rows up to the cap — instead of materialising the whole overdue queue
+-- and filtering in app code (which both bloats the suppression `in(...)` and,
+-- when limiting client-side, starves the batch if the first N are suppressed or
+-- unlinked). A row is due when the contact is enrolled (follow_up set & due),
+-- non-terminal, has an email, hasn't been emailed today, its campaign links a
+-- sequence, that sequence has a step at the contact's current sequence_day, and
+-- the address isn't suppressed. Ordered most-overdue first; `p_limit` NULL = all
+-- (the queue page), 0 = none. `next_day_offset` is the next step's offset (for
+-- follow-up scheduling) or NULL at the last step; `has_template` lets the runner
+-- skip+surface a step with no template rather than send blank mail.
+-- SECURITY INVOKER: manual path under the caller's RLS, cron via service role;
+-- p_org_id scopes either way.
+create or replace function public.due_email_contacts(
+  p_org_id uuid,
+  p_today date,
+  p_limit int
+) returns table (
+  contact jsonb,
+  campaign_id uuid,
+  sequence_day int,
+  next_day_offset int,
+  has_template boolean,
+  template_subject text,
+  template_body text
+)
+  language sql
+  stable
+as $$
+  select
+    to_jsonb(c) as contact,
+    c.campaign_id,
+    c.sequence_day,
+    (select min(ss2.day_offset)
+       from public.sequence_steps ss2
+      where ss2.sequence_id = cam.sequence_id
+        and ss2.org_id = c.org_id
+        and ss2.day_offset > c.sequence_day) as next_day_offset,
+    (ss.template_id is not null) as has_template,
+    t.subject as template_subject,
+    t.body as template_body
+  from public.contacts c
+  join public.campaigns cam
+    on cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
+  join public.sequence_steps ss
+    on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id and ss.day_offset = c.sequence_day
+  left join public.templates t
+    on t.id = ss.template_id and t.org_id = c.org_id
+  where c.org_id = p_org_id
+    and c.follow_up is not null
+    and c.follow_up <= p_today
+    and c.email is not null
+    and c.status not in ('notinterested', 'bounced', 'meeting')
+    and (c.last_emailed_at is null or c.last_emailed_at < (p_today::timestamp at time zone 'UTC'))
+    and not exists (
+      select 1 from public.suppressions s
+       where s.org_id = c.org_id and s.email = lower(btrim(c.email))
+    )
+  order by c.follow_up asc, c.sequence_day asc
+  limit p_limit;
+$$;
+
+-- Accurate "how many are due" count (same predicate as due_email_contacts, post
+-- suppression/sequence/step filtering) so runSender().remaining is real, not an
+-- over-estimate that counts suppressed/unlinked rows.
+create or replace function public.count_due_email_contacts(
+  p_org_id uuid,
+  p_today date
+) returns integer
+  language sql
+  stable
+as $$
+  select count(*)::int
+  from public.contacts c
+  join public.campaigns cam
+    on cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
+  join public.sequence_steps ss
+    on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id and ss.day_offset = c.sequence_day
+  where c.org_id = p_org_id
+    and c.follow_up is not null
+    and c.follow_up <= p_today
+    and c.email is not null
+    and c.status not in ('notinterested', 'bounced', 'meeting')
+    and (c.last_emailed_at is null or c.last_emailed_at < (p_today::timestamp at time zone 'UTC'))
+    and not exists (
+      select 1 from public.suppressions s
+       where s.org_id = c.org_id and s.email = lower(btrim(c.email))
+    );
+$$;

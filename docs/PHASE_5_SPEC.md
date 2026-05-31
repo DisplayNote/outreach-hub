@@ -274,25 +274,33 @@ implicitly by the importer — confirm. Until enrolled, the runner ignores the c
 `{ planned, sent, skipped, errors }`. Core selection (legacy day-spread sender + handover
 §6.1/§6.4):
 
-**Eligible contact** (all must hold):
+**Eligible contact** (all must hold) — selected **server-side** by the
+`due_email_contacts(p_org_id, p_today, p_limit)` SQL function (a single joined/filtered/
+ordered/limited query), so the runner fetches only sendable rows up to the cap instead of
+materialising the whole overdue queue and filtering in app code:
 
-1. `contact.email` is non-null and valid;
-2. `lower(email)` **not** in `suppressions` (covers replied/bounced/manual);
-3. `contact.status` ∉ {`notinterested`, `bounced`} (redundant with suppression, but a cheap
-   guard);
+1. `contact.email` is non-null;
+2. `lower(trim(email))` **not** in `suppressions` (a NOT-EXISTS anti-join; covers
+   replied/bounced/manual);
+3. `contact.status` ∉ {`notinterested`, `bounced`, `meeting`} (`meeting` is a stronger
+   terminal state — a booked meeting must not keep receiving follow-ups);
 4. the contact's campaign has a `sequence_id` and the contact is **enrolled** (§4.2):
    `follow_up` is non-null and `follow_up <= today`;
-5. a current/next due `sequence_step` exists for `contact.sequence_day`;
+5. a `sequence_step` exists at `contact.sequence_day` (the current step); its `next_day_offset`
+   (next step) and template are resolved in the same query;
 6. **not already sent today:** `last_emailed_at` is null or `< today` (idempotent re-run —
    reinforced by the unique `email_events(org,provider,message_id)` arbiter, §2.3).
 
-**Ordering & cap:** order by `follow_up` ascending (most overdue first), then by sequence step
-priority (handover §6.4 "newer contacts get earlier steps first" — **[DECISION 5.1]** order by
-`sequence_day` ascending so early-step contacts are prioritised; confirm). Apply the **daily
-cap** = `min(opts.limit ?? ∞, OrgSettings.dailyGoal ?? 30) − (emails already sent today)`,
-where "already sent today" counts `email_events(type='sent')` with `occurred_at >= today`
-(handover §6.4). When the cap is exhausted, stop and report how many were left (**no silent
-truncation** — surface the remainder count).
+**Ordering & cap:** the query orders by `follow_up` ascending (most overdue first), then
+`sequence_day` ascending (**[DECISION 5.1]** early-step contacts first), and limits to the
+**daily cap** = `min(opts.limit ?? ∞, OrgSettings.dailyGoal ?? 30) − (emails already sent
+today)` (a small buffer is added so per-contact failures backfill rather than under-send;
+"already sent today" counts `email_events(type='sent')` with `occurred_at >= today`). The
+**remainder** is reported from `count_due_email_contacts` (the same predicate, so it's the real
+count beyond the cap, not an over-estimate) — **no silent truncation**.
+
+A step whose `template_id` is null is **skipped and surfaced** in `errors` (never sent as
+blank-subject/body mail).
 
 **Weekend guard:** if `seqSkipWeekends` and today is Sat/Sun, the runner is a no-op (legacy
 exited on weekends, L5520–5524).

@@ -58,12 +58,22 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
   const result: ScanInboxResult = { replies: 0, bounces: 0, ignored: 0, deduped: 0 };
 
   for (const message of messages) {
+    // Classify first: a bounce's `from` is the system/bounce mailer, so the
+    // address to correlate on is the recovered failed recipient — NOT `from`.
+    // A bounce with no recoverable recipient can't be correlated; ignore it
+    // rather than matching the bounce sender (which could mark/suppress a contact
+    // who happens to share that address). A reply correlates on its sender.
+    const kind = classifyInbound(message);
+    const correlationFrom = kind === 'bounce' ? message.failedRecipient : message.from;
+    if (!correlationFrom) {
+      result.ignored += 1;
+      continue;
+    }
     const match = await deps.store.findSentForCorrelation({
       inReplyTo: message.inReplyTo ?? null,
       conversationId: message.conversationId ?? null,
-      from: message.from,
+      from: correlationFrom,
       receivedAt: message.receivedAt,
-      failedRecipient: message.failedRecipient ?? null,
     });
     if (!match) {
       result.ignored += 1;
@@ -74,7 +84,6 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
       continue;
     }
 
-    const kind = classifyInbound(message);
     await deps.store.recordInbound({
       orgId: deps.orgId,
       contactId: match.contactId,

@@ -12,10 +12,14 @@ import type { EmailDriver } from '@/lib/email/driver';
 import type { OutboundMessage } from '@/lib/email/types';
 import type { DueContact, EmailStore } from '@/lib/email/store';
 import { renderTemplate } from '@/lib/email/render';
-import { businessDayAdd, nextStep } from '@/lib/email/schedule';
+import { businessDayAdd } from '@/lib/email/schedule';
 import type { OrgSettings } from '@/lib/types/domain';
 
 const DEFAULT_DAILY_GOAL = 30;
+// Fetch a few more than the cap so a per-contact send/template failure (which
+// doesn't consume a cap slot) can be backfilled from the next candidate instead
+// of under-sending. Bounded + small; the `processed >= cap` guard still caps.
+const SEND_BUFFER = 10;
 
 /** Escape HTML so rendered template/contact text can't alter the email markup. */
 function escapeHtml(text: string): string {
@@ -63,7 +67,7 @@ function order(a: DueContact, b: DueContact): number {
   const fa = a.contact.followUp ?? '';
   const fb = b.contact.followUp ?? '';
   if (fa !== fb) return fa < fb ? -1 : 1;
-  return a.step.dayOffset - b.step.dayOffset;
+  return a.sequenceDay - b.sequenceDay;
 }
 
 export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Promise<RunSenderResult> {
@@ -79,11 +83,12 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
   const dailyRemaining = Math.max(0, dailyGoal - sentToday);
   const cap = Math.min(opts.limit ?? Number.POSITIVE_INFINITY, dailyRemaining);
 
-  // Fetch only up to the cap (most-overdue first), and report the rest via a
-  // cheap head count — so a large backlog isn't materialised to send a small
-  // batch. `remaining` is cap-relative ("eligible due beyond what this run can
-  // send"), so it's correct for dry runs and the 0/∞ cap too.
-  const fetchLimit = Number.isFinite(cap) ? cap : undefined;
+  // Fetch only up to the cap (+ a small buffer to absorb per-contact failures),
+  // most-overdue first, and report the rest via a cheap accurate count — so a
+  // large backlog isn't materialised to send a small batch. `remaining` is
+  // cap-relative ("eligible due beyond what this run can send"), so it's correct
+  // for dry runs and the 0/∞ cap too.
+  const fetchLimit = Number.isFinite(cap) ? (cap > 0 ? cap + SEND_BUFFER : 0) : undefined;
   const dueAll = (await deps.store.dueContacts(opts.today, fetchLimit)).slice().sort(order);
   const dueTotal = await deps.store.countDue(opts.today);
 
@@ -94,7 +99,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
     // Defensive: the fetch is already bounded to the cap, but a fake/over-fetch
     // could return more — never send past the cap.
     if (processed >= cap) break;
-    const { contact, step, steps, template } = item;
+    const { contact, sequenceDay, nextDayOffset, template } = item;
     if (!contact.email) {
       result.skipped += 1;
       continue;
@@ -140,18 +145,16 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
     processed += 1;
 
     try {
-      const next = nextStep(steps, step.dayOffset);
-      const nextFollowUp = next
-        ? businessDayAdd(opts.today, next.dayOffset - step.dayOffset, skipWeekends)
-        : null;
+      const nextFollowUp =
+        nextDayOffset !== null ? businessDayAdd(opts.today, nextDayOffset - sequenceDay, skipWeekends) : null;
       await deps.store.recordSent({
         orgId: contact.orgId,
         contact,
         campaignId: item.campaignId,
         ref,
         subject: rendered.subject,
-        sequenceDay: step.dayOffset,
-        nextSequenceDay: next ? next.dayOffset : null,
+        sequenceDay,
+        nextSequenceDay: nextDayOffset,
         nextFollowUp,
         now: deps.now(),
       });

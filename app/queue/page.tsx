@@ -42,7 +42,7 @@ export default async function QueuePage() {
     contactId: d.contact.id,
     name: contactName(d.contact.firstName, d.contact.lastName, d.contact.email),
     email: d.contact.email ?? '',
-    sequenceDay: d.step.dayOffset,
+    sequenceDay: d.sequenceDay,
     subject: renderTemplate(d.template ?? { subject: null, body: null }, d.contact, settings).subject,
   }));
 

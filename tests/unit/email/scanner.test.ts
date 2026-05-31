@@ -24,9 +24,9 @@ function fakeStore(rec: Rec): EmailStore {
     },
     async recordSent() {},
     async findSentForCorrelation(keys) {
-      // Mirror the adapter: a bounce correlates on the recovered failedRecipient
-      // (its `from` is the system mailer), a reply on the sender address.
-      const addr = (keys.failedRecipient ?? keys.from).toLowerCase();
+      // The scanner resolves `from` to the right address (sender for a reply,
+      // failed recipient for a bounce) before calling.
+      const addr = keys.from.toLowerCase();
       return rec.correlatable.has(addr) ? { contactId: `contact-${addr}`, campaignId: 'camp1' } : null;
     },
     async inboundAlreadyRecorded(_provider, messageId) {

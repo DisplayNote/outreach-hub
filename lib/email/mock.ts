@@ -38,9 +38,14 @@ export function buildSimulatedReply(opts: {
  * shortcuts it so the local reply/bounce loop is exercisable.) */
 export function buildSimulatedBounce(opts: { recipient: string; subject?: string; receivedAt?: string }): InboundMessage {
   counter += 1;
+  // Mirror a real NDR: it comes FROM the system mailer with the failed recipient
+  // carried in `failedRecipient` (the scanner correlates a bounce on that, never
+  // on the bounce sender). The GraphDriver recovers the same field from a real
+  // delivery-status report.
   return {
     messageId: `mock-ndr-${counter}-${Date.now()}`,
-    from: opts.recipient,
+    from: 'mailer-daemon@local',
+    failedRecipient: opts.recipient,
     to: ['me@local'],
     subject: opts.subject ?? 'Undeliverable: message not delivered',
     receivedAt: opts.receivedAt ?? new Date().toISOString(),
@@ -108,12 +113,11 @@ export class MockDriver implements EmailDriver {
   }
 
   /**
-   * Dev/test simulator: enqueue a bounce/NDR for a failed recipient. The mock
-   * puts the failed recipient straight into `from`, so the scanner's sender
-   * correlation just works locally. (A real Graph NDR instead comes from
-   * postmaster/mailer-daemon with the failed recipient in the delivery-status
-   * report; GraphDriver.toInbound recovers it into `failedRecipient`
-   * best-effort — see parseFailedRecipient there.)
+   * Dev/test simulator: enqueue a bounce/NDR for a failed recipient. Mirrors a
+   * real NDR — from the system mailer with the failed recipient in
+   * `failedRecipient` (what the scanner correlates a bounce on). The GraphDriver
+   * recovers the same field from a real delivery-status report best-effort (see
+   * parseFailedRecipient there).
    */
   simulateBounce(opts: { recipient: string; subject?: string; receivedAt?: string }): InboundMessage {
     const message = buildSimulatedBounce(opts);

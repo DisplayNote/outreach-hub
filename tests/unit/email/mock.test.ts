@@ -86,7 +86,9 @@ describe('MockDriver', () => {
     it('simulateBounce enqueues an NDR classified as a bounce, correlatable by the failed recipient', () => {
       const msg = driver.simulateBounce({ recipient: 'bad@example.com' });
       expect(classifyInbound(msg)).toBe('bounce');
-      expect(msg.from).toBe('bad@example.com');
+      // From the system mailer; the failed recipient is what the scanner correlates on.
+      expect(msg.from).toBe('mailer-daemon@local');
+      expect(msg.failedRecipient).toBe('bad@example.com');
     });
 
     it('gives each simulated message a unique id', () => {

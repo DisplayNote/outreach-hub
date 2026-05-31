@@ -2,20 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { runSender } from '@/lib/email/runner';
 import { MockDriver } from '@/lib/email/mock';
 import type { DueContact, EmailStore, RecordSentInput } from '@/lib/email/store';
-import type { Contact, OrgSettings, SequenceStep } from '@/lib/types/domain';
-
-function step(order: number, dayOffset: number, templateId: string | null): SequenceStep {
-  return {
-    id: `s${order}`,
-    orgId: 'o1',
-    sequenceId: 'seq1',
-    stepOrder: order,
-    dayOffset,
-    channel: 'email',
-    templateId,
-    createdAt: '2026-05-31T00:00:00.000Z',
-  };
-}
+import type { Contact, OrgSettings } from '@/lib/types/domain';
 
 function contact(id: string, over: Partial<Contact> = {}): Contact {
   return {
@@ -44,15 +31,18 @@ function contact(id: string, over: Partial<Contact> = {}): Contact {
   };
 }
 
-const steps = [step(1, 0, 't1'), step(2, 3, 't2')];
+// Two-step sequence at day offsets 0 and 3 (as the store would resolve them).
+const STEP_OFFSETS = [0, 3];
 
 function due(id: string, over: Partial<Contact> = {}): DueContact {
   const c = contact(id, over);
+  const sequenceDay = c.sequenceDay ?? 0;
+  const nextDayOffset = STEP_OFFSETS.find((d) => d > sequenceDay) ?? null;
   return {
     contact: c,
     campaignId: 'camp1',
-    step: steps.find((s) => s.dayOffset === c.sequenceDay)!,
-    steps,
+    sequenceDay,
+    nextDayOffset,
     template: { subject: 'Hi {firstName}', body: 'Body for {company}' },
   };
 }
