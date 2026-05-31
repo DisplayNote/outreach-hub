@@ -217,7 +217,7 @@
 
 **Files:** Create `app/api/email/run/route.ts`, `app/api/email/scan/route.ts`; UI under `app/queue/`, additions to `app/sequences/`, a suppressions admin view; dev simulate buttons.
 
-- [ ] **Step 1: Cron routes** (`runtime='nodejs'`): POST gated by `x-cron-secret` / `?secret=` vs `CRON_SECRET` (401 otherwise); call `runSender`/`scanInbox` core for each org (or the configured org). Mirror the Phase-4 webhook-route gating discipline.
+- [ ] **Step 1: Cron routes** (`runtime='nodejs'`): GET/POST gated by `Authorization: Bearer <CRON_SECRET>` or an `x-cron-secret` header vs `CRON_SECRET` (401 otherwise) — header-only, NEVER a `?secret=` query param (URLs leak into logs). Scheduled in `vercel.json`. Call `runSender`/`scanInbox` core for the configured org (CRON_ORG_ID). Mirror the Phase-4 webhook-route gating discipline.
 
 - [ ] **Step 2: Queue/Run UI** (`app/queue/page.tsx` + client): due-today list with rendered subject per contact; "Run sender now" (calls `runSenderNow`), dry-run preview toggle, cap/remaining counter.
 

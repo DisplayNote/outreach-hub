@@ -254,7 +254,8 @@ as $$
        from public.sequence_steps ss2
       where ss2.sequence_id = cam.sequence_id
         and ss2.org_id = c.org_id
-        and ss2.day_offset > c.sequence_day) as next_day_offset,
+        and ss2.day_offset > c.sequence_day
+        and ss2.channel = 'email') as next_day_offset,
     (ss.template_id is not null) as has_template,
     t.subject as template_subject,
     t.body as template_body

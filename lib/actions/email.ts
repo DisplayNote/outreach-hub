@@ -105,15 +105,19 @@ export async function enrolInSequence(campaignId: string): Promise<{ enrolled: n
   const sequenceId = (campaign as { sequence_id: string | null }).sequence_id;
   if (!sequenceId) throw new Error('enrolInSequence: campaign has no linked sequence');
 
+  // Enrol at the first EMAIL step (not the lowest step overall): the email runner
+  // only processes channel='email' steps, so starting a contact on a leading
+  // phone/LinkedIn step would strand them — they'd never enter the email queue.
   const { data: steps, error: sErr } = await supabase
     .from('sequence_steps')
     .select('day_offset')
     .eq('sequence_id', sequenceId)
+    .eq('channel', 'email')
     .order('day_offset', { ascending: true })
     .limit(1);
   if (sErr) throw new Error(`enrolInSequence: ${sErr.message}`);
   const firstDayOffset = (steps?.[0] as { day_offset: number } | undefined)?.day_offset;
-  if (firstDayOffset === undefined) throw new Error('enrolInSequence: sequence has no steps');
+  if (firstDayOffset === undefined) throw new Error('enrolInSequence: sequence has no email steps');
 
   const today = businessDayAdd(todayUtc(), 0, settings.seqSkipWeekends ?? true);
   const { data: updated, error: uErr } = await supabase

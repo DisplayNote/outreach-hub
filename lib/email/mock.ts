@@ -31,11 +31,11 @@ export function buildSimulatedReply(opts: {
   };
 }
 
-/** Build an NDR-shaped inbound for a failed recipient (pure). The recipient is
- * the `from` so the scanner correlates by sender; the subject triggers NDR
- * classification. (The real Graph driver would instead parse the failed
- * recipient out of the delivery-status report — a documented deferral; the mock
- * shortcuts it so the local reply/bounce loop is exercisable.) */
+/** Build an NDR-shaped inbound for a failed recipient (pure), mirroring a real
+ * bounce: `from` is the system mailer and the failed recipient is carried in
+ * `failedRecipient` (what the scanner correlates a bounce on); the subject
+ * triggers NDR classification. The real Graph driver recovers `failedRecipient`
+ * from the delivery-status report (best-effort, see parseFailedRecipient). */
 export function buildSimulatedBounce(opts: { recipient: string; subject?: string; receivedAt?: string }): InboundMessage {
   counter += 1;
   // Mirror a real NDR: it comes FROM the system mailer with the failed recipient
