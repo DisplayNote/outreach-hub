@@ -413,9 +413,11 @@ effect performs, not a runtime call into those actions:
 
 - The **send touchpoint uses `channel='email'`** (the schema enum; legacy used the display
   string `'Email'`, handover §4.3) and note `Sent: <subject>` verbatim.
-- **Status writes go through `setContactStatus`** and therefore inherit the Phase-3
-  precedence rule (`resolveStatusEffect`, `lib/dialler/outcomes.ts`): `reply → green` never
-  downgrades `meeting`; `bounce → bounced` is terminal and always applies.
+- **Status writes are applied directly by `EmailStore.recordInbound`** (NOT the
+  `setContactStatus` Server Action — cron/service-role code can't call it; see the §8 intro),
+  but **reuse the same Phase-3 precedence rule** (`resolveStatusEffect`, `lib/dialler/outcomes.ts`),
+  via an atomic compare-and-set so a concurrent manual status change isn't clobbered:
+  `reply → green` never downgrades `meeting`; `bounce → bounced` is terminal and always applies.
 - **Sequence stop = a suppression row** (not a status flag) — the runner's §5 selection
   left-anti-joins `suppressions`, so any of reply/bounce/manual cleanly halts further sends
   across all campaigns, and a `suppressions` DELETE re-enables (§2.5).

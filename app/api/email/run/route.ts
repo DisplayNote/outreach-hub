@@ -11,20 +11,13 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';
 import { createServiceClient } from '@/lib/supabase/service';
 import { runSenderAllOrgs } from '@/lib/email/cron';
+import { authorizeCron } from '@/lib/cron-auth';
 
 export const runtime = 'nodejs';
 
-/** Accept Vercel Cron's `Authorization: Bearer <secret>`, or an `x-cron-secret`
- * header. Header-only — never a query param (URLs leak into request logs). */
-function authorized(request: NextRequest, secret: string | undefined): boolean {
-  if (!secret) return false; // no secret configured → refuse (never run unauthenticated)
-  if (request.headers.get('authorization') === `Bearer ${secret}`) return true;
-  return request.headers.get('x-cron-secret') === secret;
-}
-
 async function handle(request: NextRequest): Promise<NextResponse> {
   const env = getServerEnv();
-  if (!authorized(request, env.CRON_SECRET)) {
+  if (!authorizeCron(request, env.CRON_SECRET)) {
     return new NextResponse('unauthorized', { status: 401 });
   }
   try {
