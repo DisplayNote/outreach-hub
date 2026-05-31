@@ -103,6 +103,12 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
   if (runErr) throw new Error(`placeAmdCall: ${runErr.message}`);
   if (!runRow) throw new Error('placeAmdCall: run not found for this org');
 
+  // The real backend needs a caller ID; an empty `from` would fail opaquely at
+  // the Telnyx API. The mock ignores `from`, so mock runs still proceed.
+  if (backend.name !== 'mock' && !fromNumber) {
+    throw new Error('placeAmdCall: no outbound caller ID configured (set txCallerId in org settings)');
+  }
+
   // Sequential invariant: refuse a second live attempt in the same run.
   const { count, error: countErr } = await client
     .from('call_attempts')

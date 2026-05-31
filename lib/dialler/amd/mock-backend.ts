@@ -114,7 +114,11 @@ export class MockTelnyxBackend implements AmdDiallerBackend {
 
   private schedule(fn: () => Promise<void>, ms: number): void {
     setTimeout(() => {
-      void fn();
+      // Swallow+log: an unhandled rejection inside a setTimeout would crash the
+      // dev server / flake tests. processEvent failures surface in the logs.
+      void fn().catch((err: unknown) => {
+        console.error('MockTelnyxBackend scheduled event failed', err);
+      });
     }, ms);
   }
 }

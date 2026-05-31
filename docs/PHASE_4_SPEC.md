@@ -235,10 +235,13 @@ can later sign.
 ### 2.5 `call_attempt_state` enum
 
 ```
-queued · dialing · ringing · answered · amd_pending · machine · bridged · ended · failed
+queued · dialing · ringing · answered · machine · bridged · ended · failed
 ```
 
-declared verbatim (lower-case) like `contact_status` / `touchpoint_channel`.
+declared verbatim (lower-case) like `contact_status` / `touchpoint_channel`. (`answered`
+doubles as the "AMD analysing" phase — Telnyx sends `call.answered` then
+`call.machine.detection.ended` with no distinct in-between event, so no separate
+`amd_pending` state is needed.)
 
 ---
 
@@ -253,16 +256,15 @@ Realtime.
 | `queued` | `placeAmdCall` insert | Attempt created, not yet dialled. | no |
 | `dialing` | dial call accepted (worker.js L119 `state:'dialing'`) | Telnyx/mock has the call. | no |
 | `ringing` | `call.ringing` (L202–204) | Remote ringing. | no |
-| `answered` | `call.answered` (L207–211) | Answered; **do not bridge yet — await AMD** (L210). | no |
-| `amd_pending` | between `answered` and `machine.detection.ended` | AMD analysing. | no |
+| `answered` | `call.answered` (L207–211) | Answered; AMD analysing. **Do not bridge yet — await AMD** (L210). | no |
 | `machine` | `machine.detection.ended` with `result ∈ {machine, fax}` (L225) | Machine detected → auto-hangup scheduled (L227–229). | →`ended` |
 | `bridged` | `machine.detection.ended` with `result ∈ {human, not_sure, human_residence}` (L231–238) | Human → hand off to rep (simulated bridge). | →`ended` |
 | `ended` | `call.hangup` (L251–266) | Call over. `disposition` finalised. | yes |
 | `failed` | `/dial` error (L108–112) or Telnyx error event | Could not place/progress. | yes |
 
 **Happy paths:**
-`queued → dialing → ringing → answered → amd_pending → machine → ended` (voicemail), or
-`… → amd_pending → bridged → ended` (human conversation).
+`queued → dialing → ringing → answered → machine → ended` (voicemail), or
+`… → answered → bridged → ended` (human conversation).
 **No-answer:** `queued → dialing → ringing → ended` (timeout hangup; `disposition =
 'no-answer'`). **Fail:** `queued → failed`.
 
@@ -456,8 +458,8 @@ Extends the Phase-3 run dialler; does not replace it.
    `call_events` exist, are RLS-scoped to the org, append-only where specified, and are in the
    `supabase_realtime` publication.
 2. With `DIALLER_MOCK_ENABLED=true` + local stack + `/auth/mock`, starting an **AMD run**
-   drives an attempt through `queued → dialing → ringing → answered → amd_pending → {machine
-   | bridged} → ended`, visible **live in the browser via Realtime** (no SSE, no polling).
+   drives an attempt through `queued → dialing → ringing → answered → {machine | bridged} →
+   ended`, visible **live in the browser via Realtime** (no SSE, no polling).
 3. **Machine** outcome: the server auto-hangs-up and **auto-logs exactly one `phone`
    touchpoint** `Voicemail reached — auto` on the contact; contact status unchanged.
 4. **Human** outcome: **no** auto-touchpoint; the attempt reaches `bridged`, the Phase-3

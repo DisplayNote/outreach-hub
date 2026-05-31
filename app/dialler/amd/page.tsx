@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { getOrgSettings, getTodayContacts, listCampaigns } from '@/lib/supabase/queries';
+import { getOrgSettings, getTodayContacts } from '@/lib/supabase/queries';
 import { pickDialNumber } from '@/lib/dialler/normalise';
 import { isDiallerMockEnabled } from '@/lib/env';
 import type { Contact } from '@/lib/types/domain';
@@ -39,7 +39,7 @@ export default async function AmdPage({ searchParams }: AmdPageProps) {
   const rawCampaign = Array.isArray(params.campaign) ? params.campaign[0] : params.campaign;
   const campaignFilter = rawCampaign && rawCampaign !== '' ? rawCampaign : null;
 
-  const [dueContacts, , settings] = await Promise.all([getTodayContacts(), listCampaigns(), getOrgSettings()]);
+  const [dueContacts, settings] = await Promise.all([getTodayContacts(), getOrgSettings()]);
   const defaultCountryCode = settings.defaultCountryCode ?? '+44';
   const callDelayMs = typeof settings.txCallDelay === 'number' ? settings.txCallDelay * 1000 : 3000;
 

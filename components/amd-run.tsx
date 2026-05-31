@@ -26,12 +26,11 @@ export interface AmdRunProps {
   callDelayMs?: number;
 }
 
-const NON_TERMINAL: ReadonlySet<CallAttemptState> = new Set<CallAttemptState>([
-  'queued',
-  'dialing',
-  'ringing',
-  'answered',
-]);
+/** A call is "live" (hang-up-able) in any non-terminal state, including a
+ * connected human (`bridged`) and the brief `machine` window before auto-hangup. */
+function isLive(state: CallAttemptState): boolean {
+  return state !== 'ended' && state !== 'failed';
+}
 
 function liveLabel(a: CallAttempt | undefined): string {
   if (!a) return 'Queued';
@@ -316,7 +315,7 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
         <p style={{ margin: '0.75rem 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{current?.dialNumber}</p>
 
         <div style={{ marginTop: '1rem', display: 'flex', gap: '0.6rem' }}>
-          {currentAttempt && NON_TERMINAL.has(currentAttempt.state) ? (
+          {currentAttempt && isLive(currentAttempt.state) ? (
             <button type="button" onClick={hangup} style={{ ...primaryBtn, background: '#b91c1c', borderColor: '#b91c1c' }}>
               Hang up
             </button>
