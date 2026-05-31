@@ -50,6 +50,8 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
       inReplyTo: message.inReplyTo ?? null,
       conversationId: message.conversationId ?? null,
       from: message.from,
+      receivedAt: message.receivedAt,
+      failedRecipient: message.failedRecipient ?? null,
     });
     if (!match) {
       result.ignored += 1;

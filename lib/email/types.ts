@@ -34,6 +34,13 @@ export interface InboundMessage {
   inReplyTo?: string;
   references?: string[];
   conversationId?: string;
+  /**
+   * For a bounce/NDR: the original failed recipient (the prospect), recovered
+   * from the delivery-status report. An NDR's `from` is the system mailer, so
+   * this is what the scanner correlates/suppresses on. Absent when it couldn't
+   * be recovered (the bounce is then ignored, never mis-correlated).
+   */
+  failedRecipient?: string;
 }
 
 export interface Subscription {

@@ -90,4 +90,50 @@ describe('GraphDriver.fetchReplies', () => {
     const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
     expect(replies[0]!.messageId).toBe('graph-id-1');
   });
+
+  it('recovers the failed recipient from an NDR preview into failedRecipient', async () => {
+    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
+      resp({
+        value: [
+          {
+            id: 'ndr1',
+            from: { emailAddress: { address: 'postmaster@outlook.com' } },
+            subject: 'Undeliverable: Quick question',
+            bodyPreview: "Your message to alice@corp.com couldn't be delivered.",
+          },
+        ],
+      }),
+    );
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.from).toBe('postmaster@outlook.com');
+    expect(replies[0]!.failedRecipient).toBe('alice@corp.com');
+  });
+
+  it('prefers an RFC 3464 Final-Recipient line over a stray address', async () => {
+    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
+      resp({
+        value: [
+          {
+            id: 'ndr2',
+            from: { emailAddress: { address: 'mailer-daemon@corp.com' } },
+            subject: 'Mail delivery failed',
+            bodyPreview: 'Reporting-MTA: dns; mx.corp.com\nFinal-Recipient: rfc822; Bob@Corp.com\nStatus: 5.1.1',
+          },
+        ],
+      }),
+    );
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.failedRecipient).toBe('bob@corp.com');
+  });
+
+  it('leaves failedRecipient unset for an ordinary (non-system) reply', async () => {
+    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
+      resp({ value: [{ id: 'r9', from: { emailAddress: { address: 'mike@example.com' } }, subject: 'Re: hi', bodyPreview: 'sure' }] }),
+    );
+    const driver = new GraphDriver('graph-dev', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.failedRecipient).toBeUndefined();
+  });
 });

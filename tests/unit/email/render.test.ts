@@ -49,16 +49,32 @@ describe('renderTemplate', () => {
       settings,
     );
     expect(out.subject).toBe('Hi ');
-    expect(out.body).toBe('|');
+    // No {signature} token → signature appended to the non-empty body.
+    expect(out.body).toBe('|\n\nPaul (paul@displaynote.com)');
   });
 
   it('leaves an unknown token verbatim (typo is visible, not silently dropped)', () => {
     const out = renderTemplate({ subject: 'Hi {frstName}', body: '{unknown} {company}' }, contact(), settings);
     expect(out.subject).toBe('Hi {frstName}');
-    expect(out.body).toBe('{unknown} FlutterUKI');
+    expect(out.body).toBe('{unknown} FlutterUKI\n\nPaul (paul@displaynote.com)');
   });
 
-  it('treats null subject/body as empty', () => {
+  it('appends the org signature when the body omits the {signature} token', () => {
+    const out = renderTemplate({ subject: 'Hi', body: 'Hello {firstName}' }, contact(), settings);
+    expect(out.body).toBe('Hello Mike\n\nPaul (paul@displaynote.com)');
+  });
+
+  it('does NOT append when the body already has a {signature} token', () => {
+    const out = renderTemplate({ subject: 'Hi', body: 'Hello\n--\n{signature}' }, contact(), settings);
+    expect(out.body).toBe('Hello\n--\nPaul (paul@displaynote.com)'); // exactly one signature
+  });
+
+  it('does not append a signature when none is configured', () => {
+    const out = renderTemplate({ subject: 'Hi', body: 'Hello {firstName}' }, contact(), { signature: '' });
+    expect(out.body).toBe('Hello Mike');
+  });
+
+  it('treats null subject/body as empty (nothing to sign)', () => {
     const out = renderTemplate({ subject: null, body: null }, contact(), settings);
     expect(out.subject).toBe('');
     expect(out.body).toBe('');

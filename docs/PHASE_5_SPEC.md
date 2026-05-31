@@ -398,11 +398,17 @@ The seam (`lib/email/driver.ts`) is unchanged. Phase 5 makes the drivers real:
   an optional, higher-fidelity local path beyond the pure mock.
 - **`GraphDriver`** (`lib/email/graph.ts`, replace the stub): `send` → `POST /me/sendMail`
   (`saveToSentItems: true`, the user's delegated token from the Supabase Azure session);
-  `fetchReplies` → delta query on `/me/mailFolders/Inbox/messages` filtered by
-  `receivedDateTime ge <since>`, mapping to `InboundMessage` (`conversationId`,
-  `internetMessageId`, `inReplyTo`). `subscribeReplies` stays optional (out of scope §0). The
-  delegated **scopes** (`Mail.Send`, `Mail.Read`) are requested incrementally at login
-  (execution plan §3 / §390) — a deploy concern; the driver assumes the token is present.
+  `fetchReplies` → query on `/me/mailFolders/Inbox/messages` filtered by
+  `receivedDateTime ge <since>`, **paging through `@odata.nextLink`** to drain every page,
+  mapping to `InboundMessage` (`conversationId`, `internetMessageId`/`id`, `inReplyTo`).
+  For an NDR (system-mailer sender) it recovers the **failed recipient** best-effort from
+  the report text into `InboundMessage.failedRecipient` (an RFC 3464 `Final-Recipient` line,
+  else the first non-system address in the subject/preview) so the scanner can correlate and
+  suppress the prospect; an unrecoverable recipient means the bounce is ignored, never
+  mis-correlated. Full `message/delivery-status` MIME parsing against a real tenant is a
+  fast-follow. `subscribeReplies` stays optional (out of scope §0). The delegated **scopes**
+  (`Mail.Send`, `Mail.Read`) are requested incrementally at login (execution plan §3 / §390)
+  — a deploy concern; the driver assumes the token is present.
 
 **Dev gate for the mock simulator** — `isEmailMockEnabled()` in `lib/env.ts`, triple-gated
 exactly like `isAuthMockEnabled` (L100–106): `NODE_ENV !== 'production'` **and**

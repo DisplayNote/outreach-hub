@@ -134,16 +134,22 @@ maybeTest('email runner: send → reply (green+suppress) and bounce (bounced+sup
   await page.goto('/queue');
   await expect(page.getByText('rhea@e2e.example.com', { exact: false })).toBeVisible();
 
-  // Simulate a reply from Rhea + a bounce for Boris while they're still queued
-  // (after sending they advance out of the due list and the Sim buttons go away).
-  await page.locator('li', { hasText: 'rhea@e2e.example.com' }).getByRole('button', { name: 'Sim reply' }).click();
-  await expect(page.getByText(/Simulated a reply/)).toBeVisible();
-  await page.locator('li', { hasText: 'boris@e2e.example.com' }).getByRole('button', { name: 'Sim bounce' }).click();
-  await expect(page.getByText(/Simulated a bounce/)).toBeVisible();
-
   // Run the sender → both get a send event + a "Sent:" touchpoint + advance to day 3.
   await page.getByRole('button', { name: 'Run sender now' }).click();
   await expect(page.getByText(/Sent 2/)).toBeVisible({ timeout: 20_000 });
+
+  // Now simulate the reply/bounce — AFTER the send, so the inbound is received
+  // after the outbound (the scanner's correlation guard requires a send no later
+  // than the inbound). Use the standalone dev simulator since the contacts have
+  // advanced out of the due queue. simReply for Rhea, simBounce for Boris.
+  const simEmail = page.getByRole('textbox', { name: 'Contact email to simulate inbound from' });
+  const simCard = page.locator('div', { hasText: 'Simulate inbound (dev)' }).last();
+  await simEmail.fill('rhea@e2e.example.com');
+  await simCard.getByRole('button', { name: 'Sim reply' }).click();
+  await expect(page.getByText(/Simulated a reply/)).toBeVisible();
+  await simEmail.fill('boris@e2e.example.com');
+  await simCard.getByRole('button', { name: 'Sim bounce' }).click();
+  await expect(page.getByText(/Simulated a bounce/)).toBeVisible();
   await expect
     .poll(async () => {
       const { count } = await admin

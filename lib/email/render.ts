@@ -40,8 +40,19 @@ export function renderTemplate(
   settings: OrgSettings,
 ): RenderedTemplate {
   const values = tokenValues(contact, settings);
+  const rawBody = template.body ?? '';
+  let body = substitute(rawBody, values);
+  // The org signature is appended when a non-empty template body has no explicit
+  // {signature} token (handover §4.4 / PHASE_5_SPEC §3), so a template that omits
+  // the token still sends signed. With the token present, the substitution above
+  // already placed the signature where the author wanted it. An empty/absent body
+  // is left empty (nothing to sign).
+  const signature = settings.signature ?? '';
+  if (signature && rawBody.trim() !== '' && !/\{signature\}/.test(rawBody)) {
+    body = `${body}\n\n${signature}`;
+  }
   return {
     subject: substitute(template.subject ?? '', values),
-    body: substitute(template.body ?? '', values),
+    body,
   };
 }

@@ -11,6 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Contact, OrgSettings, SequenceStep } from '@/lib/types/domain';
 import { resolveStatusEffect } from '@/lib/dialler/outcomes';
+import { escapeLike } from '@/lib/supabase/like';
 import type { SentRef, InboundMessage } from '@/lib/email/types';
 import {
   CONTACT_SELECT,
@@ -58,6 +59,14 @@ export interface CorrelationKeys {
   inReplyTo: string | null;
   conversationId: string | null;
   from: string;
+  /** When the inbound arrived — the sender fallback only matches a `sent` event
+   * that occurred no later than this (an inbound can't be a reply to a send that
+   * hadn't happened yet). */
+  receivedAt: string;
+  /** For a bounce/NDR: the recovered failed recipient (the prospect). The sender
+   * fallback correlates on this in preference to `from` (which is the system
+   * mailer for an NDR). */
+  failedRecipient?: string | null;
 }
 
 export interface EmailStore {
@@ -249,8 +258,10 @@ export function supabaseEmailStore(
         const hit = await byField('conversation_id', keys.conversationId);
         if (hit) return hit;
       }
-      // Fallback: sender address → a contact we have a sent event for.
-      const fromEmail = extractEmail(keys.from);
+      // Fallback: the failed recipient (NDR) or sender address → a contact we
+      // have a sent event for. For a bounce, `from` is the system mailer, so the
+      // recovered failedRecipient (the prospect) is what correlates.
+      const fromEmail = extractEmail(keys.failedRecipient ?? keys.from);
       if (fromEmail) {
         const { data, error } = await client
           .from('contacts')
@@ -263,16 +274,19 @@ export function supabaseEmailStore(
           .maybeSingle();
         if (error) throw new Error(`findSentForCorrelation.contact: ${error.message}`);
         if (data) {
-          // Only correlate if we actually emailed this contact — otherwise an
-          // unsolicited inbound from an existing contact would be treated as a
-          // reply/bounce and mutate/suppress them.
+          // Only correlate if we actually emailed this contact AT OR BEFORE this
+          // inbound arrived — otherwise an unsolicited (or pre-existing, older)
+          // inbound from a known address would be treated as a reply/bounce and
+          // mutate/suppress them. The occurred_at guard scopes the match to a
+          // send that this inbound could plausibly be answering.
           const contactId = data.id as string;
           const { count, error: sentErr } = await client
             .from('email_events')
             .select('id', { count: 'exact', head: true })
             .eq('org_id', ctx.orgId)
             .eq('contact_id', contactId)
-            .eq('type', 'sent');
+            .eq('type', 'sent')
+            .lte('occurred_at', keys.receivedAt);
           if (sentErr) throw new Error(`findSentForCorrelation.sent: ${sentErr.message}`);
           if ((count ?? 0) > 0) return { contactId, campaignId: (data.campaign_id as string) ?? null };
         }
@@ -397,16 +411,6 @@ export function extractEmail(from: string): string | null {
   const angle = /<([^>]+)>/.exec(from);
   const candidate = (angle?.[1] ?? from).trim().toLowerCase();
   return /^[^@\s]+@[^@\s]+$/.test(candidate) ? candidate : null;
-}
-
-/**
- * Escape SQL LIKE wildcards (`\`, `%`, `_`) so an inbound sender address is
- * matched literally by a case-insensitive `ilike`. Without this, a legitimate
- * local-part char like `_` acts as a wildcard — `a_b@example.com` would also
- * correlate to `axb@example.com` and mutate/suppress the wrong contact.
- */
-export function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
 // `DueContactRow` reserved for a future non-RPC selection path.

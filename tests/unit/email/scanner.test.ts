@@ -20,8 +20,10 @@ function fakeStore(rec: Rec): EmailStore {
     },
     async recordSent() {},
     async findSentForCorrelation(keys) {
-      const from = keys.from.toLowerCase();
-      return rec.correlatable.has(from) ? { contactId: `contact-${from}`, campaignId: 'camp1' } : null;
+      // Mirror the adapter: a bounce correlates on the recovered failedRecipient
+      // (its `from` is the system mailer), a reply on the sender address.
+      const addr = (keys.failedRecipient ?? keys.from).toLowerCase();
+      return rec.correlatable.has(addr) ? { contactId: `contact-${addr}`, campaignId: 'camp1' } : null;
     },
     async inboundAlreadyRecorded(_provider, messageId) {
       return rec.recorded.has(messageId);
@@ -65,12 +67,23 @@ describe('scanInbox', () => {
     expect(rec.inbound[0]?.contactId).toBe('contact-mike@example.com');
   });
 
-  it('records a correlated bounce (NDR)', async () => {
-    rec.correlatable.add('postmaster@example.com');
-    driver.inbound.push(inbound({ messageId: 'b1', from: 'postmaster@example.com', subject: 'Undeliverable' }));
+  it('records a correlated bounce (NDR) via the recovered failed recipient', async () => {
+    // NDR from the system mailer; the prospect is in failedRecipient.
+    rec.correlatable.add('alice@corp.com');
+    driver.inbound.push(
+      inbound({ messageId: 'b1', from: 'postmaster@example.com', subject: 'Undeliverable', failedRecipient: 'alice@corp.com' }),
+    );
     const res = await scanInbox(deps(rec, driver), {});
     expect(res.bounces).toBe(1);
     expect(rec.inbound[0]?.kind).toBe('bounce');
+    expect(rec.inbound[0]?.contactId).toBe('contact-alice@corp.com');
+  });
+
+  it('ignores an NDR whose failed recipient could not be recovered', async () => {
+    driver.inbound.push(inbound({ messageId: 'b2', from: 'postmaster@example.com', subject: 'Undeliverable' }));
+    const res = await scanInbox(deps(rec, driver), {});
+    expect(res.ignored).toBe(1);
+    expect(rec.inbound).toHaveLength(0);
   });
 
   it('ignores an uncorrelated inbound', async () => {

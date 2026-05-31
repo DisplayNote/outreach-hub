@@ -67,6 +67,7 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
   const [dryRun, setDryRun] = useState(false);
   const [campaignId, setCampaignId] = useState(campaigns[0]?.id ?? '');
   const [sequenceId, setSequenceId] = useState(sequences[0]?.id ?? '');
+  const [simEmail, setSimEmail] = useState('');
 
   const act = useCallback(
     async (label: string, fn: () => Promise<string>) => {
@@ -207,6 +208,41 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
           </ul>
         )}
       </div>
+
+      {/* Dev-only standalone simulator — works after a contact has advanced out
+          of the due queue (and so models a reply/bounce arriving AFTER the send,
+          which the scanner's send-before-inbound correlation guard requires). */}
+      {emailMockEnabled ? (
+        <div style={card}>
+          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem' }}>Simulate inbound (dev)</h2>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
+            <input
+              type="email"
+              aria-label="Contact email to simulate inbound from"
+              placeholder="contact@example.com"
+              value={simEmail}
+              onChange={(e) => setSimEmail(e.target.value)}
+              style={{ ...secondaryBtn, minWidth: 240, cursor: 'text' }}
+            />
+            <button
+              type="button"
+              onClick={() => simulate(simEmail.trim(), 'reply')}
+              disabled={busy !== null || simEmail.trim() === ''}
+              style={secondaryBtn}
+            >
+              Sim reply
+            </button>
+            <button
+              type="button"
+              onClick={() => simulate(simEmail.trim(), 'bounce')}
+              disabled={busy !== null || simEmail.trim() === ''}
+              style={secondaryBtn}
+            >
+              Sim bounce
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

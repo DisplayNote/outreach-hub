@@ -13,6 +13,30 @@ export type GraphEnvironment = 'graph-dev' | 'graph-prod';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
+// NDR/system-mailer senders — an NDR's `from` is one of these, not the prospect.
+const SYSTEM_ADDR = /(postmaster|mailer-daemon|mail-delivery-system)@/i;
+// RFC 3464 delivery-status field naming the address that failed.
+const DSN_RECIPIENT = /(?:final|original)-recipient:\s*(?:rfc822;)?\s*([^\s;]+@[^\s;]+)/i;
+const ANY_EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+
+/**
+ * Best-effort recovery of the failed recipient from an NDR's available text
+ * (subject + body preview). Prefers an RFC 3464 `Final-Recipient`/`Original-
+ * Recipient` line; otherwise the first non-system email address mentioned.
+ * Returns undefined when nothing recoverable — the scanner then ignores the
+ * bounce rather than mis-correlating it. (Full `message/delivery-status` MIME
+ * parsing against a real tenant is a fast-follow; this handles the common case
+ * where the failed address appears in the preview text.)
+ */
+function parseFailedRecipient(text: string): string | undefined {
+  const dsn = DSN_RECIPIENT.exec(text);
+  if (dsn?.[1]) return dsn[1].toLowerCase();
+  for (const addr of text.match(ANY_EMAIL) ?? []) {
+    if (!SYSTEM_ADDR.test(addr)) return addr.toLowerCase();
+  }
+  return undefined;
+}
+
 interface GraphDriverOptions {
   /** Delegated access token (Mail.Send / Mail.Read). Deploy-time wiring. */
   accessToken?: string;
@@ -119,26 +143,27 @@ export class GraphDriver implements EmailDriver {
   }
 
   private toInbound(m: GraphMessage): InboundMessage {
-    // KNOWN LIMITATION (real Graph path, not exercised locally): a real NDR is
-    // sent from postmaster@…/mailer-daemon@… with the FAILED RECIPIENT in the
-    // delivery-status report body, not in `from`. So bounces currently map
-    // `from` = the system sender, which the scanner's sender fallback won't
-    // correlate to the prospect → the bounce is ignored rather than suppressing
-    // the failed address. Correct handling needs parsing the failed recipient
-    // from the delivery-status report and mapping it into `from`; deferred until
-    // the Graph path is wired against a real tenant. (The mock driver puts the
-    // recipient in `from` directly, so the local loop works.)
+    // A real NDR is sent from postmaster@…/mailer-daemon@… with the FAILED
+    // RECIPIENT in the delivery-status report, not in `from`. We surface that
+    // recipient as `failedRecipient` (best-effort, from the preview text) so the
+    // scanner can correlate/suppress the prospect; if it can't be recovered the
+    // bounce is ignored rather than mis-correlated (see parseFailedRecipient).
+    const from = m.from?.emailAddress?.address ?? '';
     const out: InboundMessage = {
       // Fall back to Graph's stable `id` so distinct messages don't collapse to
       // one '' message_id under the (org, provider, message_id) dedup.
       messageId: m.internetMessageId ?? m.id ?? '',
-      from: m.from?.emailAddress?.address ?? '',
+      from,
       to: (m.toRecipients ?? []).map((r) => r.emailAddress?.address ?? '').filter(Boolean),
       subject: m.subject ?? '',
       receivedAt: m.receivedDateTime ?? new Date().toISOString(),
     };
     if (m.bodyPreview !== undefined) out.bodyText = m.bodyPreview;
     if (m.conversationId !== undefined) out.conversationId = m.conversationId;
+    if (SYSTEM_ADDR.test(from)) {
+      const failed = parseFailedRecipient(`${m.subject ?? ''}\n${m.bodyPreview ?? ''}`);
+      if (failed !== undefined) out.failedRecipient = failed;
+    }
     return out;
   }
 

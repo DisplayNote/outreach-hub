@@ -111,9 +111,9 @@ export class MockDriver implements EmailDriver {
    * Dev/test simulator: enqueue a bounce/NDR for a failed recipient. The mock
    * puts the failed recipient straight into `from`, so the scanner's sender
    * correlation just works locally. (A real Graph NDR instead comes from
-   * postmaster/mailer-daemon with the failed recipient buried in the
-   * delivery-status report body; parsing it out into `from` is deferred — see
-   * the KNOWN LIMITATION note in GraphDriver.toInbound.)
+   * postmaster/mailer-daemon with the failed recipient in the delivery-status
+   * report; GraphDriver.toInbound recovers it into `failedRecipient`
+   * best-effort — see parseFailedRecipient there.)
    */
   simulateBounce(opts: { recipient: string; subject?: string; receivedAt?: string }): InboundMessage {
     const message = buildSimulatedBounce(opts);
