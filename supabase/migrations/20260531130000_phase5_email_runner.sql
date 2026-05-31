@@ -38,6 +38,12 @@ create index campaigns_sequence_id_idx on public.campaigns (sequence_id);
 alter table public.contacts
   add column last_emailed_at timestamptz;
 
+-- The sender's daily-cap accounting and the per-claim cap check both filter
+-- contacts by (org_id, last_emailed_at >= start-of-day); index it so a claim is
+-- a small range scan, not an org-wide contact scan.
+create index contacts_org_last_emailed_idx
+  on public.contacts (org_id, last_emailed_at);
+
 -- Same-org composite-key targets so child rows below can enforce that an
 -- email_event / suppression references a contact (or campaign) in its OWN org —
 -- RLS only checks the child's org_id, so a plain id FK would let a known UUID
@@ -313,6 +319,13 @@ declare
   claimed_rows int;
   day_start timestamptz := p_today::timestamp at time zone 'UTC';
 begin
+  -- Serialise claims PER ORG for the duration of this transaction, so the daily
+  -- cap is evaluated exactly: without it, two overlapping claims for DIFFERENT
+  -- contact rows could both read the cap count before either's update is visible
+  -- and both proceed, letting the org exceed p_daily_goal. The xact lock releases
+  -- when this single-statement RPC transaction commits.
+  perform pg_advisory_xact_lock(hashtextextended(p_org_id::text, 0));
+
   -- Re-check the FULL due_email_contacts predicate under the row lock, not just
   -- status/last_emailed/suppression: if the contact was unenrolled, had its
   -- follow_up pushed to the future, its email cleared, or its campaign sequence
