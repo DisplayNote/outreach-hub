@@ -60,6 +60,11 @@ create table public.email_events (
   campaign_id uuid,
   type text not null check (type in ('sent', 'reply', 'bounce')),
   provider text not null,
+  -- The address actually emailed on a 'sent' event (normalised lower+trim). Lets
+  -- a later bounce correlate to its sent event by the ADDRESS we sent to, even if
+  -- the contact's email was corrected since — so the bad address still gets
+  -- suppressed. Null for inbound (reply/bounce) rows.
+  recipient text,
   message_id text,
   conversation_id text,
   in_reply_to text,
@@ -76,6 +81,10 @@ create table public.email_events (
 create index email_events_org_type_occurred_idx
   on public.email_events (org_id, type, occurred_at);
 create index email_events_contact_id_idx on public.email_events (contact_id);
+-- Bounce-by-recipient correlation: find the sent event for the address an NDR
+-- failed on. Partial to 'sent' rows (the only ones with a recipient).
+create index email_events_org_recipient_idx
+  on public.email_events (org_id, recipient) where type = 'sent';
 -- Send-dedup arbiter (replaces the legacy sentEmailIds map): a re-run never
 -- double-records the same provider message. NON-partial so it can serve as the
 -- ON CONFLICT (org_id, provider, message_id) arbiter for the runner/scanner
@@ -167,6 +176,7 @@ create or replace function public.record_email_sent(
   p_campaign_id uuid,
   p_provider text,
   p_message_id text,
+  p_recipient text,
   p_subject text,
   p_sequence_day int,
   p_next_sequence_day int,
@@ -184,9 +194,9 @@ begin
     where id = p_contact_id and org_id = p_org_id;
 
   insert into public.email_events
-    (org_id, contact_id, campaign_id, type, provider, message_id, subject, sequence_day, occurred_at)
+    (org_id, contact_id, campaign_id, type, provider, message_id, recipient, subject, sequence_day, occurred_at)
   values
-    (p_org_id, p_contact_id, p_campaign_id, 'sent', p_provider, p_message_id, p_subject, p_sequence_day, p_occurred_at)
+    (p_org_id, p_contact_id, p_campaign_id, 'sent', p_provider, p_message_id, p_recipient, p_subject, p_sequence_day, p_occurred_at)
   on conflict (org_id, provider, message_id) do nothing;
 
   insert into public.touchpoints

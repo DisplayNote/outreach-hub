@@ -248,6 +248,9 @@ export function supabaseEmailStore(
         p_campaign_id: input.campaignId,
         p_provider: ctx.provider,
         p_message_id: input.ref.messageId,
+        // The address we actually emailed (normalised), so a later bounce for it
+        // correlates even if the contact's email is corrected afterwards.
+        p_recipient: input.contact.email?.trim().toLowerCase() ?? null,
         p_subject: input.subject,
         p_sequence_day: input.sequenceDay,
         p_next_sequence_day: input.nextSequenceDay,
@@ -323,6 +326,30 @@ export function supabaseEmailStore(
             .lte('occurred_at', keys.receivedAt);
           if (sentErr) throw new Error(`findSentForCorrelation.sent: ${sentErr.message}`);
           if ((count ?? 0) > 0) return { contactId, campaignId: (data.campaign_id as string) ?? null };
+        }
+
+        // Recipient-history fallback: match the address against what we ACTUALLY
+        // emailed (email_events.recipient on a 'sent' row), not just the contact's
+        // CURRENT email. A bounce for an address that was corrected on the contact
+        // after the send won't match contacts.email above, so without this the bad
+        // address would never be suppressed. The occurred_at guard keeps it to a
+        // send this inbound could be answering.
+        const { data: sentRow, error: recErr } = await client
+          .from('email_events')
+          .select('contact_id, campaign_id')
+          .eq('org_id', ctx.orgId)
+          .eq('type', 'sent')
+          .eq('recipient', fromEmail)
+          .lte('occurred_at', keys.receivedAt)
+          .order('occurred_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (recErr) throw new Error(`findSentForCorrelation.recipient: ${recErr.message}`);
+        if (sentRow) {
+          return {
+            contactId: sentRow.contact_id as string,
+            campaignId: (sentRow.campaign_id as string) ?? null,
+          };
         }
       }
       return null;
