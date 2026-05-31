@@ -25,10 +25,27 @@ function todayUtc(): string {
  */
 async function orgs(client: SupabaseClient): Promise<{ id: string; settings: OrgSettings }[]> {
   const cronOrgId = getServerEnv().CRON_ORG_ID;
-  if (!cronOrgId) return [];
+  const isProd = process.env.NODE_ENV === 'production';
+  if (!cronOrgId) {
+    // Fail LOUDLY in production: an unset CRON_ORG_ID makes the scheduled routes a
+    // no-op that returns { ok: true, orgs: 0 } and looks healthy to monitoring.
+    // Locally the cron isn't used (manual path), so a no-op is fine.
+    if (isProd) {
+      throw new Error(
+        'cron: CRON_ORG_ID is not set — refusing a no-op scheduled run in production. ' +
+          'Set it to the org whose mailbox the configured email driver serves.',
+      );
+    }
+    return [];
+  }
   const { data, error } = await client.from('organizations').select('id, settings').eq('id', cronOrgId);
   if (error) throw new Error(`cron.orgs: ${error.message}`);
-  return (data ?? []).map((o) => ({ id: o.id as string, settings: (o.settings as OrgSettings) ?? {} }));
+  const list = (data ?? []).map((o) => ({ id: o.id as string, settings: (o.settings as OrgSettings) ?? {} }));
+  // CRON_ORG_ID set but matching no row is also a misconfiguration — fail loudly in prod.
+  if (list.length === 0 && isProd) {
+    throw new Error(`cron: CRON_ORG_ID ${cronOrgId} matches no organization — misconfiguration.`);
+  }
+  return list;
 }
 
 export async function runSenderAllOrgs(
