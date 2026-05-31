@@ -55,8 +55,15 @@ const CATALOGUE: Readonly<Record<CallOutcomeKey, Omit<CallOutcome, 'key'>>> = {
   },
 };
 
-/** Outcome keys in display order. */
-export const CALL_OUTCOME_KEYS = Object.keys(CATALOGUE) as CallOutcomeKey[];
+/**
+ * Outcome keys in display order. Frozen + typed `readonly` because it is the
+ * shared source of ordering/validation for `getDiallerOutcomes()` and the
+ * outcome enum schema — an accidental `push`/`sort` by an importer would
+ * otherwise corrupt the catalogue app-wide.
+ */
+export const CALL_OUTCOME_KEYS: readonly CallOutcomeKey[] = Object.freeze(
+  Object.keys(CATALOGUE) as CallOutcomeKey[],
+);
 
 /** The catalogue entry for one outcome (label / statusEffect / defaultNote). */
 export function getOutcomeDef(key: CallOutcomeKey): Omit<CallOutcome, 'key'> {
