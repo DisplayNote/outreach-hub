@@ -394,7 +394,14 @@ export function supabaseEmailStore(
         .eq('org_id', input.orgId)
         .maybeSingle();
       if (curErr) throw new Error(`recordInbound.read: ${curErr.message}`);
-      const contactEmail = (cur?.email as string | null)?.trim().toLowerCase() ?? null;
+      // If the contact was deleted between correlation and now, there is nothing
+      // to attach the effects to — the suppression/touchpoint/email_events FKs to
+      // contacts would all fail, and (since we never write the dedup marker) the
+      // scan would fail and re-fail on this same message forever (a poison
+      // message). Skip it instead: the contact's sent events cascade-deleted with
+      // it, so subsequent scans simply won't correlate this inbound (it's ignored).
+      if (!cur) return;
+      const contactEmail = (cur.email as string | null)?.trim().toLowerCase() ?? null;
       const failedRecipient = input.message.failedRecipient?.trim().toLowerCase() ?? null;
       // A BOUNCE only marks the CONTACT terminal (`bounced`) when the address that
       // bounced is still the contact's current email. If the email was corrected

@@ -318,9 +318,13 @@ materialising the whole overdue queue and filtering in app code:
 `sequence_day` ascending (**[DECISION 5.1]** early-step contacts first), and limits to the
 **daily cap** = `min(opts.limit ?? ∞, OrgSettings.dailyGoal ?? 30) − (emails already sent
 today)` (a small buffer is added so per-contact failures backfill rather than under-send;
-"already sent today" counts `email_events(type='sent')` with `occurred_at >= today`). The
-**remainder** is reported from `count_due_email_contacts` (the same predicate, so it's the real
-count beyond the cap, not an over-estimate) — **no silent truncation**.
+"already sent today" counts CLAIMED contacts — `contacts.last_emailed_at >= today` — NOT
+`email_events(sent)`. The claim sets `last_emailed_at` before the external send, so a send that
+succeeded but whose `recordSent` failed still counts; otherwise a later same-day run would see
+freed headroom and exceed the goal. The cap is also enforced atomically inside
+`claim_email_send` under a per-org advisory lock so concurrent runs can't collectively exceed
+it). The **remainder** is reported from `count_due_email_contacts` (the same predicate, so it's
+the real count beyond the cap, not an over-estimate) — **no silent truncation**.
 
 A step whose `template_id` is null is **skipped and surfaced** in `errors` (never sent as
 blank-subject/body mail).
