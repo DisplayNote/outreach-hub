@@ -270,8 +270,12 @@ export async function updateContact(id: string, input: UpdateContactInput): Prom
 
   const patch: Record<string, unknown> = {};
   for (const key of Object.keys(parsed) as (keyof typeof parsed)[]) {
-    const column = columnByKey[key];
-    patch[column] = parsed[key];
+    const value = parsed[key];
+    // zod preserves keys whose value is explicitly `undefined`; skip those so a
+    // not-provided field is a true no-op rather than an effectively-empty update
+    // body (JSON drops undefined). `null` is kept — it means "clear the field".
+    if (value === undefined) continue;
+    patch[columnByKey[key]] = value;
   }
 
   if (Object.keys(patch).length === 0) {

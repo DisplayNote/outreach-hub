@@ -43,6 +43,7 @@ describe('isAuthMockEnabled', () => {
   it('is true when non-prod, flag set, and Supabase URL is loopback', () => {
     expect(isAuthMockEnabled(enabledEnv)).toBe(true);
     expect(isAuthMockEnabled({ ...enabledEnv, NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321' })).toBe(true);
+    expect(isAuthMockEnabled({ ...enabledEnv, NEXT_PUBLIC_SUPABASE_URL: 'http://[::1]:54321' })).toBe(true);
   });
 
   it('is false in production even with the flag and a local URL', () => {

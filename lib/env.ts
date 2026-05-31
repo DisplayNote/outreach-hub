@@ -67,8 +67,13 @@ export function getServerEnv(): ServerEnv {
   return parseServerEnv(process.env);
 }
 
-/** Loopback hosts that identify the local Supabase dev stack. */
-const LOCAL_SUPABASE_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+/**
+ * Loopback hosts that identify the local Supabase dev stack. Includes both the
+ * bracketed and bare IPv6 loopback forms: the WHATWG URL parser used by Node
+ * yields `[::1]` for `URL.hostname`, but bare `::1` is included too so the gate
+ * holds regardless of the runtime's host-serialisation.
+ */
+const LOCAL_SUPABASE_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 /** True only when `url` points at the local Supabase dev stack (loopback host). */
 function isLocalSupabaseUrl(url: string | undefined): boolean {
