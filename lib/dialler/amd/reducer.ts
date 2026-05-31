@@ -22,19 +22,22 @@ import {
   type TelnyxEvent,
 } from '@/lib/dialler/amd/types';
 
-const NOOP_TAIL = { disposition: null, amdResult: null, sideEffects: [] } as const;
+/** Fresh "no disposition / no effects" tail (a new array each call, never shared). */
+function noopTail(): Pick<ReduceResult, 'disposition' | 'amdResult' | 'sideEffects'> {
+  return { disposition: null, amdResult: null, sideEffects: [] };
+}
 
 export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceResult {
   switch (event.eventType) {
     case 'call.initiated':
-      return { nextState: 'dialing', ...NOOP_TAIL };
+      return { nextState: 'dialing', ...noopTail() };
 
     case 'call.ringing':
-      return { nextState: 'ringing', ...NOOP_TAIL };
+      return { nextState: 'ringing', ...noopTail() };
 
     case 'call.answered':
       // Do NOT bridge yet — wait for the AMD result (worker.js L210).
-      return { nextState: 'answered', ...NOOP_TAIL };
+      return { nextState: 'answered', ...noopTail() };
 
     case 'call.machine.detection.ended': {
       const result = event.result ?? null;
@@ -77,7 +80,7 @@ export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceRes
 
     default: {
       // Unknown/ignored event — no transition.
-      return { nextState: attempt.state, ...NOOP_TAIL };
+      return { nextState: attempt.state, ...noopTail() };
     }
   }
 }
