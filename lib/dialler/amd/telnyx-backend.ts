@@ -78,6 +78,9 @@ export class TelnyxAmdBackend implements AmdDiallerBackend {
         'TELNYX_HTTP',
       );
     }
-    return resp.json();
+    // Action endpoints (hangup/transfer) may reply 204 / empty body; only parse
+    // JSON when there's actually a body, so an empty success isn't a failure.
+    const text = await resp.text();
+    return text === '' ? {} : JSON.parse(text);
   }
 }

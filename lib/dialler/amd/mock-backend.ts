@@ -104,7 +104,7 @@ export class MockTelnyxBackend implements AmdDiallerBackend {
     await this.process({ eventType: 'call.hangup', callControlId, hangupCause: 'normal_clearing' });
   }
 
-  async bridge(callControlId: string): Promise<void> {
+  async bridge(callControlId: string, _target: string): Promise<void> {
     // Simulate the bridged human call ending a moment later.
     this.schedule(
       () => this.process({ eventType: 'call.hangup', callControlId, hangupCause: 'normal_clearing' }),
