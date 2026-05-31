@@ -31,7 +31,17 @@ export interface ScanInboxResult {
 
 export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Promise<ScanInboxResult> {
   const since = opts.since ?? (await deps.store.lastScanHighWater()) ?? '1970-01-01T00:00:00.000Z';
-  const messages = await deps.driver.fetchReplies({ since });
+  const fetched = await deps.driver.fetchReplies({ since });
+
+  // Process oldest-first. The next scan resumes from the high-water mark (max
+  // recorded occurred_at). Drivers may return newest-first (Mailpit does), so if
+  // we recorded a newer message and then a fetch/record for an OLDER one threw,
+  // the high-water would jump past that older message and the next scan's
+  // `since` would never re-fetch it. Ascending order means any failure leaves
+  // the high-water below every still-unprocessed message.
+  const messages = fetched
+    .slice()
+    .sort((a, b) => (a.receivedAt < b.receivedAt ? -1 : a.receivedAt > b.receivedAt ? 1 : 0));
 
   const result: ScanInboxResult = { replies: 0, bounces: 0, ignored: 0, deduped: 0 };
 

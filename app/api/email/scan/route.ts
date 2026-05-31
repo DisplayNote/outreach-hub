@@ -1,8 +1,10 @@
 /**
  * Scheduled inbox-scan trigger (PHASE_5_SPEC §1). CRON_SECRET-gated; driven by
- * Vercel Cron (GET + `Authorization: Bearer <secret>`). Scans every org's inbox
- * for replies/bounces via the service-role client. Local dev uses the "Scan
- * inbox now" Server Action instead.
+ * Vercel Cron (GET + `Authorization: Bearer <secret>`). Scans the single
+ * configured org's inbox (CRON_ORG_ID) for replies/bounces via the service-role
+ * client — one global driver/token is one mailbox, so this does NOT fan out
+ * across orgs (no-op when CRON_ORG_ID is unset). Local dev uses the "Scan inbox
+ * now" Server Action instead.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';

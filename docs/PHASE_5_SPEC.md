@@ -353,8 +353,14 @@ itself only decides the kind. The `mock` driver lets a test enqueue either kind 
 
 ## 8. Touchpoint auto-log discipline & effects (authoritative) [RESOLVED]
 
-Matches handover §4.3 exactly, composed from **existing Phase-2 actions** (no new
-status/touchpoint write path):
+Matches handover §4.3 exactly. The effects below are applied by the store layer
+directly (`EmailStore.recordInbound` for inbound; the `record_email_sent` RPC for
+sends), **not** by calling the Phase-2 Server Actions — cron/service-role code runs
+outside a request and cannot invoke `'use server'` actions, and a single atomic write
+path avoids partial states. Status precedence still reuses the Phase-3 `resolveStatusEffect`
+helper (so the table's "precedence-guarded" semantics are identical to the actions'). The
+`logTouchpoint`/`setContactStatus` column references below name the *equivalent* write each
+effect performs, not a runtime call into those actions:
 
 | Event | `email_events` | Touchpoint (`logTouchpoint`) | Status (`setContactStatus`) | Suppression | Sequence |
 |---|---|---|---|---|---|
@@ -400,8 +406,11 @@ The seam (`lib/email/driver.ts`) is unchanged. Phase 5 makes the drivers real:
 
 **Dev gate for the mock simulator** — `isEmailMockEnabled()` in `lib/env.ts`, triple-gated
 exactly like `isAuthMockEnabled` (L100–106): `NODE_ENV !== 'production'` **and**
-`EMAIL_DRIVER` is `mock`/`mailpit` **and** loopback Supabase URL. The "simulate reply/bounce"
-affordance and any test-seeding route are inert otherwise.
+`EMAIL_DRIVER` is **`mock`** (only — *not* `mailpit`) **and** loopback Supabase URL. The
+"simulate reply/bounce" affordance is inert otherwise. It is scoped to `mock` alone because
+the simulator enqueues onto the process-global dev inbox that only `MockDriver.fetchReplies`
+drains; `MailpitDriver.fetchReplies` reads the real Mailpit REST API, so under mailpit a
+simulated message would never be scanned (use a real Mailpit round-trip there instead).
 
 ---
 

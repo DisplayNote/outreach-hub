@@ -80,6 +80,17 @@ describe('scanInbox', () => {
     expect(rec.inbound).toHaveLength(0);
   });
 
+  it('processes oldest-first even when the driver returns newest-first', async () => {
+    rec.correlatable.add('amy@example.com');
+    // Driver hands them back newest-first (as Mailpit does).
+    driver.inbound.push(inbound({ messageId: 'new', from: 'amy@example.com', receivedAt: '2026-05-29T12:00:00.000Z' }));
+    driver.inbound.push(inbound({ messageId: 'old', from: 'mike@example.com', receivedAt: '2026-05-29T08:00:00.000Z' }));
+    await scanInbox(deps(rec, driver), {});
+    // Recorded ascending by receivedAt, so a mid-scan failure can't advance the
+    // high-water past an unprocessed older message.
+    expect(rec.inbound.map((i) => i.message.messageId)).toEqual(['old', 'new']);
+  });
+
   it('dedupes an already-recorded inbound', async () => {
     rec.recorded.add('r1');
     driver.inbound.push(inbound({ messageId: 'r1', inReplyTo: 'sent-1' }));

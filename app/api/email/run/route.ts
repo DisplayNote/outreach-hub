@@ -1,8 +1,10 @@
 /**
  * Scheduled send trigger (PHASE_5_SPEC §1). CRON_SECRET-gated; driven by Vercel
  * Cron in prod (which calls with GET + `Authorization: Bearer <secret>`). Runs
- * the sender across all orgs via the service-role client. Local dev uses the
- * "Run sender now" Server Action instead.
+ * the sender for the single configured org (CRON_ORG_ID) via the service-role
+ * client — one global driver/token is one mailbox, so this does NOT fan out
+ * across orgs (no-op when CRON_ORG_ID is unset). Local dev uses the "Run sender
+ * now" Server Action instead.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';
