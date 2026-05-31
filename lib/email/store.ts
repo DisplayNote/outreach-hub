@@ -356,10 +356,13 @@ export function supabaseEmailStore(
     },
 
     async lastScanHighWater() {
+      // Track the last INBOUND processed (reply/bounce) — not sends — so the
+      // scan window covers replies that arrived around send time.
       const { data, error } = await client
         .from('email_events')
         .select('occurred_at')
         .eq('org_id', ctx.orgId)
+        .in('type', ['reply', 'bounce'])
         .order('occurred_at', { ascending: false })
         .limit(1)
         .maybeSingle();

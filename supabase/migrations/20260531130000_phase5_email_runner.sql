@@ -51,11 +51,12 @@ create index email_events_org_type_occurred_idx
   on public.email_events (org_id, type, occurred_at);
 create index email_events_contact_id_idx on public.email_events (contact_id);
 -- Send-dedup arbiter (replaces the legacy sentEmailIds map): a re-run never
--- double-records the same provider message. Partial so inbound rows without a
--- provider message_id (rare) don't collide.
+-- double-records the same provider message. NON-partial so it can serve as the
+-- ON CONFLICT (org_id, provider, message_id) arbiter for the runner/scanner
+-- upserts; every event we write carries a message_id, and Postgres treats any
+-- NULLs as distinct, so rows without one still coexist.
 create unique index email_events_org_provider_message_uidx
-  on public.email_events (org_id, provider, message_id)
-  where message_id is not null;
+  on public.email_events (org_id, provider, message_id);
 
 -- suppressions — address-level do-not-send -----------------------------------
 
@@ -69,8 +70,11 @@ create table public.suppressions (
 );
 
 -- One suppression per address per org; the runner left-anti-joins on this.
+-- Indexed on the plain (org_id, email) column (not lower(email)) so it can be
+-- the ON CONFLICT (org_id, email) arbiter for the upserts — every writer
+-- lowercases the email first, so the column already holds the normalised form.
 create unique index suppressions_org_email_uidx
-  on public.suppressions (org_id, lower(email));
+  on public.suppressions (org_id, email);
 
 -- RLS -------------------------------------------------------------------------
 
