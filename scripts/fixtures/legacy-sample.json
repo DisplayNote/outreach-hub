@@ -1,0 +1,74 @@
+{
+  "campaigns": [
+    {
+      "id": "camp_1747300000000",
+      "name": "UK MSP Q2 2026",
+      "sequence": "5-step",
+      "contacts": [
+        {
+          "id": 17234,
+          "firstName": "Mike",
+          "lastName": "Galkin",
+          "email": "mike.galkin@example.com",
+          "company": "FlutterUKI",
+          "phone": "+441234567890",
+          "mobile": "+447700900123",
+          "jobTitle": "Director, IT",
+          "seniority": "Director",
+          "country": "United Kingdom",
+          "linkedin": "https://www.linkedin.com/in/mike-galkin/",
+          "status": "amber",
+          "sequenceDay": 7,
+          "followUp": "2026-05-22T09:00:00.000Z",
+          "notes": "=== SUGGESTED EMAIL ===\nHi Mike, ...\n=== RESEARCH ===\nFlutterUKI runs ~40 sites.",
+          "touchpoints": [
+            {
+              "id": "tp1747312345678",
+              "channel": "Email",
+              "note": "Sent: Quick question about your MSP stack",
+              "date": "2026-05-15T09:23:11.000Z"
+            },
+            {
+              "id": "tp1747498765432",
+              "channel": "Phone",
+              "note": "VM reached - left callback request",
+              "date": "2026-05-17T14:02:00.000Z"
+            }
+          ]
+        },
+        {
+          "id": 17235,
+          "firstName": "Sara",
+          "lastName": "Nguyen",
+          "email": "sara.nguyen@example.com",
+          "company": "Northbridge Systems",
+          "phone": "+441619998888",
+          "mobile": "+447700900456",
+          "jobTitle": "Head of Infrastructure",
+          "seniority": "Head",
+          "country": "United Kingdom",
+          "linkedin": "https://www.linkedin.com/in/sara-nguyen/",
+          "status": "green",
+          "sequenceDay": 12,
+          "followUp": "2026-05-28T09:00:00.000Z",
+          "notes": "Replied positively, wants a demo next week.",
+          "touchpoints": [
+            {
+              "id": "tp1747600000000",
+              "channel": "LinkedIn",
+              "note": "Connection accepted + intro message",
+              "date": "2026-05-18T11:45:30.000Z"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "activeCampId": "camp_1747300000000",
+  "sentEmailIds": {},
+  "meta": {
+    "schemaVersion": 6,
+    "createdAt": "2025-12-01T08:00:00.000Z",
+    "lastSaved": "2026-05-28T17:30:00.000Z"
+  }
+}
