@@ -1,0 +1,117 @@
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * Live AMD-run walk-through (PHASE_4_SPEC §10). Drives the real stack end-to-end
+ * with the mock Telnyx backend: dev sign-in → start an AMD run over a seeded
+ * machine-suffix contact → the server auto-detects the machine, hangs up, and
+ * auto-logs the voicemail touchpoint, all surfaced live over Realtime.
+ *
+ * Seeds directly via the service-role client (reading .env.local). The human and
+ * no-answer branches are covered deterministically by the unit suite
+ * (amd-mock-backend.test.ts); this proves the UI + Realtime + Server Actions +
+ * persistence are wired correctly against Postgres.
+ */
+
+function readEnvLocal(): Record<string, string> {
+  try {
+    const raw = readFileSync('.env.local', 'utf8');
+    const out: Record<string, string> = {};
+    for (const line of raw.split('\n')) {
+      const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+      if (m) out[m[1]!] = m[2]!;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+const env = readEnvLocal();
+const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321';
+const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+const MACHINE_NUMBER = '+447700900002';
+const E2E_MARKER = 'E2E AMD Machine';
+
+let admin: SupabaseClient;
+let contactId: string;
+
+test.beforeAll(async () => {
+  test.skip(!SERVICE_KEY, 'SUPABASE_SERVICE_ROLE_KEY not available in .env.local');
+  admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+  // Ensure the dev user/org exists (mirrors /auth/mock), then resolve its org.
+  await admin.auth.admin
+    .createUser({
+      email: 'dev@outreach.local',
+      password: 'dev-password-12345',
+      email_confirm: true,
+      user_metadata: { full_name: 'Dev User', org_name: 'Dev Org' },
+    })
+    .catch(() => undefined);
+
+  const { data: userRow } = await admin
+    .from('users')
+    .select('org_id')
+    .eq('email', 'dev@outreach.local')
+    .single();
+  const orgId = (userRow as { org_id: string }).org_id;
+
+  // Idempotent reseed: drop prior E2E contacts (+ their touchpoints via cascade).
+  await admin.from('contacts').delete().eq('org_id', orgId).eq('company', E2E_MARKER);
+
+  const { data: campaign } = await admin
+    .from('campaigns')
+    .insert({ org_id: orgId, name: 'E2E AMD Campaign' })
+    .select('id')
+    .single();
+  const campaignId = (campaign as { id: string }).id;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: contact } = await admin
+    .from('contacts')
+    .insert({
+      org_id: orgId,
+      campaign_id: campaignId,
+      first_name: 'Vera',
+      last_name: 'Voicemail',
+      company: E2E_MARKER,
+      mobile: MACHINE_NUMBER,
+      status: 'none',
+      follow_up: today,
+    })
+    .select('id')
+    .single();
+  contactId = (contact as { id: string }).id;
+});
+
+test('AMD run auto-detects a machine and logs the voicemail touchpoint', async ({ page }) => {
+  // Dev sign-in (mock).
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Dev sign-in (mock)' }).click();
+  await expect(page).toHaveURL(/\/(\?.*)?$/);
+
+  // Start the AMD run.
+  await page.goto('/dialler/amd');
+  await expect(page.getByText('Mock dialler — no real calls placed')).toBeVisible();
+  await page.getByRole('button', { name: 'Start AMD Run' }).click();
+
+  // The machine is detected and the run completes with one voicemail (live via Realtime).
+  await expect(page.getByText(/1 voicemails/)).toBeVisible({ timeout: 20_000 });
+
+  // The server auto-logged exactly one voicemail touchpoint on the contact.
+  await expect
+    .poll(
+      async () => {
+        const { data } = await admin
+          .from('touchpoints')
+          .select('note')
+          .eq('contact_id', contactId)
+          .eq('note', 'Voicemail reached — auto');
+        return data?.length ?? 0;
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(1);
+});

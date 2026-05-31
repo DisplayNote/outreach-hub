@@ -28,34 +28,44 @@ export function useAmdRun(runId: string | null): UseAmdRunResult {
 
     let active = true;
     const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
-    void supabase
-      .from('call_attempts')
-      .select(CALL_ATTEMPT_SELECT)
-      .eq('run_id', runId)
-      .then(({ data }) => {
-        if (!active || !data) return;
+    void (async () => {
+      // postgres_changes is RLS-filtered: without the user's token the realtime
+      // connection is anon and the org-scoped SELECT policy drops every change.
+      // Set the session token before subscribing so the run's rows come through.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (token) supabase.realtime.setAuth(token);
+
+      const { data } = await supabase
+        .from('call_attempts')
+        .select(CALL_ATTEMPT_SELECT)
+        .eq('run_id', runId);
+      if (active && data) {
         const next: Record<string, CallAttempt> = {};
         for (const row of data as CallAttemptRow[]) next[row.id] = toCallAttempt(row);
         setAttempts(next);
-      });
+      }
 
-    const channel = supabase
-      .channel(`amd-run-${runId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'call_attempts', filter: `run_id=eq.${runId}` },
-        (payload) => {
-          const row = payload.new as CallAttemptRow | null;
-          if (!row?.id) return;
-          setAttempts((prev) => ({ ...prev, [row.id]: toCallAttempt(row) }));
-        },
-      )
-      .subscribe();
+      if (!active) return;
+      channel = supabase
+        .channel(`amd-run-${runId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'call_attempts', filter: `run_id=eq.${runId}` },
+          (payload) => {
+            const row = payload.new as CallAttemptRow | null;
+            if (!row?.id) return;
+            setAttempts((prev) => ({ ...prev, [row.id]: toCallAttempt(row) }));
+          },
+        )
+        .subscribe();
+    })();
 
     return () => {
       active = false;
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [runId]);
 
