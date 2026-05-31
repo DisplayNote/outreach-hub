@@ -127,3 +127,47 @@ create policy "suppressions insert own org"
 create policy "suppressions delete own org"
   on public.suppressions for delete
   using (org_id = public.current_org_id());
+
+-- Atomic send recording -------------------------------------------------------
+-- The email is already sent (external, non-transactional). This commits the
+-- contact advance + audit event + touchpoint together so a partial failure
+-- can't leave a sent contact with no audit trail (or, conversely, advance
+-- without recording). SECURITY INVOKER (default): the manual path runs under the
+-- caller's RLS; the cron path uses the service role (bypasses RLS). All three
+-- writes are idempotent on re-run (deduped on their unique keys).
+create or replace function public.record_email_sent(
+  p_org_id uuid,
+  p_contact_id uuid,
+  p_campaign_id uuid,
+  p_provider text,
+  p_message_id text,
+  p_subject text,
+  p_sequence_day int,
+  p_next_sequence_day int,
+  p_next_follow_up date,
+  p_occurred_at timestamptz,
+  p_now timestamptz
+) returns void
+  language plpgsql
+as $$
+begin
+  update public.contacts
+    set last_emailed_at = p_now,
+        sequence_day = p_next_sequence_day,
+        follow_up = p_next_follow_up
+    where id = p_contact_id and org_id = p_org_id;
+
+  insert into public.email_events
+    (org_id, contact_id, campaign_id, type, provider, message_id, subject, sequence_day, occurred_at)
+  values
+    (p_org_id, p_contact_id, p_campaign_id, 'sent', p_provider, p_message_id, p_subject, p_sequence_day, p_occurred_at)
+  on conflict (org_id, provider, message_id) do nothing;
+
+  insert into public.touchpoints
+    (org_id, contact_id, channel, note, occurred_at, legacy_id)
+  values
+    (p_org_id, p_contact_id, 'email', 'Sent: ' || coalesce(p_subject, ''), p_now,
+     'email-sent-' || p_provider || '-' || p_message_id)
+  on conflict (org_id, legacy_id) do nothing;
+end;
+$$;

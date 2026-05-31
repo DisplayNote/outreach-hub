@@ -115,11 +115,16 @@ export function supabaseEmailStore(
       const candidates = (rows ?? []).map((r) => toContact(r as ContactRow));
       if (candidates.length === 0) return [];
 
-      // Suppressed addresses (address-level, across campaigns).
+      // Which of THESE candidates are suppressed — query only the candidate
+      // addresses, not the whole org's suppression list (which can grow large).
+      const candidateEmails = [
+        ...new Set(candidates.map((c) => c.email?.trim().toLowerCase()).filter((e): e is string => !!e)),
+      ];
       const { data: supRows, error: supErr } = await client
         .from('suppressions')
         .select('email')
-        .eq('org_id', ctx.orgId);
+        .eq('org_id', ctx.orgId)
+        .in('email', candidateEmails);
       if (supErr) throw new Error(`dueContacts.suppressions: ${supErr.message}`);
       const suppressed = new Set((supRows ?? []).map((s) => (s.email as string).trim().toLowerCase()));
 
@@ -196,52 +201,25 @@ export function supabaseEmailStore(
     },
 
     async recordSent(input) {
-      // The email has already been sent (external, non-transactional), so order
-      // the DB writes to favour NO DUPLICATE SEND over perfect audit: advance the
-      // contact FIRST so a later partial failure can't leave it due again with a
-      // fresh message id (which would re-send to the prospect). The event +
-      // touchpoint are idempotent (deduped), so a retry tops them up.
-      const { error: cErr } = await client
-        .from('contacts')
-        .update({
-          last_emailed_at: input.now,
-          sequence_day: input.nextSequenceDay,
-          follow_up: input.nextFollowUp,
-        })
-        .eq('id', input.contact.id)
-        .eq('org_id', input.orgId);
-      if (cErr) throw new Error(`recordSent.contact: ${cErr.message}`);
-
-      // email_events(sent) — deduped on (org, provider, message_id).
-      const { error: evErr } = await client.from('email_events').upsert(
-        {
-          org_id: input.orgId,
-          contact_id: input.contact.id,
-          campaign_id: input.campaignId,
-          type: 'sent',
-          provider: ctx.provider,
-          message_id: input.ref.messageId,
-          subject: input.subject,
-          sequence_day: input.sequenceDay,
-          occurred_at: input.ref.sentAt,
-        },
-        { onConflict: 'org_id,provider,message_id', ignoreDuplicates: true },
-      );
-      if (evErr) throw new Error(`recordSent.event: ${evErr.message}`);
-
-      // Sent touchpoint (deduped by a deterministic legacy key).
-      const { error: tpErr } = await client.from('touchpoints').upsert(
-        {
-          org_id: input.orgId,
-          contact_id: input.contact.id,
-          channel: 'email',
-          note: `Sent: ${input.subject}`,
-          occurred_at: input.now,
-          legacy_id: `email-sent-${ctx.provider}-${input.ref.messageId}`,
-        },
-        { onConflict: 'org_id,legacy_id', ignoreDuplicates: true },
-      );
-      if (tpErr) throw new Error(`recordSent.touchpoint: ${tpErr.message}`);
+      // One transactional RPC: the contact advance + audit event + touchpoint
+      // commit or roll back together, so a partial failure can't leave a sent
+      // contact with no audit trail (or advance it without recording the send).
+      // The email itself is external/non-transactional, so a rolled-back send is
+      // re-attempted next run (the unavoidable at-least-once for outbound mail).
+      const { error } = await client.rpc('record_email_sent', {
+        p_org_id: input.orgId,
+        p_contact_id: input.contact.id,
+        p_campaign_id: input.campaignId,
+        p_provider: ctx.provider,
+        p_message_id: input.ref.messageId,
+        p_subject: input.subject,
+        p_sequence_day: input.sequenceDay,
+        p_next_sequence_day: input.nextSequenceDay,
+        p_next_follow_up: input.nextFollowUp,
+        p_occurred_at: input.ref.sentAt,
+        p_now: input.now,
+      });
+      if (error) throw new Error(`recordSent: ${error.message}`);
     },
 
     async findSentForCorrelation(keys) {

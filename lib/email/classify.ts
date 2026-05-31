@@ -10,7 +10,9 @@
  */
 import type { InboundMessage } from '@/lib/email/types';
 
-const SYSTEM_SENDER = /(^|[<\s])(postmaster|mailer-daemon|mail-delivery-system|no-?reply)@/i;
+// NDR senders only — deliberately NOT `no-reply` (a legitimate no-reply mailbox
+// can send a correlated auto-response that must not be treated as a hard bounce).
+const SYSTEM_SENDER = /(^|[<\s])(postmaster|mailer-daemon|mail-delivery-system)@/i;
 const NDR_SUBJECT =
   /undeliverable|delivery status notification|mail delivery (failed|subsystem)|returned mail|failure notice/i;
 
