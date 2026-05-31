@@ -161,44 +161,63 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
     setIndex((i) => i + 1);
   }, []);
 
-  // Place the next call when idle (sequential; guarded against double-place).
+  // Drive the current contact when idle: reconcile to an existing attempt if one
+  // already exists for this contact in the run, otherwise place a new call.
   //
-  // KNOWN EDGE CASE: if the component is paused/unmounted while placeAmdCall is
-  // in flight, the attempt can be created server-side but the UI never attaches
-  // (currentAttemptId stays null). On resume the per-index guard is reset so we
-  // re-place, which the server's one-live-attempt guard then rejects. A robust
-  // fix is a Realtime reconciliation that binds currentAttemptId to any live
-  // attempt for the current contact — deferred (it needs care around the repo's
-  // no-synchronous-setState-in-effect rule). The place is a fast Server Action,
-  // so the window is small, and this is mock-only locally.
+  // Reconciliation (re-checked on every `attempts` change, NOT gated by the
+  // place guard) handles a place that completed after a pause/unmount: the
+  // attempt exists server-side but the UI never attached. It also covers
+  // resume-after-completion (the contact's attempt finished during the gap). All
+  // setState happens inside the async IIFE, never synchronously in the effect
+  // body, to respect the repo's no-synchronous-setState-in-effect rule.
   useEffect(() => {
     if (runId === null || paused || done || awaitOutcome) return;
     if (currentAttemptId !== null || !current) return;
-    if (placedForIndex.current === index) return;
-    placedForIndex.current = index;
+
+    // Within a run each contact is dialled once, so at most one attempt matches.
+    const existing = Object.values(attempts).find((a) => a.contactId === current.id);
 
     let cancelled = false;
     void (async () => {
       try {
+        if (existing) {
+          if (cancelled) return;
+          if (existing.state !== 'ended' && existing.state !== 'failed') {
+            setCurrentAttemptId(existing.id); // attach to the live attempt; don't re-dial
+          } else {
+            advance(); // already handled during the gap
+          }
+          return;
+        }
+
+        // No attempt for this contact yet → place exactly once.
+        if (placedForIndex.current === index) return;
+        placedForIndex.current = index;
         const { attemptId } = await placeAmdCall({ runId, contactId: current.id });
         if (!cancelled) setCurrentAttemptId(attemptId);
       } catch (e) {
-        // A dial failure (e.g. fail-scenario / no number) shouldn't stall the run.
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Dial failed');
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : 'Dial failed';
+        setError(msg);
+        if (/already in progress/i.test(msg)) {
+          // A live attempt exists (e.g. an orphaned place) — DON'T skip this
+          // contact. Reset the guard so the next `attempts` update reconciles
+          // and attaches once Realtime delivers the attempt.
+          placedForIndex.current = -1;
+        } else {
+          // Genuine per-contact failure (no number / fail scenario) — move on.
           advance();
         }
       } finally {
-        // If the effect was torn down (pause / unmount / runId change) before the
-        // place settled, clear the per-index guard so resuming re-places this
-        // contact instead of stalling forever on `placedForIndex === index`.
+        // Torn down (pause / unmount / runId change) before the place settled →
+        // clear the guard so resuming re-evaluates instead of stalling.
         if (cancelled) placedForIndex.current = -1;
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [runId, paused, done, awaitOutcome, currentAttemptId, current, index, advance]);
+  }, [runId, paused, done, awaitOutcome, currentAttemptId, current, index, advance, attempts]);
 
   // Auto-advance terminal, non-human attempts after the inter-call delay. A
   // bridged (human) call waits for the rep to record an outcome instead.
