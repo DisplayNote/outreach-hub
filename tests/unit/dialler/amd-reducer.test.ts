@@ -105,6 +105,11 @@ describe('reduceEvent — hangup disposition (PHASE_4_SPEC §4)', () => {
     expect(r.nextState).toBe('ended');
     expect(r.disposition).toBe('no-answer');
   });
+
+  it('hangup from machine state with no amd_result → voicemail-auto (not no-answer)', () => {
+    const r = reduceEvent(attempt('machine', null), ev('call.hangup'));
+    expect(r.disposition).toBe('voicemail-auto');
+  });
 });
 
 describe('reduceEvent — idempotency (at-least-once webhooks)', () => {

@@ -109,8 +109,10 @@ export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceRes
 
     case 'call.hangup': {
       // Disposition is decided by how far the call got (attempt.amdResult / state).
+      // Decide from state first (consistent with the duplicate-AMD re-emission):
+      // a `machine` attempt is a voicemail even if amd_result didn't persist.
       let disposition: ReduceResult['disposition'];
-      if (attempt.amdResult !== null && MACHINE_AMD_RESULTS.has(attempt.amdResult)) {
+      if (attempt.state === 'machine' || (attempt.amdResult !== null && MACHINE_AMD_RESULTS.has(attempt.amdResult))) {
         disposition = 'voicemail-auto';
       } else if (attempt.state === 'bridged' || attempt.amdResult !== null) {
         disposition = 'bridged-human';

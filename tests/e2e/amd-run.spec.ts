@@ -55,14 +55,18 @@ function isLoopback(url: string): boolean {
 const MACHINE_NUMBER = '+447700900002';
 const E2E_MARKER = 'E2E AMD Machine';
 
+// This test deletes/creates rows via the service role, so it runs ONLY against a
+// local stack with a service key. Decided at collection time (env is read at
+// import) so the destructive beforeAll never runs when the guard fails — a
+// runtime test.skip() inside beforeAll wouldn't prevent the seeding side-effects.
+const CAN_RUN = SERVICE_KEY !== '' && isLoopback(SUPABASE_URL);
+const maybeTest = CAN_RUN ? test : test.skip;
+
 let admin: SupabaseClient;
 let contactId: string;
 
 test.beforeAll(async () => {
-  // Guard: this test deletes/creates rows via the service role. Never run it
-  // against a non-local Supabase (a remote URL could destroy real data).
-  test.skip(!SERVICE_KEY, 'SUPABASE_SERVICE_ROLE_KEY not available in .env.local');
-  test.skip(!isLoopback(SUPABASE_URL), 'refusing to seed against a non-loopback Supabase URL');
+  if (!CAN_RUN) return; // no service key / non-loopback URL → skip seeding entirely
   admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   // Ensure the dev user/org exists (mirrors /auth/mock), then resolve its org.
@@ -112,7 +116,7 @@ test.beforeAll(async () => {
   contactId = (contact as { id: string }).id;
 });
 
-test('AMD run auto-detects a machine and logs the voicemail touchpoint', async ({ page }) => {
+maybeTest('AMD run auto-detects a machine and logs the voicemail touchpoint', async ({ page }) => {
   // Dev sign-in (mock).
   await page.goto('/login');
   await page.getByRole('button', { name: 'Dev sign-in (mock)' }).click();
