@@ -108,8 +108,18 @@ export async function setCampaignSequence(campaignId: string, sequenceId: string
   const id = uuid.parse(campaignId);
   const seqId = sequenceId === null ? null : uuid.parse(sequenceId);
   const supabase = await createClient();
-  const { error } = await supabase.from('campaigns').update({ sequence_id: seqId }).eq('id', id);
+  // Require a returned row: an UPDATE that matches nothing (stale/unknown id, or
+  // a campaign not visible under RLS) reports no error, so without this the UI
+  // would falsely report "Linked campaign to sequence" while nothing changed.
+  const { data, error } = await supabase
+    .from('campaigns')
+    .update({ sequence_id: seqId })
+    .eq('id', id)
+    .select('id');
   if (error) throw new Error(`setCampaignSequence: ${error.message}`);
+  if (!data || data.length === 0) {
+    throw new Error('setCampaignSequence: campaign not found (or not in your org).');
+  }
   revalidatePath('/campaigns');
   revalidatePath('/sequences');
 }

@@ -404,9 +404,13 @@ export function supabaseEmailStore(
         // status and only write when it's unchanged since we read it; on a
         // concurrent change, re-read and recompute (bounded retries).
         let observed = (cur.status as Contact['status']) ?? 'none';
-        for (let attempt = 0; attempt < 4; attempt += 1) {
+        let settled = false;
+        for (let attempt = 0; attempt < 5; attempt += 1) {
           const next = resolveStatusEffect(observed, nextStatus);
-          if (next === null || next === observed) break; // precedence says no change
+          if (next === null || next === observed) {
+            settled = true; // precedence says no change needed — done
+            break;
+          }
           const { data: changed, error: sErr } = await client
             .from('contacts')
             .update({ status: next })
@@ -415,7 +419,10 @@ export function supabaseEmailStore(
             .eq('status', observed) // CAS guard: only if status hasn't moved
             .select('id');
           if (sErr) throw new Error(`recordInbound.status: ${sErr.message}`);
-          if ((changed?.length ?? 0) > 0) break; // won the CAS
+          if ((changed?.length ?? 0) > 0) {
+            settled = true; // won the CAS
+            break;
+          }
           const { data: reread, error: rErr } = await client
             .from('contacts')
             .select('status')
@@ -423,8 +430,18 @@ export function supabaseEmailStore(
             .eq('org_id', input.orgId)
             .maybeSingle();
           if (rErr) throw new Error(`recordInbound.status.reread: ${rErr.message}`);
-          if (!reread) break; // contact gone
+          if (!reread) {
+            settled = true; // contact gone — nothing to apply
+            break;
+          }
           observed = (reread.status as Contact['status']) ?? 'none';
+        }
+        // If we never settled (lost the CAS every attempt under heavy contention),
+        // THROW before the email_events dedup marker is written below — so the
+        // next scan re-processes this inbound and re-applies the status, rather
+        // than the marker suppressing it and the effect being lost permanently.
+        if (!settled) {
+          throw new Error('recordInbound.status: lost compare-and-set after retries; will retry next scan');
         }
       }
 
