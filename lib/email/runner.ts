@@ -179,8 +179,18 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       result.sent += 1;
     } catch (cause) {
       // Persistence failed AFTER a successful external send: flagged distinctly
-      // (persisted:false). The contact wasn't advanced, so a later run may
-      // re-send — the unavoidable at-least-once for non-transactional email.
+      // (persisted:false). recordSent IS a single transactional RPC (advance +
+      // email_events + touchpoint), so this only happens if the DB is unreachable
+      // at that instant. The contact wasn't advanced, so a later run re-sends
+      // (at-least-once — unavoidable for non-transactional email).
+      //
+      // KNOWN DEFERRED GAP: until that retry persists the email_events(sent) row,
+      // the scanner's sender-fallback correlation (which requires a prior sent
+      // event) will ignore a reply/bounce that arrives IN THIS WINDOW, and the
+      // scan cursor can advance past it — losing that stop/suppression. Closing
+      // it needs a durable transactional outbox for sends (or a scanner fallback
+      // that correlates against the claimed last_emailed_at state until the sent
+      // event is recovered); both are a fast-follow beyond this mocked phase.
       result.errors.push({
         contactId: contact.id,
         message: `recordSent: ${cause instanceof Error ? cause.message : 'failed'}`,

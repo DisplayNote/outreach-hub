@@ -73,6 +73,16 @@ Implementation-oriented; no app code here. **[RESOLVED]** = decided with the pro
   stops the sequence; Phase 5 does **not** parse reply text to infer `notinterested` (too
   fuzzy). The rep triages green contacts manually. (Legacy claimed content-based
   green/notinterested in §4.3, but that heuristic is not ported.)
+- **Per-user/per-org delegated Graph tokens for the MANUAL path.** The Graph driver is wired
+  for the **single-org cron** (one configured mailbox/token). Manual "Run sender / Scan inbox
+  now" Server Actions **refuse** the `graph-*` driver (they'd otherwise send every org/user
+  through the one process-wide `GRAPH_ACCESS_TOKEN`); injecting the signed-in user's delegated
+  token is a fast-follow. Local manual use is `mock`/`mailpit`.
+- **A durable transactional outbox for sends.** `record_email_sent` is a single atomic RPC, so
+  a sent-but-unpersisted message only occurs if the DB is unreachable mid-send. In that window
+  the missing `email_events(sent)` row means the scanner's sender-fallback can't correlate a
+  reply/bounce that arrives before the next run re-sends and persists it. An outbox (or a
+  scanner fallback against the claimed `last_emailed_at`) closes it — fast-follow.
 
 **Why behind `EmailDriver`:** the seam already lets the UI and runner iterate for weeks
 without Graph consent (execution-plan rationale table), makes testing trivial (canned
