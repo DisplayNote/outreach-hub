@@ -76,19 +76,22 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
     else result.bounces += 1;
   }
 
-  // Advance the high-water PAST the newest message seen (messages are ascending),
-  // even if every one was ignored/deduped — otherwise a mailbox with no
-  // correlated inbound would re-fetch the whole inbox every scan. Drivers fetch
-  // `receivedAt >= since`, so the cursor must land 1ms beyond the newest message
-  // or that boundary message is re-fetched on every subsequent scan. Only after
-  // the loop completes without throwing: a mid-scan failure leaves the cursor put
-  // so the next scan re-fetches and retries (dedup skips what was recorded).
+  // Advance the high-water to the newest message seen (by parsed time), even if
+  // every one was ignored/deduped — otherwise a mailbox with no correlated
+  // inbound would re-fetch the whole inbox every scan. We land EXACTLY on the
+  // newest timestamp (not past it): provider timestamps aren't unique at ms
+  // precision, so a late message sharing the newest ms would be skipped if we
+  // moved beyond it. Keeping the cursor on the boundary means `receivedAt >=
+  // since` re-fetches only that boundary on the next scan, which dedup
+  // (inboundAlreadyRecorded) absorbs — bounded overlap, no skips. Only after the
+  // loop completes without throwing: a mid-scan failure leaves the cursor put so
+  // the next scan re-fetches and retries.
   const newestMs = messages.reduce((max, m) => {
     const t = Date.parse(m.receivedAt);
     return Number.isFinite(t) && t > max ? t : max;
   }, Number.NEGATIVE_INFINITY);
   if (Number.isFinite(newestMs)) {
-    await deps.store.advanceScanCursor(new Date(newestMs + 1).toISOString());
+    await deps.store.advanceScanCursor(new Date(newestMs).toISOString());
   }
 
   return result;

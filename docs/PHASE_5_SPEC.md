@@ -40,8 +40,10 @@ Implementation-oriented; no app code here. **[RESOLVED]** = decided with the pro
   `fetchReplies` polling path, with a **mock** that simulates inbound replies/bounces so the
   whole loop is testable locally (handover §6.2).
 - **The touchpoint auto-log discipline** of handover §4.3 (send/reply/bounce each write the
-  right touchpoint + status side-effect) — composed from the **existing Phase-2 Server
-  Actions**, adding no ad-hoc write path for status/touchpoints.
+  right touchpoint + status side-effect), applied through the **store/RPC write path**
+  (`EmailStore.recordInbound` / the `record_email_sent` RPC) — cron/service-role code can't
+  invoke `'use server'` actions, and one atomic path avoids partial states. Status precedence
+  reuses the Phase-3 `resolveStatusEffect` helper so the effect matches the actions' (see §8).
 - A **dedicated `email_events` + `suppressions` data model** **[RESOLVED]** for per-message
   audit, reply/bounce correlation (dedup), and address-level suppression across campaigns
   (replaces the legacy `sentEmailIds` map + `skiplist.json`, handover §6.3).

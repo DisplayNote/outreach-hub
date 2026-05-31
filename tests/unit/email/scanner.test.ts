@@ -97,11 +97,12 @@ describe('scanInbox', () => {
     expect(rec.inbound).toHaveLength(0);
   });
 
-  it('advances the cursor 1ms PAST the newest message even when all are uncorrelated', async () => {
+  it('advances the cursor to the newest message even when all are uncorrelated', async () => {
     driver.inbound.push(inbound({ messageId: 'x1', from: 'stranger@nowhere.com', receivedAt: '2026-05-29T11:00:00.000Z' }));
     await scanInbox(deps(rec, driver), {});
-    // +1ms so the boundary message isn't re-fetched by the next `>= since` scan.
-    expect(rec.cursor).toBe('2026-05-29T11:00:00.001Z');
+    // Lands ON the boundary (not past it) so a late same-ms message isn't skipped;
+    // the bounded re-fetch is absorbed by dedup.
+    expect(rec.cursor).toBe('2026-05-29T11:00:00.000Z');
   });
 
   it('does not advance the cursor when the inbox is empty', async () => {
