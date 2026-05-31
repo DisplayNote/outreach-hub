@@ -162,6 +162,15 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
   }, []);
 
   // Place the next call when idle (sequential; guarded against double-place).
+  //
+  // KNOWN EDGE CASE: if the component is paused/unmounted while placeAmdCall is
+  // in flight, the attempt can be created server-side but the UI never attaches
+  // (currentAttemptId stays null). On resume the per-index guard is reset so we
+  // re-place, which the server's one-live-attempt guard then rejects. A robust
+  // fix is a Realtime reconciliation that binds currentAttemptId to any live
+  // attempt for the current contact — deferred (it needs care around the repo's
+  // no-synchronous-setState-in-effect rule). The place is a fast Server Action,
+  // so the window is small, and this is mock-only locally.
   useEffect(() => {
     if (runId === null || paused || done || awaitOutcome) return;
     if (currentAttemptId !== null || !current) return;

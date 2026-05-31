@@ -171,11 +171,14 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
       .in('state', NON_TERMINAL)
       .select('id');
     if (ccErr) {
+      // Scope to non-terminal so a concurrent cancel/end isn't overwritten
+      // (cancelled → failed would corrupt the finalised disposition).
       await client
         .from('call_attempts')
         .update({ state: 'failed', error: ccErr.message })
         .eq('id', attemptId)
-        .eq('org_id', orgId);
+        .eq('org_id', orgId)
+        .in('state', NON_TERMINAL);
       await backend.hangup(callControlId).catch(() => undefined);
       throw new Error(`placeAmdCall: failed to persist call_control_id: ${ccErr.message}`);
     }
@@ -185,11 +188,14 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
     }
   } catch (cause) {
     const message = cause instanceof AmdBackendError ? cause.message : 'dial failed';
+    // Only mark failed while still non-terminal — never clobber a concurrently
+    // finalised attempt (cancelled / webhook-driven ended).
     await client
       .from('call_attempts')
       .update({ state: 'failed', error: message })
       .eq('id', attemptId)
-      .eq('org_id', orgId);
+      .eq('org_id', orgId)
+      .in('state', NON_TERMINAL);
     throw cause;
   }
 
