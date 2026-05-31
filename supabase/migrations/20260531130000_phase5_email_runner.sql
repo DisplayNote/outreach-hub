@@ -256,17 +256,26 @@ as $$
         and ss2.org_id = c.org_id
         and ss2.day_offset > c.sequence_day
         and ss2.channel = 'email') as next_day_offset,
-    (ss.template_id is not null) as has_template,
+    (step.template_id is not null) as has_template,
     t.subject as template_subject,
     t.body as template_body
   from public.contacts c
   join public.campaigns cam
     on cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
-  join public.sequence_steps ss
-    on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
-   and ss.day_offset = c.sequence_day and ss.channel = 'email'
+  -- LATERAL + limit 1 picks EXACTLY ONE email step at the contact's day_offset
+  -- (lowest step_order, deterministically). The schema only enforces unique
+  -- step_order, not unique day_offset, so a plain join could return duplicate due
+  -- rows if a sequence had two email steps at the same offset.
+  join lateral (
+    select ss.template_id, ss.step_order
+      from public.sequence_steps ss
+     where ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
+       and ss.day_offset = c.sequence_day and ss.channel = 'email'
+     order by ss.step_order asc
+     limit 1
+  ) step on true
   left join public.templates t
-    on t.id = ss.template_id and t.org_id = c.org_id
+    on t.id = step.template_id and t.org_id = c.org_id
   where c.org_id = p_org_id
     and c.follow_up is not null
     and c.follow_up <= p_today
@@ -341,19 +350,24 @@ create or replace function public.count_due_email_contacts(
   language sql
   stable
 as $$
+  -- Count each contact ONCE: the email-step requirement is an EXISTS, not a join,
+  -- so duplicate email steps at the same day_offset can't inflate the count
+  -- (matches the single-step LATERAL selection in due_email_contacts).
   select count(*)::int
   from public.contacts c
   join public.campaigns cam
     on cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
-  join public.sequence_steps ss
-    on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
-   and ss.day_offset = c.sequence_day and ss.channel = 'email'
   where c.org_id = p_org_id
     and c.follow_up is not null
     and c.follow_up <= p_today
     and c.email is not null
     and c.status not in ('notinterested', 'bounced', 'meeting')
     and (c.last_emailed_at is null or c.last_emailed_at < (p_today::timestamp at time zone 'UTC'))
+    and exists (
+      select 1 from public.sequence_steps ss
+       where ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
+         and ss.day_offset = c.sequence_day and ss.channel = 'email'
+    )
     and not exists (
       select 1 from public.suppressions s
        where s.org_id = c.org_id and s.email = lower(btrim(c.email))
