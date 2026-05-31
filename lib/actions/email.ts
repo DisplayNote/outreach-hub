@@ -39,20 +39,29 @@ async function buildContext() {
     data: { user },
   } = await supabase.auth.getUser();
   const settings = await getOrgSettings();
-  const driver = getEmailDriver();
-  // Manual (per-user) send/scan must NOT run through the process-wide Graph token
-  // (GRAPH_ACCESS_TOKEN): it's one mailbox, so every org/user would send from it
-  // and inbound would apply to the wrong tenant. Per-user delegated tokens (from
-  // the user's Supabase Azure session) are a deferred fast-follow; until then the
-  // Graph driver is for the single-org cron only. Refuse here rather than fan a
-  // shared mailbox across tenants. (mock/mailpit are fine for local manual use.)
-  if (driver.name === 'graph-dev' || driver.name === 'graph-prod') {
-    throw new Error(
-      'Manual email send/scan is not supported with the Graph driver yet ' +
-        '(per-user delegated token not wired — it would use one shared mailbox for every org). ' +
-        'Use the scheduled single-org cron, or the mock/mailpit driver locally.',
-    );
+
+  // Manual (per-user) path: bind the Graph driver to the SIGNED-IN USER'S
+  // delegated token (their Supabase Azure/Entra session's provider_token), NOT
+  // the cron's shared GRAPH_ACCESS_TOKEN — otherwise every org/user would send
+  // from one mailbox and inbound would apply to the wrong tenant. mock/mailpit
+  // need no token. Fail clearly (don't fall back to the shared token) if the
+  // delegated token is absent — the user must have signed in with the Mail
+  // scopes (Mail.Send/Mail.Read; requested incrementally at login).
+  const driverName = process.env.EMAIL_DRIVER;
+  let accessToken: string | undefined;
+  if (driverName === 'graph-dev' || driverName === 'graph-prod') {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    accessToken = session?.provider_token ?? undefined;
+    if (!accessToken) {
+      throw new Error(
+        'Manual email send/scan with the Graph driver needs your delegated Microsoft token ' +
+          '(Mail.Send / Mail.Read). Re-authenticate with those scopes, or use the scheduled cron.',
+      );
+    }
   }
+  const driver = getEmailDriver(accessToken ? { accessToken } : {});
   const store = supabaseEmailStore(supabase, { orgId, provider: driver.name, settings });
   // Prefer the configured org mailbox (same as cron), then the signed-in user's
   // address for a delegated send. Never the signature (a human-readable string,
