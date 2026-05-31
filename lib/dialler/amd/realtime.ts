@@ -66,6 +66,10 @@ export function useAmdRun(runId: string | null): UseAmdRunResult {
     return () => {
       active = false;
       if (channel) void supabase.removeChannel(channel);
+      // Clear on teardown (runId change / unmount) so a new/!null run never shows
+      // the previous run's attempts. Done in cleanup, not the effect body, to
+      // avoid a synchronous setState-in-effect.
+      setAttempts({});
     };
   }, [runId]);
 

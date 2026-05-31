@@ -42,6 +42,16 @@ function readEnvLocal(): Record<string, string> {
 const env = readEnvLocal();
 const SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321';
 const SERVICE_KEY = env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+
+/** Only ever run the destructive service-role seeding against a local stack. */
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+function isLoopback(url: string): boolean {
+  try {
+    return LOOPBACK_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 const MACHINE_NUMBER = '+447700900002';
 const E2E_MARKER = 'E2E AMD Machine';
 
@@ -49,7 +59,10 @@ let admin: SupabaseClient;
 let contactId: string;
 
 test.beforeAll(async () => {
+  // Guard: this test deletes/creates rows via the service role. Never run it
+  // against a non-local Supabase (a remote URL could destroy real data).
   test.skip(!SERVICE_KEY, 'SUPABASE_SERVICE_ROLE_KEY not available in .env.local');
+  test.skip(!isLoopback(SUPABASE_URL), 'refusing to seed against a non-loopback Supabase URL');
   admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   // Ensure the dev user/org exists (mirrors /auth/mock), then resolve its org.

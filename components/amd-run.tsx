@@ -248,8 +248,11 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
         await hangupAttempt(currentAttemptId);
       }
     } catch (e) {
+      // Don't advance on failure: the attempt may still be live, and advancing
+      // would strand it (and make the next dial hit the one-live guard). Keep the
+      // current contact, clear skipping, and surface the error so the rep retries.
       setError(e instanceof Error ? e.message : 'Failed to skip');
-      advance();
+      setSkipping(false);
     }
   }, [currentAttemptId, currentAttempt, advance]);
 
