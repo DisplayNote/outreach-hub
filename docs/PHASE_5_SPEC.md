@@ -103,8 +103,9 @@ refactor. Phase 5 is the first phase that makes `send` + `fetchReplies` do real 
    email_events(sent) + touchpoint "Sent: …"
    + advance contacts.sequence_day + follow_up (§4)
 
-  Scheduled trigger (prod): cron → POST /api/email/run?secret=…  →  runSender()
-                                    POST /api/email/scan?secret=… →  scanInbox()
+  Scheduled trigger (prod): Vercel Cron → GET /api/email/run   →  runSender()
+   (Authorization: Bearer $CRON_SECRET)   GET /api/email/scan  →  scanInbox()
+   — secret in the header ONLY, never a query param (URLs leak into logs).
 ```
 
 Both entry points (manual Server Action and scheduled route) call the **same pure-ish core**

@@ -93,10 +93,30 @@ create table public.suppressions (
 
 -- One suppression per address per org; the runner left-anti-joins on this.
 -- Indexed on the plain (org_id, email) column (not lower(email)) so it can be
--- the ON CONFLICT (org_id, email) arbiter for the upserts — every writer
--- lowercases the email first, so the column already holds the normalised form.
+-- the ON CONFLICT (org_id, email) arbiter for the upserts. The column is kept in
+-- normalised (lower+trim) form by the trigger below, so it can serve as the
+-- arbiter AND so dueContacts' `.in('email', <lowercased candidates>)` left-anti
+-- join can never miss a row stored with different casing.
 create unique index suppressions_org_email_uidx
   on public.suppressions (org_id, email);
+
+-- Normalise the address at the DB boundary so the invariant holds for ANY writer
+-- (our Server Actions already lower+trim, but a direct PostgREST insert under RLS
+-- could otherwise store `User@Example.com` — which dueContacts' lowercased
+-- left-anti join would then miss, letting a suppressed address still be emailed).
+create or replace function public.suppressions_normalise_email()
+  returns trigger
+  language plpgsql
+as $$
+begin
+  new.email := lower(btrim(new.email));
+  return new;
+end;
+$$;
+
+create trigger suppressions_normalise_email_trg
+  before insert or update on public.suppressions
+  for each row execute function public.suppressions_normalise_email();
 
 -- RLS -------------------------------------------------------------------------
 

@@ -121,6 +121,10 @@ export async function enrolInSequence(campaignId: string): Promise<{ enrolled: n
     .eq('org_id', orgId)
     .eq('campaign_id', id)
     .not('email', 'is', null)
+    // Don't resurface contacts in a terminal state (matches the runner's
+    // dueContacts filter): enrolling a campaign must not reset follow_up for
+    // someone who booked a meeting, isn't interested, or hard-bounced.
+    .not('status', 'in', '(notinterested,bounced,meeting)')
     .select('id');
   if (uErr) throw new Error(`enrolInSequence: ${uErr.message}`);
 

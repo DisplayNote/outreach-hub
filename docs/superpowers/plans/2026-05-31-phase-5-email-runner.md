@@ -117,7 +117,7 @@
 
 **Files:** Modify `lib/env.ts`; create `tests/unit/email/env-email-mock.test.ts`
 
-- [ ] **Step 1: Failing test** — `isEmailMockEnabled(env)` true only when `NODE_ENV!=='production'` AND `EMAIL_DRIVER` ∈ {`mock`,`mailpit`} AND loopback `NEXT_PUBLIC_SUPABASE_URL`; false otherwise. `parseServerEnv` accepts an optional `CRON_SECRET`.
+- [ ] **Step 1: Failing test** — `isEmailMockEnabled(env)` true only when `NODE_ENV!=='production'` AND `EMAIL_DRIVER` is `mock` (only — NOT `mailpit`; the simulator writes to the process-global dev inbox that only `MockDriver.fetchReplies` drains, whereas Mailpit scans its real REST API) AND loopback `NEXT_PUBLIC_SUPABASE_URL`; false otherwise. `parseServerEnv` accepts an optional `CRON_SECRET`.
 
 - [ ] **Step 2: Run → fail.**
 
