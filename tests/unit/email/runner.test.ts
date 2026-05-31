@@ -54,6 +54,8 @@ interface Rec {
   dueList: DueContact[];
   /** Contact ids the claim should LOSE (simulating a concurrent run). */
   claimLost?: Set<string>;
+  /** Contact ids whose claim was released (transport failure). */
+  released?: string[];
 }
 
 function fakeStore(rec: Rec): EmailStore {
@@ -68,6 +70,9 @@ function fakeStore(rec: Rec): EmailStore {
     },
     async claimForSend(contactId) {
       return !rec.claimLost?.has(contactId);
+    },
+    async releaseClaim(contactId) {
+      (rec.released ??= []).push(contactId);
     },
     async sentCountToday() {
       return rec.sentToday;
@@ -191,6 +196,9 @@ describe('runSender', () => {
     expect(res.errors).toHaveLength(1);
     expect(res.sent).toBe(1);
     expect(rec.sent).toHaveLength(1); // only the successful one advanced
+    // The transport-failed contact's claim was released (so it retries today and
+    // isn't counted toward the cap); the successful one's claim is NOT released.
+    expect(rec.released).toEqual(['a']);
   });
 
   it('is a weekend no-op when seqSkipWeekends and today is Sat/Sun', async () => {

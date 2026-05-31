@@ -75,13 +75,26 @@ export interface EmailStore {
   countDue(today: string): Promise<number>;
   /**
    * Atomically claim a contact for sending: set last_emailed_at = `now` only if
-   * it's still un-sent today, returning whether THIS call won the claim. Two
+   * it still passes the FULL due predicate, returning whether THIS call won. Two
    * overlapping runs that both fetched the same due row can't both send — the
    * loser gets false. (The provider message id is per-send, so the email_events
-   * unique index can't dedupe a concurrent double-send; this is the guard.)
+   * unique index can't dedupe a concurrent double-send; this is the guard.) On a
+   * TRANSPORT failure the caller must {@link releaseClaim} to undo this marker.
    */
   claimForSend(contactId: string, today: string, now: string): Promise<boolean>;
-  /** Count of `sent` events on/after `today` (daily-cap accounting). */
+  /**
+   * Undo a claim when the send never left (transport error): restore
+   * last_emailed_at to `priorLastEmailedAt`, but only if it still equals
+   * `claimedAt` (i.e. nothing else re-claimed/advanced it meanwhile). So a
+   * transport failure neither blocks a same-day retry nor counts toward the cap.
+   */
+  releaseClaim(contactId: string, claimedAt: string, priorLastEmailedAt: string | null): Promise<void>;
+  /**
+   * Emails sent today for daily-cap accounting — counts CLAIMED contacts
+   * (last_emailed_at >= today), NOT persisted email_events(sent). A send that
+   * succeeded but whose recordSent failed keeps its claim and so still counts,
+   * so a later same-day run can't see freed headroom and exceed the goal.
+   */
   sentCountToday(today: string): Promise<number>;
   /** Persist a send: email_events(sent) + touchpoint + advance the contact (§4/§8). */
   recordSent(input: RecordSentInput): Promise<void>;
@@ -183,6 +196,20 @@ export function supabaseEmailStore(
       });
       if (error) throw new Error(`claimForSend: ${error.message}`);
       return data === true;
+    },
+
+    async releaseClaim(contactId, claimedAt, priorLastEmailedAt) {
+      // Conditional restore: only revert if last_emailed_at is still OUR claim
+      // value (nothing else re-claimed or advanced the contact since). Restores
+      // the pre-claim value (null or an older send date), so the contact is due
+      // again today and isn't counted toward the cap.
+      const { error } = await client
+        .from('contacts')
+        .update({ last_emailed_at: priorLastEmailedAt })
+        .eq('id', contactId)
+        .eq('org_id', ctx.orgId)
+        .eq('last_emailed_at', claimedAt);
+      if (error) throw new Error(`releaseClaim: ${error.message}`);
     },
 
     async sentCountToday(today) {

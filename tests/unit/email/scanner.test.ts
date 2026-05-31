@@ -22,6 +22,7 @@ function fakeStore(rec: Rec): EmailStore {
     async claimForSend() {
       return true;
     },
+    async releaseClaim() {},
     async sentCountToday() {
       return 0;
     },

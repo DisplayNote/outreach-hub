@@ -71,8 +71,16 @@ test.beforeAll(async () => {
   orgId = (userRow as { org_id: string }).org_id;
 
   // Make the runner deterministic regardless of the real weekday (it weekend-
-  // no-ops when seqSkipWeekends, and the test may run on a Sat/Sun).
-  await admin.from('organizations').update({ settings: { seqSkipWeekends: false, dailyGoal: 30 } }).eq('id', orgId);
+  // no-ops when seqSkipWeekends, and the test may run on a Sat/Sun). MERGE into
+  // the existing settings JSONB — replacing it wholesale would wipe unrelated
+  // keys (senderEmail, signature, default country, the scan cursor) on the
+  // shared dev org.
+  const { data: orgRow } = await admin.from('organizations').select('settings').eq('id', orgId).single();
+  const existingSettings = ((orgRow as { settings: Record<string, unknown> | null } | null)?.settings ?? {});
+  await admin
+    .from('organizations')
+    .update({ settings: { ...existingSettings, seqSkipWeekends: false, dailyGoal: 30 } })
+    .eq('id', orgId);
 
   // Idempotent reseed. Also clear the test emails' suppressions — they're keyed
   // by address (contact_id is only ON DELETE SET NULL), so a prior run's

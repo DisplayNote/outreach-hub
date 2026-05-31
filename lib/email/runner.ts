@@ -123,7 +123,8 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
     // manual, or overlapping ticks) could have fetched the same due row, and the
     // per-send message id won't let email_events dedupe a double-send. The loser
     // of the claim skips silently — the winner sends.
-    if (!(await deps.store.claimForSend(contact.id, opts.today, deps.now()))) {
+    const claimNow = deps.now();
+    if (!(await deps.store.claimForSend(contact.id, opts.today, claimNow))) {
       continue;
     }
 
@@ -135,11 +136,20 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       bodyHtml: escapeHtml(rendered.body).replace(/\n/g, '<br>'),
     };
 
-    // Transport failure: nothing was sent — don't consume a cap slot, just record.
+    // Transport failure: nothing left the building — RELEASE the claim so the
+    // contact retries today and isn't counted toward the cap (the claim marked
+    // last_emailed_at; undo it back to the pre-claim value). A persistence
+    // failure below is different: the send DID happen, so the claim stays.
     let ref;
     try {
       ref = await deps.driver.send(message);
     } catch (cause) {
+      try {
+        await deps.store.releaseClaim(contact.id, claimNow, contact.lastEmailedAt);
+      } catch {
+        // Best-effort: if the release fails, the contact stays claimed and simply
+        // retries on the next day's run rather than today — never double-sent.
+      }
       result.errors.push({
         contactId: contact.id,
         message: `send: ${cause instanceof Error ? cause.message : 'failed'}`,
@@ -164,7 +174,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
         sequenceDay,
         nextSequenceDay: nextDayOffset,
         nextFollowUp,
-        now: deps.now(),
+        now: claimNow,
       });
       result.sent += 1;
     } catch (cause) {
