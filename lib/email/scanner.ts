@@ -45,7 +45,12 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
   const sinceMs = Date.parse(since);
   const boundarySeen = new Set(cursor?.ids ?? []);
 
-  const fetched = await deps.driver.fetchReplies({ since });
+  // Forward the SAME mailbox we key the cursor by, so a mailbox-aware driver
+  // reads that exact inbox rather than its default — otherwise it could scan one
+  // inbox while advancing another mailbox's cursor (skip/misapply). (For the
+  // delegated Graph driver `/me` already is this mailbox; the mock/mailpit
+  // drivers ignore it — forwarding it keeps fetch and cursor consistent.)
+  const fetched = await deps.driver.fetchReplies({ since, mailbox: mailboxKey });
 
   // Drop boundary messages already processed by a previous scan: drivers fetch
   // `receivedAt >= since`, so a message AT the cursor timestamp is re-fetched
