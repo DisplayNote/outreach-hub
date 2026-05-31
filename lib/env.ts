@@ -20,7 +20,19 @@ const serverEnvSchema = publicEnvSchema
     EMAIL_DRIVER: z
       .enum(['mock', 'mailpit', 'graph-dev', 'graph-prod'])
       .default('mock'),
+    // Phase 4 — Telnyx AMD "Mode B" server env. All optional: the local/mock
+    // path needs none of them (see isDiallerMockEnabled). AMD_MODE / no-answer
+    // timeout have safe defaults matching legacy/worker.js.
+    TELNYX_API_KEY: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    TELNYX_CONNECTION_ID: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    TELNYX_PUBLIC_KEY: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    BRIDGE_SIP_USERNAME: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    AMD_MODE: z.enum(['premium', 'detect', 'detect_beep']).default('premium'),
+    NO_ANSWER_TIMEOUT_MS: z.coerce.number().int().positive().default(22000),
   })
+  // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
+  // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So
+  // parseServerEnv succeeds with only the public URL present (see env.test.ts).
   .transform((env) => ({
     ...env,
     SUPABASE_SERVER_URL: env.SUPABASE_INTERNAL_URL ?? env.NEXT_PUBLIC_SUPABASE_URL,
@@ -101,6 +113,25 @@ export function isAuthMockEnabled(env: EnvRecord = process.env): boolean {
   return (
     env.NODE_ENV !== 'production' &&
     env.AUTH_MOCK_ENABLED === 'true' &&
+    isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
+  );
+}
+
+/**
+ * Dev-only mock Telnyx-dialler toggle for AMD "Mode B" (PHASE_4_SPEC §7).
+ * Triple-gated identically to {@link isAuthMockEnabled}, so the mock backend —
+ * which fabricates call events with no real telephony — can never run against
+ * shared infrastructure:
+ *   1. NODE_ENV must not be `production`,
+ *   2. `DIALLER_MOCK_ENABLED` must be explicitly `true`, and
+ *   3. NEXT_PUBLIC_SUPABASE_URL must point at the local stack (loopback host).
+ * When true, `createAmdRuntime()` selects the in-process MockTelnyxBackend and
+ * the webhook route accepts mock-originated events without a Telnyx signature.
+ */
+export function isDiallerMockEnabled(env: EnvRecord = process.env): boolean {
+  return (
+    env.NODE_ENV !== 'production' &&
+    env.DIALLER_MOCK_ENABLED === 'true' &&
     isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
   );
 }

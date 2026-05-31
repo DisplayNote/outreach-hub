@@ -27,11 +27,12 @@ import {
 import type { CallOutcomeKey } from '@/lib/dialler/types';
 import type { Contact, Touchpoint } from '@/lib/types/domain';
 
-// The outcome catalogue + status-precedence rules live in @/lib/dialler/outcomes
-// (the single source of truth shared with the dialler UI). Re-exported so
-// existing importers (e.g. components/dialler-run.tsx) keep their import path.
+// The CallOutcomeKey type is re-exported so existing importers (e.g.
+// components/dialler-run.tsx) keep their import path. The runtime catalogue
+// (CALL_OUTCOME_KEYS) is NOT re-exported here: a 'use server' file may only
+// export async functions, and re-exporting the array tripped Next's
+// invalid-use-server-value guard. Import the value from '@/lib/dialler' instead.
 export type { CallOutcomeKey };
-export { CALL_OUTCOME_KEYS };
 
 // --- Raw row shape (snake_case, exactly as returned by PostgREST) -------------
 
