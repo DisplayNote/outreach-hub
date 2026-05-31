@@ -114,6 +114,11 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
   const [paused, setPaused] = useState(false);
   const [recording, setRecording] = useState<CallOutcomeKey | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when the rep skips a *live* call: we request a hangup and let the
+  // terminal-state effect advance once the call actually ends, rather than
+  // advancing while it's still live (which would race the next dial against the
+  // server's one-live-attempt guard).
+  const [skipping, setSkipping] = useState(false);
 
   const placedForIndex = useRef<number>(-1);
   const { attempts } = useAmdRun(runId);
@@ -152,6 +157,7 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
 
   const advance = useCallback(() => {
     setCurrentAttemptId(null);
+    setSkipping(false);
     setIndex((i) => i + 1);
   }, []);
 
@@ -185,12 +191,15 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
   useEffect(() => {
     if (!currentAttempt) return;
     const terminal = currentAttempt.state === 'ended' || currentAttempt.state === 'failed';
-    if (terminal && currentAttempt.disposition !== 'bridged-human') {
+    // Auto-advance terminal attempts, except a connected human (bridged-human)
+    // which waits for the rep to log an outcome — UNLESS the rep skipped it, in
+    // which case we advance once the hung-up call has actually ended.
+    if (terminal && (currentAttempt.disposition !== 'bridged-human' || skipping)) {
       const t = setTimeout(advance, callDelayMs);
       return () => clearTimeout(t);
     }
     return;
-  }, [currentAttempt, advance, callDelayMs]);
+  }, [currentAttempt, advance, callDelayMs, skipping]);
 
   const record = useCallback(
     async (outcome: CallOutcomeKey) => {
@@ -224,15 +233,13 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
         // Pre-correlation: cancel and advance now (the attempt is terminal).
         await cancelAttempt(currentAttemptId);
         advance();
-      } else if (a.state === 'bridged') {
-        // Abandoning a connected human: hang up and advance now.
-        await hangupAttempt(currentAttemptId);
-        advance();
       } else {
-        // Live, correlated, pre-bridge: request hangup but DON'T advance here —
-        // the terminal-state effect advances once the attempt actually ends, so
-        // we never start the next dial while this one is still in progress
-        // (which the server's one-live-attempt guard would reject).
+        // Live, correlated (incl. a connected human): request hangup and mark
+        // skipping, but DON'T advance here — the terminal-state effect advances
+        // once the call actually ends, so we never start the next dial while
+        // this one is still live (which the one-live-attempt guard would reject,
+        // and whose error path could then skip a contact).
+        setSkipping(true);
         await hangupAttempt(currentAttemptId);
       }
     } catch (e) {

@@ -47,6 +47,15 @@ export async function processEvent(deps: ProcessDeps, event: TelnyxEvent): Promi
 
   const outcome = await applyEvent(deps.store, attempt, event, deps.now());
 
+  // KNOWN LIMITATION (real-Telnyx path only): persistence and actuation are not
+  // atomic. If an actuation below throws after applyEvent persisted the
+  // machine/bridged state, the route returns 500 and Telnyx retries — but the
+  // retry hits the reducer's idempotency guard and no-ops, so the hangup/bridge
+  // is not re-attempted. A correct exactly-once fix needs an outbox /
+  // reconciliation pass (or decoupling actuation from the mock's synchronous
+  // recursion, where the machine state must be persisted before the nested
+  // hangup event is classified). Deferred until the real Telnyx backend is
+  // wired and exercised; the mock path actuates in-process and cannot hit this.
   for (const actuation of outcome.actuations) {
     if (actuation === 'hangup') {
       await deps.actuator.hangup(event.callControlId);

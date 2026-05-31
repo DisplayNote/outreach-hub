@@ -156,16 +156,25 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
       contactId,
       ...(scenario ? { scenario: scenario as AmdScenario } : {}),
     });
-    // Persist the correlation id; if this fails, webhooks can't match the
-    // attempt (loadAttemptByCallControlId returns null and the fallback only
-    // covers events that carry custom headers), so fail the attempt explicitly.
-    const { error: ccErr } = await client
+    // Persist the correlation id, but only while the attempt is still live and
+    // detect the 0-rows case: if a concurrent cancel/hangup already terminated
+    // it, or the write fails, we can no longer correlate this call — so we
+    // best-effort hang it up rather than leak a live Telnyx call, and never
+    // overwrite a terminal/cancelled attempt.
+    const { data: correlated, error: ccErr } = await client
       .from('call_attempts')
       .update({ call_control_id: callControlId })
-      .eq('id', attemptId);
+      .eq('id', attemptId)
+      .in('state', NON_TERMINAL)
+      .select('id');
     if (ccErr) {
       await client.from('call_attempts').update({ state: 'failed', error: ccErr.message }).eq('id', attemptId);
+      await backend.hangup(callControlId).catch(() => undefined);
       throw new Error(`placeAmdCall: failed to persist call_control_id: ${ccErr.message}`);
+    }
+    if (!correlated || correlated.length === 0) {
+      await backend.hangup(callControlId).catch(() => undefined);
+      throw new Error('placeAmdCall: attempt no longer active; hung up the placed call');
     }
   } catch (cause) {
     const message = cause instanceof AmdBackendError ? cause.message : 'dial failed';
