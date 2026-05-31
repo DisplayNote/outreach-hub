@@ -31,7 +31,6 @@ const NON_TERMINAL: ReadonlySet<CallAttemptState> = new Set<CallAttemptState>([
   'dialing',
   'ringing',
   'answered',
-  'amd_pending',
 ]);
 
 function liveLabel(a: CallAttempt | undefined): string {
@@ -44,9 +43,7 @@ function liveLabel(a: CallAttempt | undefined): string {
     case 'ringing':
       return 'Ringing…';
     case 'answered':
-      return 'Answered';
-    case 'amd_pending':
-      return 'AMD analysing…';
+      return 'Answered — AMD analysing…';
     case 'machine':
       return 'Voicemail — auto-logging…';
     case 'bridged':
@@ -217,18 +214,30 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
   }, [currentAttemptId]);
 
   const skip = useCallback(async () => {
-    // Don't abandon a live call: hang up a correlated attempt, cancel a
-    // pre-correlation one, then advance. (placeAmdCall inserts attempts as
-    // 'dialing', so a plain index-advance would leave the call in progress and
-    // the next dial would hit the server's "call already in progress" guard.)
+    const a = currentAttempt;
+    // No live attempt (or already terminal) — just move on.
+    if (!currentAttemptId || !a || a.state === 'ended' || a.state === 'failed') {
+      advance();
+      return;
+    }
     try {
-      if (currentAttemptId && currentAttempt && currentAttempt.state !== 'ended' && currentAttempt.state !== 'failed') {
-        if (currentAttempt.callControlId) await hangupAttempt(currentAttemptId);
-        else await cancelAttempt(currentAttemptId);
+      if (!a.callControlId) {
+        // Pre-correlation: cancel and advance now (the attempt is terminal).
+        await cancelAttempt(currentAttemptId);
+        advance();
+      } else if (a.state === 'bridged') {
+        // Abandoning a connected human: hang up and advance now.
+        await hangupAttempt(currentAttemptId);
+        advance();
+      } else {
+        // Live, correlated, pre-bridge: request hangup but DON'T advance here —
+        // the terminal-state effect advances once the attempt actually ends, so
+        // we never start the next dial while this one is still in progress
+        // (which the server's one-live-attempt guard would reject).
+        await hangupAttempt(currentAttemptId);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to skip');
-    } finally {
       advance();
     }
   }, [currentAttemptId, currentAttempt, advance]);

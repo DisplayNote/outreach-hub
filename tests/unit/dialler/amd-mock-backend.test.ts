@@ -33,6 +33,7 @@ function harness() {
   const deps: ProcessDeps = {
     store,
     loadAttempt: async (ccid) => attempts.get(ccid) ?? null,
+    loadAttemptById: async (id) => [...attempts.values()].find((a) => a.id === id) ?? null,
     actuator: backend,
     now: () => '2026-05-31T12:00:00.000Z',
     bridgeTarget: 'sip:rep@sip.telnyx.com',

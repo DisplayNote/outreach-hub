@@ -16,7 +16,6 @@ export type CallAttemptState =
   | 'dialing'
   | 'ringing'
   | 'answered'
-  | 'amd_pending'
   | 'machine'
   | 'bridged'
   | 'ended'
@@ -28,7 +27,6 @@ export const CALL_ATTEMPT_STATES: readonly CallAttemptState[] = [
   'dialing',
   'ringing',
   'answered',
-  'amd_pending',
   'machine',
   'bridged',
   'ended',

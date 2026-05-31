@@ -24,6 +24,17 @@ export async function loadAttemptByCallControlId(
   return data ? toCallAttempt(data as CallAttemptRow) : null;
 }
 
+/** Load an attempt by its id — fallback correlation when call_control_id isn't persisted yet. */
+export async function loadAttemptById(client: SupabaseClient, attemptId: string): Promise<CallAttempt | null> {
+  const { data, error } = await client
+    .from('call_attempts')
+    .select(CALL_ATTEMPT_SELECT)
+    .eq('id', attemptId)
+    .maybeSingle();
+  if (error) throw new Error(`loadAttemptById(${attemptId}): ${error.message}`);
+  return data ? toCallAttempt(data as CallAttemptRow) : null;
+}
+
 /** Map the camelCase {@link AttemptPatch} to the snake_case `call_attempts` columns. */
 function toAttemptRow(patch: AttemptPatch): Record<string, unknown> {
   const row: Record<string, unknown> = {};

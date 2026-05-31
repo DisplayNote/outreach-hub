@@ -29,7 +29,6 @@ const NON_TERMINAL: CallAttemptState[] = [
   'dialing',
   'ringing',
   'answered',
-  'amd_pending',
   'machine',
   'bridged',
 ];
@@ -130,7 +129,16 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
     })
     .select('id')
     .single();
-  if (insErr) throw new Error(`placeAmdCall: failed to create attempt: ${insErr.message}`);
+  if (insErr) {
+    // 23505 = unique violation on call_attempts_one_live_per_run_uidx: a
+    // concurrent placeAmdCall already created a live attempt for this run (the
+    // DB backstop for the count check above, which can race). Surface the same
+    // friendly message rather than a raw constraint error.
+    if ((insErr as { code?: string }).code === '23505') {
+      throw new Error('placeAmdCall: a call is already in progress for this run');
+    }
+    throw new Error(`placeAmdCall: failed to create attempt: ${insErr.message}`);
+  }
   const attemptId = (attempt as { id: string }).id;
 
   try {
@@ -142,7 +150,17 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
       contactId,
       ...(scenario ? { scenario: scenario as AmdScenario } : {}),
     });
-    await client.from('call_attempts').update({ call_control_id: callControlId }).eq('id', attemptId);
+    // Persist the correlation id; if this fails, webhooks can't match the
+    // attempt (loadAttemptByCallControlId returns null and the fallback only
+    // covers events that carry custom headers), so fail the attempt explicitly.
+    const { error: ccErr } = await client
+      .from('call_attempts')
+      .update({ call_control_id: callControlId })
+      .eq('id', attemptId);
+    if (ccErr) {
+      await client.from('call_attempts').update({ state: 'failed', error: ccErr.message }).eq('id', attemptId);
+      throw new Error(`placeAmdCall: failed to persist call_control_id: ${ccErr.message}`);
+    }
   } catch (cause) {
     const message = cause instanceof AmdBackendError ? cause.message : 'dial failed';
     await client.from('call_attempts').update({ state: 'failed', error: message }).eq('id', attemptId);

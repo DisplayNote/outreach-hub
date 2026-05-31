@@ -71,14 +71,30 @@ export async function applyEvent(
 ): Promise<ApplyEventResult> {
   const result = reduceEvent(attempt, event);
 
-  const patch: AttemptPatch = { state: result.nextState };
-  if (result.amdResult !== null) patch.amdResult = result.amdResult;
-  if (result.disposition !== null) patch.disposition = result.disposition;
-  if (event.hangupCause !== undefined) patch.hangupCause = event.hangupCause;
-  if (event.eventType === 'call.initiated' && attempt.startedAt === null) patch.startedAt = now;
-  if (result.nextState === 'ended') patch.endedAt = now;
+  // No-op (duplicate / ignored event once terminal): write nothing — no attempt
+  // UPDATE (avoids Realtime churn and overwriting endedAt) and no event row.
+  const isNoop =
+    result.nextState === attempt.state &&
+    result.disposition === null &&
+    result.amdResult === null &&
+    result.sideEffects.length === 0;
+  if (isNoop) {
+    return { result, actuations: [] };
+  }
 
-  await store.updateAttempt(attempt.id, patch);
+  // Persist only fields that actually change; set endedAt once, on the
+  // transition INTO `ended` (not on a later duplicate).
+  const patch: AttemptPatch = {};
+  if (result.nextState !== attempt.state) patch.state = result.nextState;
+  if (result.amdResult !== null && result.amdResult !== attempt.amdResult) patch.amdResult = result.amdResult;
+  if (result.disposition !== null && result.disposition !== attempt.disposition) patch.disposition = result.disposition;
+  if (event.hangupCause !== undefined && event.hangupCause !== attempt.hangupCause) patch.hangupCause = event.hangupCause;
+  if (event.eventType === 'call.initiated' && attempt.startedAt === null) patch.startedAt = now;
+  if (result.nextState === 'ended' && attempt.state !== 'ended') patch.endedAt = now;
+
+  if (Object.keys(patch).length > 0) {
+    await store.updateAttempt(attempt.id, patch);
+  }
 
   await store.insertEvent({
     orgId: attempt.orgId,

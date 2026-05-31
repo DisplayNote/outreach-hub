@@ -11,7 +11,7 @@
  */
 import { getServerEnv, isDiallerMockEnabled } from '@/lib/env';
 import { createServiceClient } from '@/lib/supabase/service';
-import { supabaseAmdStore, loadAttemptByCallControlId } from '@/lib/dialler/amd/store';
+import { supabaseAmdStore, loadAttemptByCallControlId, loadAttemptById } from '@/lib/dialler/amd/store';
 import { processEvent, type ProcessDeps } from '@/lib/dialler/amd/process';
 import { MockTelnyxBackend } from '@/lib/dialler/amd/mock-backend';
 import { TelnyxAmdBackend } from '@/lib/dialler/amd/telnyx-backend';
@@ -38,6 +38,7 @@ export function createAmdRuntime(): AmdRuntime {
   const deps: ProcessDeps = {
     store,
     loadAttempt: (callControlId) => loadAttemptByCallControlId(client, callControlId),
+    loadAttemptById: (attemptId) => loadAttemptById(client, attemptId),
     actuator: {
       hangup: (id) => backend.hangup(id),
       bridge: (id, target) => backend.bridge(id, target),

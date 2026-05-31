@@ -22,7 +22,6 @@ create type public.call_attempt_state as enum (
   'dialing',
   'ringing',
   'answered',
-  'amd_pending',
   'machine',
   'bridged',
   'ended',
@@ -87,6 +86,15 @@ create index call_attempts_contact_id_idx on public.call_attempts (contact_id);
 create unique index call_attempts_call_control_id_uidx
   on public.call_attempts (call_control_id)
   where call_control_id is not null;
+
+-- Enforce "at most one live attempt per run" atomically at the DB layer. The
+-- placeAmdCall count-then-insert check is a fast path for a friendly message,
+-- but two concurrent calls could both observe zero; this partial unique index
+-- makes the second insert fail with a unique violation instead (the predicate
+-- is over the immutable enum column, so it is a valid partial-index condition).
+create unique index call_attempts_one_live_per_run_uidx
+  on public.call_attempts (run_id)
+  where state in ('queued', 'dialing', 'ringing', 'answered', 'machine', 'bridged');
 create index call_events_attempt_id_idx on public.call_events (attempt_id);
 create index call_events_org_type_occurred_idx
   on public.call_events (org_id, event_type, occurred_at);

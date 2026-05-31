@@ -16,6 +16,13 @@ export interface ProcessDeps {
   store: AmdStore;
   /** Resolve the attempt for an inbound event (by call_control_id). */
   loadAttempt(callControlId: string): Promise<CallAttempt | null>;
+  /**
+   * Fallback resolver by attempt id (from the event's custom headers), used when
+   * a webhook arrives before `call_control_id` is persisted — otherwise the
+   * event would be dropped and the call misclassified (e.g. a hangup logged as
+   * no-answer because the AMD result never applied).
+   */
+  loadAttemptById(attemptId: string): Promise<CallAttempt | null>;
   /** Backend used to actuate hangup/bridge requested by the reducer. */
   actuator: Pick<AmdDiallerBackend, 'hangup' | 'bridge'>;
   /** Current time as an ISO string (injected for determinism). */
@@ -30,7 +37,12 @@ export interface ProcessDeps {
  * ACKing unknown calls, worker.js L176–178).
  */
 export async function processEvent(deps: ProcessDeps, event: TelnyxEvent): Promise<ApplyEventResult | null> {
-  const attempt = await deps.loadAttempt(event.callControlId);
+  let attempt = await deps.loadAttempt(event.callControlId);
+  if (!attempt && event.customHeaders?.attemptId) {
+    // call_control_id not persisted yet — correlate by the attempt id carried in
+    // the Telnyx custom headers so we don't drop early webhooks.
+    attempt = await deps.loadAttemptById(event.customHeaders.attemptId);
+  }
   if (!attempt) return null;
 
   const outcome = await applyEvent(deps.store, attempt, event, deps.now());
