@@ -29,6 +29,9 @@ const serverEnvSchema = publicEnvSchema
     BRIDGE_SIP_USERNAME: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
     AMD_MODE: z.enum(['premium', 'detect', 'detect_beep']).default('premium'),
     NO_ANSWER_TIMEOUT_MS: z.coerce.number().int().positive().default(22000),
+    // Phase 5 — shared secret gating the scheduled email runner/scanner routes
+    // (Vercel Cron). Optional: unset in dev (manual trigger only).
+    CRON_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
   })
   // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
   // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So
@@ -132,6 +135,21 @@ export function isDiallerMockEnabled(env: EnvRecord = process.env): boolean {
   return (
     env.NODE_ENV !== 'production' &&
     env.DIALLER_MOCK_ENABLED === 'true' &&
+    isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
+  );
+}
+
+/**
+ * Dev-only gate for the mock email path (PHASE_5_SPEC §9): the "simulate
+ * reply/bounce" affordance and any test-seeding route are inert unless we're
+ * non-prod, on the `mock`/`mailpit` driver, and pointed at the local stack.
+ * Unlike the auth/dialler gates this keys off EMAIL_DRIVER (not a separate
+ * flag), since a real Graph driver must never be simulated against.
+ */
+export function isEmailMockEnabled(env: EnvRecord = process.env): boolean {
+  return (
+    env.NODE_ENV !== 'production' &&
+    (env.EMAIL_DRIVER === 'mock' || env.EMAIL_DRIVER === 'mailpit') &&
     isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
   );
 }
