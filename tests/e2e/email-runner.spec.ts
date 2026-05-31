@@ -150,7 +150,8 @@ maybeTest('email runner: send → reply (green+suppress) and bounce (bounced+sup
         .from('email_events')
         .select('id', { count: 'exact', head: true })
         .eq('org_id', orgId)
-        .eq('type', 'sent');
+        .eq('type', 'sent')
+        .in('contact_id', [replyContactId, bounceContactId]);
       return count ?? 0;
     }, { timeout: 15_000 })
     .toBe(2);

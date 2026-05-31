@@ -109,6 +109,15 @@ export class GraphDriver implements EmailDriver {
   }
 
   private toInbound(m: GraphMessage): InboundMessage {
+    // KNOWN LIMITATION (real Graph path, not exercised locally): a real NDR is
+    // sent from postmaster@…/mailer-daemon@… with the FAILED RECIPIENT in the
+    // delivery-status report body, not in `from`. So bounces currently map
+    // `from` = the system sender, which the scanner's sender fallback won't
+    // correlate to the prospect → the bounce is ignored rather than suppressing
+    // the failed address. Correct handling needs parsing the failed recipient
+    // from the delivery-status report and mapping it into `from`; deferred until
+    // the Graph path is wired against a real tenant. (The mock driver puts the
+    // recipient in `from` directly, so the local loop works.)
     const out: InboundMessage = {
       messageId: m.internetMessageId ?? '',
       from: m.from?.emailAddress?.address ?? '',

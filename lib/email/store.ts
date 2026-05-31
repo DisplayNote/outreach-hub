@@ -196,6 +196,22 @@ export function supabaseEmailStore(
     },
 
     async recordSent(input) {
+      // The email has already been sent (external, non-transactional), so order
+      // the DB writes to favour NO DUPLICATE SEND over perfect audit: advance the
+      // contact FIRST so a later partial failure can't leave it due again with a
+      // fresh message id (which would re-send to the prospect). The event +
+      // touchpoint are idempotent (deduped), so a retry tops them up.
+      const { error: cErr } = await client
+        .from('contacts')
+        .update({
+          last_emailed_at: input.now,
+          sequence_day: input.nextSequenceDay,
+          follow_up: input.nextFollowUp,
+        })
+        .eq('id', input.contact.id)
+        .eq('org_id', input.orgId);
+      if (cErr) throw new Error(`recordSent.contact: ${cErr.message}`);
+
       // email_events(sent) — deduped on (org, provider, message_id).
       const { error: evErr } = await client.from('email_events').upsert(
         {
@@ -226,18 +242,6 @@ export function supabaseEmailStore(
         { onConflict: 'org_id,legacy_id', ignoreDuplicates: true },
       );
       if (tpErr) throw new Error(`recordSent.touchpoint: ${tpErr.message}`);
-
-      // Advance the contact: last_emailed_at + next step / follow-up.
-      const { error: cErr } = await client
-        .from('contacts')
-        .update({
-          last_emailed_at: input.now,
-          sequence_day: input.nextSequenceDay,
-          follow_up: input.nextFollowUp,
-        })
-        .eq('id', input.contact.id)
-        .eq('org_id', input.orgId);
-      if (cErr) throw new Error(`recordSent.contact: ${cErr.message}`);
     },
 
     async findSentForCorrelation(keys) {
@@ -305,23 +309,11 @@ export function supabaseEmailStore(
       const reason = input.kind === 'reply' ? 'replied' : 'bounced';
       const nextStatus = input.kind === 'reply' ? 'green' : 'bounced';
 
-      // email_events(reply|bounce) — deduped on (org, provider, message_id).
-      const { error: evErr } = await client.from('email_events').upsert(
-        {
-          org_id: input.orgId,
-          contact_id: input.contactId,
-          campaign_id: input.campaignId,
-          type: input.kind,
-          provider: ctx.provider,
-          message_id: input.message.messageId,
-          conversation_id: input.message.conversationId ?? null,
-          in_reply_to: input.message.inReplyTo ?? null,
-          subject: input.message.subject,
-          occurred_at: input.message.receivedAt,
-        },
-        { onConflict: 'org_id,provider,message_id', ignoreDuplicates: true },
-      );
-      if (evErr) throw new Error(`recordInbound.event: ${evErr.message}`);
+      // Apply the idempotent effects FIRST (status, suppression, touchpoint) and
+      // insert the email_events dedup marker LAST. The scanner skips a message
+      // once that marker exists, so writing it last means a partial failure
+      // leaves the marker absent and the next scan re-applies the (idempotent)
+      // effects — the stop-sequence effect can't be lost.
 
       // Read the contact's status AND email together: the suppression must use
       // the contact's own address, NOT the inbound sender (a real NDR is from
@@ -374,6 +366,24 @@ export function supabaseEmailStore(
         { onConflict: 'org_id,legacy_id', ignoreDuplicates: true },
       );
       if (tpErr) throw new Error(`recordInbound.touchpoint: ${tpErr.message}`);
+
+      // Dedup marker LAST — only now is the message considered processed.
+      const { error: evErr } = await client.from('email_events').upsert(
+        {
+          org_id: input.orgId,
+          contact_id: input.contactId,
+          campaign_id: input.campaignId,
+          type: input.kind,
+          provider: ctx.provider,
+          message_id: input.message.messageId,
+          conversation_id: input.message.conversationId ?? null,
+          in_reply_to: input.message.inReplyTo ?? null,
+          subject: input.message.subject,
+          occurred_at: input.message.receivedAt,
+        },
+        { onConflict: 'org_id,provider,message_id', ignoreDuplicates: true },
+      );
+      if (evErr) throw new Error(`recordInbound.event: ${evErr.message}`);
     },
 
     async lastScanHighWater() {
