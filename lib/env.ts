@@ -159,11 +159,13 @@ export function isDiallerMockEnabled(env: EnvRecord = process.env): boolean {
  * MailpitDriver.fetchReplies reads Mailpit's real REST API, so under mailpit
  * the simulate buttons would report success while scans never see the message —
  * an honest gate refuses them there (use a real round-trip via Mailpit instead).
+ * An UNSET EMAIL_DRIVER counts as `mock` to mirror the driver factory's default
+ * (getServerEnv defaults it to `mock`), so the simulator works in a bare local setup.
  */
 export function isEmailMockEnabled(env: EnvRecord = process.env): boolean {
   return (
     env.NODE_ENV !== 'production' &&
-    env.EMAIL_DRIVER === 'mock' &&
+    (env.EMAIL_DRIVER ?? 'mock') === 'mock' &&
     isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
   );
 }

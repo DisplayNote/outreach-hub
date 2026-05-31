@@ -286,8 +286,9 @@ materialising the whole overdue queue and filtering in app code:
    terminal state — a booked meeting must not keep receiving follow-ups);
 4. the contact's campaign has a `sequence_id` and the contact is **enrolled** (§4.2):
    `follow_up` is non-null and `follow_up <= today`;
-5. a `sequence_step` exists at `contact.sequence_day` (the current step); its `next_day_offset`
-   (next step) and template are resolved in the same query;
+5. an **email** `sequence_step` exists at `contact.sequence_day` (the current step;
+   `channel = 'email'`, so the email runner never picks up a phone/linkedin/other step); its
+   `next_day_offset` (next step) and template are resolved in the same query;
 6. **not already sent today:** `last_emailed_at` is null or `< today` (idempotent re-run —
    reinforced by the unique `email_events(org,provider,message_id)` arbiter, §2.3).
 

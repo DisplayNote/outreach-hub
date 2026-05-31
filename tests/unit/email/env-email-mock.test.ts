@@ -9,9 +9,12 @@ const baseEnv = {
 describe('isEmailMockEnabled', () => {
   const enabled = { NODE_ENV: 'development', EMAIL_DRIVER: 'mock', NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321' };
 
-  it('is true for the mock driver on a loopback URL in non-prod', () => {
+  it('is true for the mock driver (or unset, which defaults to mock) on a loopback URL in non-prod', () => {
     expect(isEmailMockEnabled(enabled)).toBe(true);
     expect(isEmailMockEnabled({ ...enabled, NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321' })).toBe(true);
+    // Unset EMAIL_DRIVER mirrors the factory default (mock).
+    const { EMAIL_DRIVER: _omit, ...noDriver } = enabled;
+    expect(isEmailMockEnabled(noDriver)).toBe(true);
   });
 
   it('is false for mailpit/graph drivers, in production, or against a remote URL', () => {

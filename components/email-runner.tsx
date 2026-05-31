@@ -193,16 +193,11 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
                     {q.email} · day {q.sequenceDay} · “{q.subject}”
                   </div>
                 </div>
-                {emailMockEnabled ? (
-                  <div style={{ display: 'flex', gap: '0.4rem', whiteSpace: 'nowrap' }}>
-                    <button type="button" onClick={() => simulate(q.email, 'reply')} disabled={busy !== null} style={secondaryBtn}>
-                      Sim reply
-                    </button>
-                    <button type="button" onClick={() => simulate(q.email, 'bounce')} disabled={busy !== null} style={secondaryBtn}>
-                      Sim bounce
-                    </button>
-                  </div>
-                ) : null}
+                {/* Simulation lives in the standalone form below — NOT per-row.
+                    A due (e.g. day-0) contact has no prior send, so a simulated
+                    reply/bounce here would be ignored by the scanner's
+                    send-before-inbound guard and then lost when the cursor
+                    advances. Simulate AFTER running the sender instead. */}
               </li>
             ))}
           </ul>

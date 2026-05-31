@@ -262,7 +262,8 @@ as $$
   join public.campaigns cam
     on cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
   join public.sequence_steps ss
-    on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id and ss.day_offset = c.sequence_day
+    on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
+   and ss.day_offset = c.sequence_day and ss.channel = 'email'
   left join public.templates t
     on t.id = ss.template_id and t.org_id = c.org_id
   where c.org_id = p_org_id
@@ -294,7 +295,8 @@ as $$
   join public.campaigns cam
     on cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
   join public.sequence_steps ss
-    on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id and ss.day_offset = c.sequence_day
+    on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
+   and ss.day_offset = c.sequence_day and ss.channel = 'email'
   where c.org_id = p_org_id
     and c.follow_up is not null
     and c.follow_up <= p_today
