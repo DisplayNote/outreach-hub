@@ -8,6 +8,7 @@ interface Rec {
   inbound: RecordInboundInput[];
   recorded: Set<string>; // messageIds already recorded (dedup)
   correlatable: Set<string>; // sender emails that correlate to a contact
+  correlatableRefs?: Set<string>; // message-ids (in_reply_to / references) that correlate
   cursors: Record<string, ScanCursor>; // persisted scan high-water + boundary ids, per mailbox
 }
 
@@ -28,8 +29,10 @@ function fakeStore(rec: Rec): EmailStore {
     },
     async recordSent() {},
     async findSentForCorrelation(keys) {
-      // The scanner resolves `from` to the right address (sender for a reply,
-      // failed recipient for a bounce) before calling.
+      // Thread correlation (in_reply_to / references) takes precedence, like the
+      // adapter; else the scanner-resolved `from` (sender / failed recipient).
+      const refHit = [keys.inReplyTo, ...keys.references].some((r) => r && rec.correlatableRefs?.has(r));
+      if (refHit) return { contactId: 'contact-by-ref', campaignId: 'camp1' };
       const addr = keys.from.toLowerCase();
       return rec.correlatable.has(addr) ? { contactId: `contact-${addr}`, campaignId: 'camp1' } : null;
     },
@@ -163,6 +166,17 @@ describe('scanInbox', () => {
     // Recorded ascending by receivedAt, so a mid-scan failure can't advance the
     // high-water past an unprocessed older message.
     expect(rec.inbound.map((i) => i.message.messageId)).toEqual(['old', 'new']);
+  });
+
+  it('correlates a reply via References when In-Reply-To is absent', async () => {
+    rec.correlatableRefs = new Set(['<sent-42@x>']);
+    // A reply with a References chain but no inReplyTo and an unknown sender.
+    driver.inbound.push(
+      inbound({ messageId: 'r9', from: 'someone-else@elsewhere.com', references: ['<root@x>', '<sent-42@x>'] }),
+    );
+    const res = await scanInbox(deps(rec, driver), {});
+    expect(res.replies).toBe(1);
+    expect(rec.inbound[0]?.contactId).toBe('contact-by-ref');
   });
 
   it('dedupes an already-recorded inbound', async () => {

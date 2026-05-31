@@ -31,11 +31,14 @@ async function orgs(client: SupabaseClient): Promise<{ id: string; settings: Org
   return (data ?? []).map((o) => ({ id: o.id as string, settings: (o.settings as OrgSettings) ?? {} }));
 }
 
-export async function runSenderAllOrgs(client: SupabaseClient): Promise<{ orgs: number; sent: number; skipped: number }> {
+export async function runSenderAllOrgs(
+  client: SupabaseClient,
+): Promise<{ orgs: number; sent: number; skipped: number; errors: number }> {
   const driver = getEmailDriver();
   const fallbackFrom = getServerEnv().CRON_SENDER_EMAIL;
   let sent = 0;
   let skipped = 0;
+  let errors = 0;
   const list = await orgs(client);
   for (const org of list) {
     // A cron send needs a real configured mailbox (settings.signature is a
@@ -54,8 +57,15 @@ export async function runSenderAllOrgs(client: SupabaseClient): Promise<{ orgs: 
       { today: todayUtc() },
     );
     sent += res.sent;
+    // Surface per-contact send/persistence failures: dropping them lets a fully
+    // failing scheduled run report { ok: true, sent: 0 } with nothing for
+    // monitoring to alert on. Aggregate the count (and log it when non-zero).
+    if (res.errors.length > 0) {
+      errors += res.errors.length;
+      console.warn(`cron runSender: org ${org.id} had ${res.errors.length} send error(s)`);
+    }
   }
-  return { orgs: list.length, sent, skipped };
+  return { orgs: list.length, sent, skipped, errors };
 }
 
 export async function scanInboxAllOrgs(

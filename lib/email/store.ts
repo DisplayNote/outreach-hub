@@ -51,6 +51,10 @@ export interface RecordInboundInput {
 
 export interface CorrelationKeys {
   inReplyTo: string | null;
+  /** RFC 5322 References chain (message-ids of the thread). A reply may carry
+   * References but no In-Reply-To; any one matching a prior sent message_id
+   * correlates it. */
+  references: string[];
   conversationId: string | null;
   /** The address to correlate on: the sender for a reply, the recovered failed
    * recipient for a bounce (the scanner resolves which — an NDR's actual sender
@@ -274,6 +278,13 @@ export function supabaseEmailStore(
       };
       if (keys.inReplyTo) {
         const hit = await byField('message_id', keys.inReplyTo);
+        if (hit) return hit;
+      }
+      // References chain: a reply may thread via References without an In-Reply-To.
+      // Any reference matching a prior sent message_id correlates it.
+      for (const ref of keys.references) {
+        if (!ref) continue;
+        const hit = await byField('message_id', ref);
         if (hit) return hit;
       }
       if (keys.conversationId) {

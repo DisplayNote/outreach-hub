@@ -81,6 +81,7 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
     }
     const match = await deps.store.findSentForCorrelation({
       inReplyTo: message.inReplyTo ?? null,
+      references: message.references ?? [],
       conversationId: message.conversationId ?? null,
       from: correlationFrom,
       receivedAt: message.receivedAt,
