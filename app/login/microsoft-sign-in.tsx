@@ -15,8 +15,14 @@ export default function MicrosoftSignIn() {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'azure',
       options: {
-        // Phase 0: User.Read only. Mail.Send / Mail.Read are requested incrementally in Phase 5.
-        scopes: 'email openid profile User.Read offline_access',
+        // Phase 5: request the Graph Mail scopes at login so the delegated
+        // session token (session.provider_token) can drive the manual Graph
+        // send/scan path — without them, those calls 403 with insufficient
+        // privileges. Requires the Azure app's admin consent for Mail.Send /
+        // Mail.Read (the IT-ticket grant, a deploy prerequisite); local/CI use
+        // the mock driver and never exercise this. offline_access keeps the
+        // refresh token for the (deferred) durable token storage.
+        scopes: 'email openid profile User.Read Mail.Send Mail.Read offline_access',
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     });

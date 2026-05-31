@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDriver } from '@/lib/email/mock';
 import { getEmailDriver } from '@/lib/email/index';
 import { classifyInbound } from '@/lib/email/classify';
@@ -74,19 +74,16 @@ describe('MockDriver', () => {
   });
 
   it('factory fails closed in production when EMAIL_DRIVER is unset (no silent mock)', () => {
-    const origDriver = process.env.EMAIL_DRIVER;
-    const origNode = process.env.NODE_ENV;
-    delete process.env.EMAIL_DRIVER;
-    process.env.NODE_ENV = 'production';
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('EMAIL_DRIVER', '');
+    delete process.env.EMAIL_DRIVER; // stubEnv('') sets ''; ensure truly unset
     try {
       expect(() => getEmailDriver()).toThrow(/EMAIL_DRIVER is not set/);
       // explicit mock is still honoured in production
-      process.env.EMAIL_DRIVER = 'mock';
+      vi.stubEnv('EMAIL_DRIVER', 'mock');
       expect(getEmailDriver().name).toBe('mock');
     } finally {
-      if (origDriver === undefined) delete process.env.EMAIL_DRIVER;
-      else process.env.EMAIL_DRIVER = origDriver;
-      process.env.NODE_ENV = origNode;
+      vi.unstubAllEnvs();
     }
   });
 

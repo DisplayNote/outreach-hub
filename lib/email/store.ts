@@ -361,7 +361,15 @@ export function supabaseEmailStore(
         .eq('org_id', input.orgId)
         .maybeSingle();
       if (curErr) throw new Error(`recordInbound.read: ${curErr.message}`);
-      if (cur) {
+      const contactEmail = (cur?.email as string | null)?.trim().toLowerCase() ?? null;
+      const failedRecipient = input.message.failedRecipient?.trim().toLowerCase() ?? null;
+      // A BOUNCE only marks the CONTACT terminal (`bounced`) when the address that
+      // bounced is still the contact's current email. If the email was corrected
+      // between send and bounce-scan, the OLD address bounced — suppress that old
+      // address (below), but DON'T strand the contact on their new (presumably
+      // good) address with a terminal status. A reply always applies its effect.
+      const applyStatus = input.kind === 'reply' || (failedRecipient !== null && failedRecipient === contactEmail);
+      if (cur && applyStatus) {
         const next = resolveStatusEffect((cur.status as Contact['status']) ?? 'none', nextStatus);
         if (next !== null) {
           const { error: sErr } = await client
@@ -382,11 +390,7 @@ export function supabaseEmailStore(
       //     postmaster/mailer-daemon sender.)
       //   • REPLY → the contact's email (the address we send to), to stop the
       //     sequence to that prospect.
-      const suppressSource =
-        input.kind === 'bounce'
-          ? (input.message.failedRecipient ?? (cur?.email as string | null))
-          : (cur?.email as string | null);
-      const suppressEmail = suppressSource?.trim().toLowerCase() ?? null;
+      const suppressEmail = input.kind === 'bounce' ? (failedRecipient ?? contactEmail) : contactEmail;
       if (suppressEmail) {
         const { error: supErr } = await client.from('suppressions').upsert(
           {
