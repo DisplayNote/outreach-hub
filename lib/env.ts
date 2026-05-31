@@ -36,6 +36,10 @@ const serverEnvSchema = publicEnvSchema
     // configured email driver/token points at). One global driver = one mailbox,
     // so cron must NOT fan out across orgs; set this per deployment.
     CRON_ORG_ID: z.preprocess(emptyStringAsUndefined, z.string().uuid().optional()),
+    // The mailbox the cron sender sends FROM, when the org hasn't set
+    // settings.senderEmail. A supported deploy-time config path so the scheduled
+    // sender doesn't silently no-op waiting for someone to hand-patch the JSONB.
+    CRON_SENDER_EMAIL: z.preprocess(emptyStringAsUndefined, z.string().email().optional()),
   })
   // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
   // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So

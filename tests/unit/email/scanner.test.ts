@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { scanInbox } from '@/lib/email/scanner';
 import { MockDriver } from '@/lib/email/mock';
-import type { EmailStore, RecordInboundInput } from '@/lib/email/store';
+import type { EmailStore, RecordInboundInput, ScanCursor } from '@/lib/email/store';
 import type { InboundMessage } from '@/lib/email/types';
 
 interface Rec {
   inbound: RecordInboundInput[];
   recorded: Set<string>; // messageIds already recorded (dedup)
   correlatable: Set<string>; // sender emails that correlate to a contact
-  cursor: string | null; // persisted scan high-water
+  cursor: ScanCursor | null; // persisted scan high-water + boundary ids
 }
 
 function fakeStore(rec: Rec): EmailStore {
@@ -33,11 +33,11 @@ function fakeStore(rec: Rec): EmailStore {
       rec.inbound.push(input);
       rec.recorded.add(input.message.messageId);
     },
-    async lastScanHighWater() {
+    async loadScanCursor() {
       return rec.cursor;
     },
-    async advanceScanCursor(at) {
-      rec.cursor = at;
+    async advanceScanCursor(at, ids) {
+      rec.cursor = { at, ids };
     },
   };
 }
@@ -59,7 +59,7 @@ describe('scanInbox', () => {
   let rec: Rec;
   let driver: MockDriver;
   beforeEach(() => {
-    rec = { inbound: [], recorded: new Set(), correlatable: new Set(['mike@example.com']), cursor: '2026-05-20T00:00:00.000Z' };
+    rec = { inbound: [], recorded: new Set(), correlatable: new Set(['mike@example.com']), cursor: { at: '2026-05-20T00:00:00.000Z', ids: [] } };
     driver = new MockDriver();
   });
 
@@ -97,17 +97,33 @@ describe('scanInbox', () => {
     expect(rec.inbound).toHaveLength(0);
   });
 
-  it('advances the cursor to the newest message even when all are uncorrelated', async () => {
+  it('advances the cursor to the newest message (+ boundary ids) even when all are uncorrelated', async () => {
     driver.inbound.push(inbound({ messageId: 'x1', from: 'stranger@nowhere.com', receivedAt: '2026-05-29T11:00:00.000Z' }));
     await scanInbox(deps(rec, driver), {});
-    // Lands ON the boundary (not past it) so a late same-ms message isn't skipped;
-    // the bounded re-fetch is absorbed by dedup.
-    expect(rec.cursor).toBe('2026-05-29T11:00:00.000Z');
+    // Lands ON the boundary (not past it) and records the id seen there, so a late
+    // same-ms message (different id) isn't skipped while x1 isn't re-processed.
+    expect(rec.cursor).toEqual({ at: '2026-05-29T11:00:00.000Z', ids: ['x1'] });
   });
 
   it('does not advance the cursor when the inbox is empty', async () => {
     await scanInbox(deps(rec, driver), {}); // empty inbox
-    expect(rec.cursor).toBe('2026-05-20T00:00:00.000Z');
+    expect(rec.cursor).toEqual({ at: '2026-05-20T00:00:00.000Z', ids: [] });
+  });
+
+  it('skips a boundary message already seen, but processes a NEW same-ms message', async () => {
+    rec.correlatable.add('amy@example.com');
+    // Prior scan already saw `seen` at exactly the cursor timestamp.
+    rec.cursor = { at: '2026-05-29T10:00:00.000Z', ids: ['seen'] };
+    // Driver re-returns `seen` (>= since) plus a NEW message at the same ms.
+    driver.inbound.push(inbound({ messageId: 'seen', from: 'mike@example.com', receivedAt: '2026-05-29T10:00:00.000Z' }));
+    driver.inbound.push(inbound({ messageId: 'fresh', from: 'amy@example.com', receivedAt: '2026-05-29T10:00:00.000Z' }));
+    const res = await scanInbox(deps(rec, driver), {});
+    // `seen` was filtered out (not re-ignored/re-recorded); only `fresh` processed.
+    expect(res.replies).toBe(1);
+    expect(rec.inbound.map((i) => i.message.messageId)).toEqual(['fresh']);
+    // New boundary set covers BOTH ids at that timestamp so neither re-processes.
+    expect(rec.cursor.at).toBe('2026-05-29T10:00:00.000Z');
+    expect([...rec.cursor.ids].sort()).toEqual(['fresh', 'seen']);
   });
 
   it('orders by parsed time, not raw ISO string (mixed precision)', async () => {

@@ -83,10 +83,20 @@ export interface EmailStore {
   inboundAlreadyRecorded(provider: string, messageId: string): Promise<boolean>;
   /** Persist a reply/bounce: email_events + status + suppression + touchpoint (§8). */
   recordInbound(input: RecordInboundInput): Promise<void>;
-  /** The persisted inbox-scan high-water mark (§6), or null if never scanned. */
-  lastScanHighWater(): Promise<string | null>;
-  /** Persist a new inbox-scan high-water mark (the newest message seen this scan). */
-  advanceScanCursor(at: string): Promise<void>;
+  /**
+   * The persisted inbox-scan cursor (§6): the newest message's ISO timestamp
+   * (`at`) plus the message-ids seen at exactly that timestamp (`ids`, the
+   * boundary tie-breaker). Null if never scanned.
+   */
+  loadScanCursor(): Promise<ScanCursor | null>;
+  /** Persist a new inbox-scan cursor (newest timestamp + the ids seen at it). */
+  advanceScanCursor(at: string, ids: string[]): Promise<void>;
+}
+
+/** Inbox-scan high-water mark plus the boundary ids seen at `at` (see §6). */
+export interface ScanCursor {
+  at: string;
+  ids: string[];
 }
 
 // --- Supabase adapter --------------------------------------------------------
@@ -399,22 +409,27 @@ export function supabaseEmailStore(
       if (evErr) throw new Error(`recordInbound.event: ${evErr.message}`);
     },
 
-    async lastScanHighWater() {
-      // The persisted cursor (organizations.settings.lastInboxScanAt), captured
-      // fresh per invocation via getOrgSettings. Deriving it from recorded
-      // reply/bounce events instead would never advance for a mailbox with no
-      // correlated inbound, re-fetching the whole inbox every cron tick.
-      return ctx.settings.lastInboxScanAt ?? null;
+    async loadScanCursor() {
+      // The persisted cursor (organizations.settings.lastInboxScan{At,Ids}),
+      // captured fresh per invocation via getOrgSettings. Deriving it from
+      // recorded reply/bounce events instead would never advance for a mailbox
+      // with no correlated inbound, re-fetching the whole inbox every cron tick.
+      const at = ctx.settings.lastInboxScanAt;
+      if (typeof at !== 'string') return null;
+      const raw = ctx.settings.lastInboxScanIds;
+      const ids = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+      return { at, ids };
     },
 
-    async advanceScanCursor(at) {
+    async advanceScanCursor(at, ids) {
       // Atomic single-statement jsonb merge (advance_inbox_scan_cursor RPC): only
-      // the lastInboxScanAt key changes, so a concurrent settings save can't be
-      // clobbered by a stale read-merge-write. Scoped to ctx.orgId; RLS limits
+      // the lastInboxScan{At,Ids} keys change, so a concurrent settings save can't
+      // be clobbered by a stale read-merge-write. Scoped to ctx.orgId; RLS limits
       // org UPDATE to the settings column (Phase 2), cron uses the service role.
       const { error } = await client.rpc('advance_inbox_scan_cursor', {
         p_org_id: ctx.orgId,
         p_at: at,
+        p_ids: ids,
       });
       if (error) throw new Error(`advanceScanCursor: ${error.message}`);
     },

@@ -81,7 +81,7 @@ function fakeStore(rec: Rec): EmailStore {
       return false;
     },
     async recordInbound() {},
-    async lastScanHighWater() {
+    async loadScanCursor() {
       return null;
     },
     async advanceScanCursor() {},

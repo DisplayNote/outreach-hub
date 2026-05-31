@@ -31,15 +31,23 @@ async function orgs(client: SupabaseClient): Promise<{ id: string; settings: Org
   return (data ?? []).map((o) => ({ id: o.id as string, settings: (o.settings as OrgSettings) ?? {} }));
 }
 
-export async function runSenderAllOrgs(client: SupabaseClient): Promise<{ orgs: number; sent: number }> {
+export async function runSenderAllOrgs(client: SupabaseClient): Promise<{ orgs: number; sent: number; skipped: number }> {
   const driver = getEmailDriver();
+  const fallbackFrom = getServerEnv().CRON_SENDER_EMAIL;
   let sent = 0;
+  let skipped = 0;
   const list = await orgs(client);
   for (const org of list) {
-    // Fail closed: a cron send needs a real configured mailbox (settings.signature
-    // is a human-readable string, not an address). Skip orgs without one.
-    const from = org.settings.senderEmail;
-    if (!from) continue;
+    // A cron send needs a real configured mailbox (settings.signature is a
+    // human-readable string, not an address). Prefer the org's senderEmail, else
+    // the deploy-wide CRON_SENDER_EMAIL. Skip LOUDLY if neither is set — a silent
+    // no-op would look like a healthy run that just sent nothing.
+    const from = org.settings.senderEmail ?? fallbackFrom;
+    if (!from) {
+      skipped += 1;
+      console.warn(`cron runSender: org ${org.id} has no senderEmail and CRON_SENDER_EMAIL is unset — skipped`);
+      continue;
+    }
     const store = supabaseEmailStore(client, { orgId: org.id, provider: driver.name, settings: org.settings });
     const res = await runSender(
       { store, driver, settings: org.settings, from, now: () => new Date().toISOString() },
@@ -47,27 +55,36 @@ export async function runSenderAllOrgs(client: SupabaseClient): Promise<{ orgs: 
     );
     sent += res.sent;
   }
-  return { orgs: list.length, sent };
+  return { orgs: list.length, sent, skipped };
 }
 
-export async function scanInboxAllOrgs(client: SupabaseClient): Promise<{ orgs: number; replies: number; bounces: number }> {
+export async function scanInboxAllOrgs(
+  client: SupabaseClient,
+): Promise<{ orgs: number; replies: number; bounces: number; skipped: number }> {
   const driver = getEmailDriver();
+  const fallbackFrom = getServerEnv().CRON_SENDER_EMAIL;
   let replies = 0;
   let bounces = 0;
   const list = await orgs(client);
   let scanned = 0;
+  let skipped = 0;
   for (const org of list) {
     // Correct multi-org scanning needs a PER-ORG mailbox/token (each org reads
     // its OWN inbox); with a single shared driver mailbox, one inbound could be
     // applied to several orgs. Until per-org token wiring lands (deploy concern,
-    // like the sender's senderEmail), only scan orgs that have a configured
-    // mailbox — and the deploy must point the driver at that org's mailbox.
-    if (!org.settings.senderEmail) continue;
+    // like the sender's senderEmail), only scan a configured org — settings
+    // .senderEmail or the deploy-wide CRON_SENDER_EMAIL marks it; the deploy must
+    // point the driver at that org's mailbox. Skip LOUDLY if neither is set.
+    if (!(org.settings.senderEmail ?? fallbackFrom)) {
+      skipped += 1;
+      console.warn(`cron scanInbox: org ${org.id} has no senderEmail and CRON_SENDER_EMAIL is unset — skipped`);
+      continue;
+    }
     scanned += 1;
     const store = supabaseEmailStore(client, { orgId: org.id, provider: driver.name, settings: org.settings });
     const res = await scanInbox({ store, driver, orgId: org.id }, {});
     replies += res.replies;
     bounces += res.bounces;
   }
-  return { orgs: scanned, replies, bounces };
+  return { orgs: scanned, replies, bounces, skipped };
 }
