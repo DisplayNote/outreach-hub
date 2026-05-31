@@ -73,6 +73,23 @@ describe('MockDriver', () => {
     }
   });
 
+  it('factory fails closed in production when EMAIL_DRIVER is unset (no silent mock)', () => {
+    const origDriver = process.env.EMAIL_DRIVER;
+    const origNode = process.env.NODE_ENV;
+    delete process.env.EMAIL_DRIVER;
+    process.env.NODE_ENV = 'production';
+    try {
+      expect(() => getEmailDriver()).toThrow(/EMAIL_DRIVER is not set/);
+      // explicit mock is still honoured in production
+      process.env.EMAIL_DRIVER = 'mock';
+      expect(getEmailDriver().name).toBe('mock');
+    } finally {
+      if (origDriver === undefined) delete process.env.EMAIL_DRIVER;
+      else process.env.EMAIL_DRIVER = origDriver;
+      process.env.NODE_ENV = origNode;
+    }
+  });
+
   describe('reply/bounce simulator', () => {
     it('simulateReply enqueues a reply-shaped inbound (correlatable + classified reply)', async () => {
       const msg = driver.simulateReply({ from: 'mike@example.com', inReplyTo: 'sent-1' });
