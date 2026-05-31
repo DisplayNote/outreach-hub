@@ -139,14 +139,24 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
       <div style={card}>
         <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem' }}>Sequence setup</h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
-          <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} style={secondaryBtn}>
+          <select
+            aria-label="Campaign"
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+            style={secondaryBtn}
+          >
             {campaigns.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-          <select value={sequenceId} onChange={(e) => setSequenceId(e.target.value)} style={secondaryBtn}>
+          <select
+            aria-label="Sequence"
+            value={sequenceId}
+            onChange={(e) => setSequenceId(e.target.value)}
+            style={secondaryBtn}
+          >
             {sequences.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}

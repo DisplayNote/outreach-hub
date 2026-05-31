@@ -169,8 +169,11 @@ in `email_events`; the durable contact-level signal is status + suppression).
 
 Append-only (no UPDATE/DELETE policy — RLS-enforced immutability, like `touchpoints`).
 Indexes: `(org_id, type, occurred_at)`, `(contact_id)`, unique `(org_id, provider,
-message_id)` where `message_id` not null (the **send-dedup arbiter** — replaces legacy
-`sentEmailIds`, so a re-run never double-sends the same step to the same contact).
+message_id)` (the **send-dedup arbiter** — replaces legacy `sentEmailIds`, so a re-run
+never double-records the same provider message). The unique index is **non-partial** so
+it can serve as the `ON CONFLICT (org_id, provider, message_id)` arbiter for the
+runner/scanner upserts; rows without a `message_id` still coexist because Postgres treats
+NULLs as distinct.
 
 ### 2.4 `suppressions` — address-level do-not-send (replaces `skiplist.json`)
 
@@ -183,8 +186,11 @@ message_id)` where `message_id` not null (the **send-dedup arbiter** — replace
 | `contact_id` | uuid → contacts(id) on delete set null | best-effort link |
 | `created_at` | timestamptz | |
 
-Unique `(org_id, lower(email))` — one suppression per address per org; the runner
-**left-anti-joins** against it. Suppression is **address-level** (handover §6.3: a bad/replied
+Unique on the plain `(org_id, email)` column (not `lower(email)`) — one suppression per
+address per org; the runner **left-anti-joins** against it. A plain-column index (rather
+than an expression index) is required so it can be the `ON CONFLICT (org_id, email)`
+arbiter for upserts; every writer lowercases the address first, so the column already
+holds the normalised form. Suppression is **address-level** (handover §6.3: a bad/replied
 address suppresses across every campaign), which `contacts.status` alone cannot express.
 
 ### 2.5 RLS & Realtime

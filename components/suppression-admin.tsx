@@ -47,6 +47,7 @@ export default function SuppressionAdmin({ rows }: { rows: readonly SuppressionR
       <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
         <input
           type="email"
+          aria-label="Email address to suppress"
           placeholder="address@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}

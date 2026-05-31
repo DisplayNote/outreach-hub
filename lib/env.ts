@@ -145,15 +145,21 @@ export function isDiallerMockEnabled(env: EnvRecord = process.env): boolean {
 
 /**
  * Dev-only gate for the mock email path (PHASE_5_SPEC §9): the "simulate
- * reply/bounce" affordance and any test-seeding route are inert unless we're
- * non-prod, on the `mock`/`mailpit` driver, and pointed at the local stack.
- * Unlike the auth/dialler gates this keys off EMAIL_DRIVER (not a separate
- * flag), since a real Graph driver must never be simulated against.
+ * reply/bounce" affordance is inert unless we're non-prod, on the `mock`
+ * driver, and pointed at the local stack. Unlike the auth/dialler gates this
+ * keys off EMAIL_DRIVER (not a separate flag), since a real Graph driver must
+ * never be simulated against.
+ *
+ * Scoped to `mock` only (NOT `mailpit`): the simulator enqueues onto the
+ * process-global dev inbox, and only MockDriver.fetchReplies drains that queue.
+ * MailpitDriver.fetchReplies reads Mailpit's real REST API, so under mailpit
+ * the simulate buttons would report success while scans never see the message —
+ * an honest gate refuses them there (use a real round-trip via Mailpit instead).
  */
 export function isEmailMockEnabled(env: EnvRecord = process.env): boolean {
   return (
     env.NODE_ENV !== 'production' &&
-    (env.EMAIL_DRIVER === 'mock' || env.EMAIL_DRIVER === 'mailpit') &&
+    env.EMAIL_DRIVER === 'mock' &&
     isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
   );
 }

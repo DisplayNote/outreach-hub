@@ -256,7 +256,9 @@ export function supabaseEmailStore(
           .from('contacts')
           .select('id, campaign_id')
           .eq('org_id', ctx.orgId)
-          .ilike('email', fromEmail)
+          // ilike for case-insensitive match; wildcards escaped so the address
+          // is matched literally (see escapeLike).
+          .ilike('email', escapeLike(fromEmail))
           .limit(1)
           .maybeSingle();
         if (error) throw new Error(`findSentForCorrelation.contact: ${error.message}`);
@@ -395,6 +397,16 @@ export function extractEmail(from: string): string | null {
   const angle = /<([^>]+)>/.exec(from);
   const candidate = (angle?.[1] ?? from).trim().toLowerCase();
   return /^[^@\s]+@[^@\s]+$/.test(candidate) ? candidate : null;
+}
+
+/**
+ * Escape SQL LIKE wildcards (`\`, `%`, `_`) so an inbound sender address is
+ * matched literally by a case-insensitive `ilike`. Without this, a legitimate
+ * local-part char like `_` acts as a wildcard — `a_b@example.com` would also
+ * correlate to `axb@example.com` and mutate/suppress the wrong contact.
+ */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
 // `DueContactRow` reserved for a future non-RPC selection path.

@@ -9,13 +9,15 @@ const baseEnv = {
 describe('isEmailMockEnabled', () => {
   const enabled = { NODE_ENV: 'development', EMAIL_DRIVER: 'mock', NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321' };
 
-  it('is true for mock/mailpit on a loopback URL in non-prod', () => {
+  it('is true for the mock driver on a loopback URL in non-prod', () => {
     expect(isEmailMockEnabled(enabled)).toBe(true);
-    expect(isEmailMockEnabled({ ...enabled, EMAIL_DRIVER: 'mailpit' })).toBe(true);
     expect(isEmailMockEnabled({ ...enabled, NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321' })).toBe(true);
   });
 
-  it('is false for a real Graph driver, in production, or against a remote URL', () => {
+  it('is false for mailpit/graph drivers, in production, or against a remote URL', () => {
+    // mailpit's fetchReplies reads the real Mailpit API, not the dev inbox the
+    // simulator writes to — so the simulate affordance must stay off there.
+    expect(isEmailMockEnabled({ ...enabled, EMAIL_DRIVER: 'mailpit' })).toBe(false);
     expect(isEmailMockEnabled({ ...enabled, EMAIL_DRIVER: 'graph-dev' })).toBe(false);
     expect(isEmailMockEnabled({ ...enabled, NODE_ENV: 'production' })).toBe(false);
     expect(isEmailMockEnabled({ ...enabled, NEXT_PUBLIC_SUPABASE_URL: 'https://abc.supabase.co' })).toBe(false);

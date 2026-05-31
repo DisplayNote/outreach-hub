@@ -61,4 +61,33 @@ describe('GraphDriver.fetchReplies', () => {
     expect(url).toContain('/me/mailFolders/Inbox/messages');
     expect(url).toContain('receivedDateTime');
   });
+
+  it('follows @odata.nextLink to drain every page', async () => {
+    const page1 = {
+      '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages?$skip=50',
+      value: [{ id: 'm1', from: { emailAddress: { address: 'a@example.com' } }, receivedDateTime: '2026-05-29T10:00:00Z' }],
+    };
+    const page2 = {
+      value: [{ id: 'm2', from: { emailAddress: { address: 'b@example.com' } }, receivedDateTime: '2026-05-29T10:00:00Z' }],
+    };
+    const fetchImpl = vi
+      .fn(async (_u: string, _i?: RequestInit) => resp(page1))
+      .mockImplementationOnce(async (_u: string, _i?: RequestInit) => resp(page1))
+      .mockImplementationOnce(async (_u: string, _i?: RequestInit) => resp(page2));
+    const driver = new GraphDriver('graph-dev', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies.map((r) => r.from)).toEqual(['a@example.com', 'b@example.com']);
+    // Page 2 fetched via the absolute nextLink URL.
+    expect(String(fetchImpl.mock.calls[1]![0])).toBe(page1['@odata.nextLink']);
+  });
+
+  it('falls back to the message id when internetMessageId is absent', async () => {
+    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
+      resp({ value: [{ id: 'graph-id-1', from: { emailAddress: { address: 'a@x.com' } } }] }),
+    );
+    const driver = new GraphDriver('graph-dev', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.messageId).toBe('graph-id-1');
+  });
 });

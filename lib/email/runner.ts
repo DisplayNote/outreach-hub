@@ -73,7 +73,11 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
 
   const dailyGoal = deps.settings.dailyGoal ?? DEFAULT_DAILY_GOAL;
   const sentToday = await deps.store.sentCountToday(opts.today);
-  const cap = Math.max(0, Math.min(opts.limit ?? Number.POSITIVE_INFINITY, dailyGoal) - sentToday);
+  // Daily-goal headroom first, THEN clamp by the optional per-run limit — so a
+  // small `limit` caps this run without spuriously zeroing the cap once some
+  // sends already happened today (e.g. goal 30, sentToday 28, limit 5 → 2, not 0).
+  const dailyRemaining = Math.max(0, dailyGoal - sentToday);
+  const cap = Math.min(opts.limit ?? Number.POSITIVE_INFINITY, dailyRemaining);
 
   const dueAll = (await deps.store.dueContacts(opts.today)).slice().sort(order);
 

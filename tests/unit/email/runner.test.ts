@@ -134,6 +134,22 @@ describe('runSender', () => {
     expect(res.remaining).toBe(1);
   });
 
+  it('applies the daily-goal headroom before the per-run limit (no spurious zero cap)', async () => {
+    rec.dueList = [due('a'), due('b'), due('c')];
+    rec.sentToday = 28; // goal 30 → 2 left today; a limit of 5 must not zero this out
+    const res = await runSender(deps(rec, driver), { today: '2026-05-29', limit: 5 });
+    expect(res.sent).toBe(2);
+    expect(res.remaining).toBe(1);
+  });
+
+  it('lets the per-run limit cap a run below the daily headroom', async () => {
+    rec.dueList = [due('a'), due('b'), due('c')];
+    rec.sentToday = 0; // 30 left today, but limit pins this run to 1
+    const res = await runSender(deps(rec, driver), { today: '2026-05-29', limit: 1 });
+    expect(res.sent).toBe(1);
+    expect(res.remaining).toBe(2);
+  });
+
   it('dry-run plans without sending or writing', async () => {
     rec.dueList = [due('a')];
     const res = await runSender(deps(rec, driver), { today: '2026-05-29', dryRun: true });

@@ -91,12 +91,21 @@ export class GraphDriver implements EmailDriver {
       $top: '50',
       $orderby: 'receivedDateTime asc',
     });
-    const resp = await this.call('GET', `/me/mailFolders/Inbox/messages?${params.toString()}`);
-    if (!resp.ok) {
-      throw new EmailDriverError(`Graph fetchReplies failed (${resp.status})`, undefined, 'GRAPH_FETCH');
+    // Follow @odata.nextLink to drain every page. Reading only the first page
+    // would let the scanner advance its high-water mark while later pages (e.g.
+    // many messages sharing one receivedDateTime) go unprocessed forever.
+    const out: InboundMessage[] = [];
+    let resp = await this.call('GET', `/me/mailFolders/Inbox/messages?${params.toString()}`);
+    for (;;) {
+      if (!resp.ok) {
+        throw new EmailDriverError(`Graph fetchReplies failed (${resp.status})`, undefined, 'GRAPH_FETCH');
+      }
+      const body = (await resp.json()) as { value?: GraphMessage[]; '@odata.nextLink'?: string };
+      for (const m of body.value ?? []) out.push(this.toInbound(m));
+      const next = body['@odata.nextLink'];
+      if (!next) return out;
+      resp = await this.callUrl('GET', next); // nextLink is an absolute Graph URL
     }
-    const body = (await resp.json()) as { value?: GraphMessage[] };
-    return (body.value ?? []).map((m) => this.toInbound(m));
   }
 
   async subscribeReplies(_opts: {
@@ -134,7 +143,12 @@ export class GraphDriver implements EmailDriver {
   }
 
   private async call(method: string, path: string, body?: unknown): Promise<Response> {
-    return this.fetchImpl(`${GRAPH_BASE}${path}`, {
+    return this.callUrl(method, `${GRAPH_BASE}${path}`, body);
+  }
+
+  /** Like {@link call} but takes an absolute URL (used to follow @odata.nextLink). */
+  private async callUrl(method: string, url: string, body?: unknown): Promise<Response> {
+    return this.fetchImpl(url, {
       method,
       headers: {
         Authorization: `Bearer ${this.token()}`,
