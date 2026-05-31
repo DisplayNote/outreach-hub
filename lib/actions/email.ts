@@ -48,8 +48,9 @@ async function buildContext() {
   // delegated token is absent — the user must have signed in with the Mail
   // scopes (Mail.Send/Mail.Read; requested incrementally at login).
   const driverName = process.env.EMAIL_DRIVER;
+  const isGraph = driverName === 'graph-dev' || driverName === 'graph-prod';
   let accessToken: string | undefined;
-  if (driverName === 'graph-dev' || driverName === 'graph-prod') {
+  if (isGraph) {
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -60,13 +61,19 @@ async function buildContext() {
           '(Mail.Send / Mail.Read). Re-authenticate with those scopes, or use the scheduled cron.',
       );
     }
+    if (!user?.email) {
+      throw new Error('Manual Graph send/scan: the signed-in user has no email address.');
+    }
   }
   const driver = getEmailDriver(accessToken ? { accessToken } : {});
   const store = supabaseEmailStore(supabase, { orgId, provider: driver.name, settings });
-  // Prefer the configured org mailbox (same as cron), then the signed-in user's
-  // address for a delegated send. Never the signature (a human-readable string,
-  // not an address). Falls back to a local placeholder only for the mock driver.
-  const from = settings.senderEmail ?? user?.email ?? 'noreply@local';
+  // The mailbox this manual run actually USES (sends as / scans). For Graph the
+  // delegated token is `/me` = the SIGNED-IN USER's mailbox, so it must be the
+  // user's address — NOT settings.senderEmail (the org's shared sender). Keying
+  // the scan cursor or 'from' to senderEmail while the driver reads the user's
+  // inbox would mismatch the cursor and the mailbox. For mock/mailpit there's one
+  // local mailbox, so the org sender (then user) is the stable key.
+  const from = isGraph ? (user?.email ?? '') : (settings.senderEmail ?? user?.email ?? 'noreply@local');
   return { orgId, supabase, settings, driver, store, from };
 }
 
@@ -190,25 +197,26 @@ export async function removeSuppression(suppressionId: string): Promise<void> {
     .from('suppressions')
     .delete()
     .eq('id', id)
-    .select('email')
+    .select('email, reason')
     .maybeSingle();
   if (error) throw new Error(`removeSuppression: ${error.message}`);
 
-  // A bounce sets BOTH a suppression and status='bounced'; deleting the
+  // A BOUNCE sets BOTH a suppression and status='bounced'; deleting that
   // suppression alone leaves the contact terminal (the runner excludes
-  // 'bounced'), so un-suppress would be a no-op for re-enabling sends. Clear that
-  // bounce status back to neutral so the contact can be re-queued. Only 'bounced'
-  // is reset — 'notinterested'/'meeting' are deliberate human states, untouched.
-  // (suppressions.email is normalised lower+trim; contacts.email may be mixed
-  // case, so match case-insensitively with LIKE wildcards escaped.)
-  const email = (deleted as { email: string } | null)?.email;
-  if (email) {
+  // 'bounced'), so un-suppress would be a no-op for re-enabling sends. Clear the
+  // bounce status back to neutral ONLY when the row we just deleted was the
+  // bounce suppression — removing a manual/replied/unsubscribed suppression must
+  // NOT clear a 'bounced' status the address earned separately. 'notinterested'/
+  // 'meeting' are deliberate human states and are never touched here. (Match
+  // case-insensitively: suppressions.email is normalised, contacts.email may not be.)
+  const row = deleted as { email: string; reason: string } | null;
+  if (row && row.reason === 'bounced') {
     const { error: statusErr } = await supabase
       .from('contacts')
       .update({ status: 'none' })
       .eq('org_id', orgId)
       .eq('status', 'bounced')
-      .ilike('email', escapeLike(email));
+      .ilike('email', escapeLike(row.email));
     if (statusErr) throw new Error(`removeSuppression.status: ${statusErr.message}`);
   }
   revalidatePath('/suppressions');
