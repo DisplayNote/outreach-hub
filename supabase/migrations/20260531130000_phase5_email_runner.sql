@@ -171,3 +171,21 @@ begin
   on conflict (org_id, legacy_id) do nothing;
 end;
 $$;
+
+-- Inbox-scan cursor (atomic) --------------------------------------------------
+-- Advance organizations.settings.lastInboxScanAt without a read-merge-write
+-- round trip: the single `||` jsonb concat updates only that key in one
+-- statement, so a concurrent settings save can't be clobbered by a stale read.
+-- p_at is stored verbatim as text (the scanner compares the ISO string), so the
+-- value round-trips exactly. SECURITY INVOKER: manual path under the caller's
+-- RLS (org UPDATE is restricted to the settings column), cron via service role.
+create or replace function public.advance_inbox_scan_cursor(
+  p_org_id uuid,
+  p_at text
+) returns void
+  language sql
+as $$
+  update public.organizations
+    set settings = settings || jsonb_build_object('lastInboxScanAt', p_at)
+    where id = p_org_id;
+$$;

@@ -113,7 +113,9 @@ export function supabaseEmailStore(
       // has an email, and not already sent today. RLS scopes to the org.
       // org_id filtered EXPLICITLY — the cron path uses the service role
       // (bypasses RLS), so without this one org's run would process every org's
-      // contacts.
+      // contacts. `meeting` is excluded alongside notinterested/bounced: it's a
+      // stronger terminal state (a booked meeting), so a contact who reached it
+      // must not keep receiving automated follow-ups even without a suppression.
       const { data: rows, error } = await client
         .from('contacts')
         .select(CONTACT_SELECT)
@@ -121,7 +123,7 @@ export function supabaseEmailStore(
         .lte('follow_up', today)
         .not('follow_up', 'is', null)
         .not('email', 'is', null)
-        .not('status', 'in', '(notinterested,bounced)')
+        .not('status', 'in', '(notinterested,bounced,meeting)')
         .or(`last_emailed_at.is.null,last_emailed_at.lt.${today}T00:00:00.000Z`);
       if (error) throw new Error(`dueContacts: ${error.message}`);
       const candidates = (rows ?? []).map((r) => toContact(r as ContactRow));
@@ -406,23 +408,15 @@ export function supabaseEmailStore(
     },
 
     async advanceScanCursor(at) {
-      // Read-merge-write the JSONB settings (PostgREST has no portable partial
-      // jsonb merge) so the cursor moves forward without clobbering other
-      // settings. Scoped to ctx.orgId; RLS limits org UPDATE to the settings
-      // column (Phase 2), and the cron path uses the service role.
-      const { data: current, error: readErr } = await client
-        .from('organizations')
-        .select('settings')
-        .eq('id', ctx.orgId)
-        .single();
-      if (readErr) throw new Error(`advanceScanCursor.read: ${readErr.message}`);
-      const existing = ((current as { settings: Record<string, unknown> | null } | null)?.settings ??
-        {}) as Record<string, unknown>;
-      const { error: writeErr } = await client
-        .from('organizations')
-        .update({ settings: { ...existing, lastInboxScanAt: at } })
-        .eq('id', ctx.orgId);
-      if (writeErr) throw new Error(`advanceScanCursor.write: ${writeErr.message}`);
+      // Atomic single-statement jsonb merge (advance_inbox_scan_cursor RPC): only
+      // the lastInboxScanAt key changes, so a concurrent settings save can't be
+      // clobbered by a stale read-merge-write. Scoped to ctx.orgId; RLS limits
+      // org UPDATE to the settings column (Phase 2), cron uses the service role.
+      const { error } = await client.rpc('advance_inbox_scan_cursor', {
+        p_org_id: ctx.orgId,
+        p_at: at,
+      });
+      if (error) throw new Error(`advanceScanCursor: ${error.message}`);
     },
   };
 }

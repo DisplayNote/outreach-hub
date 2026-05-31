@@ -128,6 +128,24 @@ describe('GraphDriver.fetchReplies', () => {
     expect(replies[0]!.failedRecipient).toBe('bob@corp.com');
   });
 
+  it('recovers the failed recipient from a subject-only NDR (non-system sender)', async () => {
+    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
+      resp({
+        value: [
+          {
+            id: 'ndr3',
+            from: { emailAddress: { address: 'bounces@mailgun.example' } },
+            subject: 'Returned mail: see transcript for details',
+            bodyPreview: 'The following address failed: carol@corp.com',
+          },
+        ],
+      }),
+    );
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.failedRecipient).toBe('carol@corp.com');
+  });
+
   it('leaves failedRecipient unset for an ordinary (non-system) reply', async () => {
     const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
       resp({ value: [{ id: 'r9', from: { emailAddress: { address: 'mike@example.com' } }, subject: 'Re: hi', bodyPreview: 'sure' }] }),

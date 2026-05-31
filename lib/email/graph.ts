@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { isSystemSender } from '@/lib/email/classify';
+import { isSystemSender, isNdrSubject } from '@/lib/email/classify';
 import type { EmailDriver } from '@/lib/email/driver';
 import {
   EmailDriverError,
@@ -159,8 +159,13 @@ export class GraphDriver implements EmailDriver {
     };
     if (m.bodyPreview !== undefined) out.bodyText = m.bodyPreview;
     if (m.conversationId !== undefined) out.conversationId = m.conversationId;
-    if (isSystemSender(from)) {
-      const failed = parseFailedRecipient(`${m.subject ?? ''}\n${m.bodyPreview ?? ''}`);
+    // Recover the failed recipient for ANYTHING the classifier treats as a
+    // bounce — a system-mailer sender OR an undeliverable subject (some MTAs
+    // bounce from a non-postmaster address) — so subject-only NDRs correlate to
+    // the prospect instead of the (wrong) sender.
+    const subject = m.subject ?? '';
+    if (isSystemSender(from) || isNdrSubject(subject)) {
+      const failed = parseFailedRecipient(`${subject}\n${m.bodyPreview ?? ''}`);
       if (failed !== undefined) out.failedRecipient = failed;
     }
     return out;

@@ -24,8 +24,13 @@ export function isSystemSender(address: string): boolean {
 const NDR_SUBJECT =
   /undeliverable|delivery status notification|mail delivery (failed|subsystem)|returned mail|failure notice/i;
 
+/** True if `subject` matches a delivery-failure (NDR) subject pattern. */
+export function isNdrSubject(subject: string): boolean {
+  return NDR_SUBJECT.test(subject);
+}
+
 export function classifyInbound(message: InboundMessage): 'reply' | 'bounce' {
-  if (SYSTEM_SENDER.test(message.from) || NDR_SUBJECT.test(message.subject)) {
+  if (isSystemSender(message.from) || isNdrSubject(message.subject)) {
     return 'bounce';
   }
   return 'reply';
