@@ -19,6 +19,9 @@ import { supabaseEmailStore } from '@/lib/email/store';
 import { runSender, type RunSenderResult } from '@/lib/email/runner';
 import { scanInbox, type ScanInboxResult } from '@/lib/email/scanner';
 import { businessDayAdd } from '@/lib/email/schedule';
+import { buildSimulatedReply, buildSimulatedBounce } from '@/lib/email/mock';
+import { pushDevInbound } from '@/lib/email/dev-inbox';
+import { isEmailMockEnabled } from '@/lib/env';
 import type { SuppressionReason } from '@/lib/email/types';
 
 const uuid = z.string().uuid();
@@ -151,4 +154,21 @@ export async function removeSuppression(suppressionId: string): Promise<void> {
   const { error } = await supabase.from('suppressions').delete().eq('id', id);
   if (error) throw new Error(`removeSuppression: ${error.message}`);
   revalidatePath('/suppressions');
+}
+
+const simulateSchema = z.object({ email: z.string().trim().email(), kind: z.enum(['reply', 'bounce']) });
+export type SimulateInboundInput = z.input<typeof simulateSchema>;
+
+/**
+ * Dev-only: enqueue a simulated reply/bounce from a contact into the process
+ * dev-inbox, so the next "Scan inbox now" picks it up — exercising the full
+ * reply→green→stop / bounce→suppress loop locally without a real mailbox.
+ * Hard-gated by isEmailMockEnabled() (PHASE_5_SPEC §9, DECISION 9.1).
+ */
+export async function simulateInbound(input: SimulateInboundInput): Promise<void> {
+  if (!isEmailMockEnabled()) throw new Error('simulateInbound: disabled (not a local mock environment)');
+  const { email, kind } = simulateSchema.parse(input);
+  // Authorize: a real session must exist (don't let an unauthenticated caller seed).
+  await getCurrentOrgId();
+  pushDevInbound(kind === 'reply' ? buildSimulatedReply({ from: email }) : buildSimulatedBounce({ recipient: email }));
 }
