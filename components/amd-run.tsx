@@ -213,13 +213,17 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
       try {
         await logCallOutcome(current.id, { outcome });
         setRecording(null);
-        advance();
+        // Don't advance now: the bridged call may still be live. Latch `skipping`
+        // so the terminal-state effect advances this bridged-human attempt once
+        // it actually ends — avoids racing the next dial against the server's
+        // one-live-attempt guard (and the placing-effect's skip-on-error path).
+        setSkipping(true);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to record outcome');
         setRecording(null);
       }
     },
-    [current, recording, advance],
+    [current, recording],
   );
 
   const hangup = useCallback(async () => {
