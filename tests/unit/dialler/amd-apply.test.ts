@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyEvent, type AmdStore, type AttemptPatch } from '@/lib/dialler/amd/apply';
-import type { CallAttempt, TelnyxEvent } from '@/lib/dialler/amd/types';
+import type { CallAttempt } from '@/lib/dialler/amd/types';
 
 interface Recorded {
   patches: { id: string; patch: AttemptPatch }[];
