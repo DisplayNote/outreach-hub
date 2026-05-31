@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MockDriver } from '@/lib/email/mock';
 import { getEmailDriver } from '@/lib/email/index';
+import { classifyInbound } from '@/lib/email/classify';
 
 describe('MockDriver', () => {
   let driver: MockDriver;
@@ -70,5 +71,28 @@ describe('MockDriver', () => {
       if (original === undefined) delete process.env.EMAIL_DRIVER;
       else process.env.EMAIL_DRIVER = original;
     }
+  });
+
+  describe('reply/bounce simulator', () => {
+    it('simulateReply enqueues a reply-shaped inbound (correlatable + classified reply)', async () => {
+      const msg = driver.simulateReply({ from: 'mike@example.com', inReplyTo: 'sent-1' });
+      expect(classifyInbound(msg)).toBe('reply');
+      const fetched = await driver.fetchReplies({ since: '2000-01-01T00:00:00.000Z' });
+      expect(fetched).toContainEqual(
+        expect.objectContaining({ messageId: msg.messageId, from: 'mike@example.com' }),
+      );
+    });
+
+    it('simulateBounce enqueues an NDR classified as a bounce, correlatable by the failed recipient', () => {
+      const msg = driver.simulateBounce({ recipient: 'bad@example.com' });
+      expect(classifyInbound(msg)).toBe('bounce');
+      expect(msg.from).toBe('bad@example.com');
+    });
+
+    it('gives each simulated message a unique id', () => {
+      const a = driver.simulateReply({ from: 'x@y.com' });
+      const b = driver.simulateReply({ from: 'x@y.com' });
+      expect(a.messageId).not.toBe(b.messageId);
+    });
   });
 });
