@@ -49,16 +49,24 @@ export function useAmdRun(runId: string | null): UseAmdRunResult {
       }
 
       if (!active) return;
+      // Attempts are only ever inserted/updated for a run (never deleted in the
+      // normal flow), and the handler applies `payload.new` — so subscribe to
+      // INSERT/UPDATE only (upsert intent; no wasted DELETE traffic).
+      const apply = (row: CallAttemptRow | null | undefined) => {
+        if (!row?.id) return;
+        setAttempts((prev) => ({ ...prev, [row.id]: toCallAttempt(row) }));
+      };
       channel = supabase
         .channel(`amd-run-${runId}`)
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'call_attempts', filter: `run_id=eq.${runId}` },
-          (payload) => {
-            const row = payload.new as CallAttemptRow | null;
-            if (!row?.id) return;
-            setAttempts((prev) => ({ ...prev, [row.id]: toCallAttempt(row) }));
-          },
+          { event: 'INSERT', schema: 'public', table: 'call_attempts', filter: `run_id=eq.${runId}` },
+          (payload) => apply(payload.new as CallAttemptRow),
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'call_attempts', filter: `run_id=eq.${runId}` },
+          (payload) => apply(payload.new as CallAttemptRow),
         )
         .subscribe();
     })();

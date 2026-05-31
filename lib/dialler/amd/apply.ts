@@ -76,8 +76,13 @@ export async function applyEvent(
   // Stamp call_control_id from the first inbound event when it isn't persisted
   // yet (the event was correlated via the customHeaders attemptId fallback), so
   // later events match by call_control_id and manual hangups have an id to use.
+  // Gated to a non-terminal attempt with an unset id, so a late fallback event on
+  // an already cancelled/ended attempt stays a full no-op (no UPDATE / event row).
   const needsCallControlId =
-    event.callControlId !== '' && attempt.callControlId !== event.callControlId;
+    attempt.state !== 'ended' &&
+    attempt.state !== 'failed' &&
+    attempt.callControlId === null &&
+    event.callControlId !== '';
 
   // No-op (duplicate / ignored event once terminal): write nothing — no attempt
   // UPDATE (avoids Realtime churn and overwriting endedAt) and no event row.
