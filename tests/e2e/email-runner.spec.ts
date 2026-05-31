@@ -80,6 +80,7 @@ test.beforeAll(async () => {
   await admin.from('contacts').delete().eq('org_id', orgId).eq('company', E2E_MARKER);
   await admin.from('campaigns').delete().eq('org_id', orgId).eq('name', 'E2E Email Campaign');
   await admin.from('sequences').delete().eq('org_id', orgId).eq('name', E2E_MARKER);
+  await admin.from('templates').delete().eq('org_id', orgId).eq('name', E2E_MARKER);
   await admin
     .from('suppressions')
     .delete()
@@ -92,9 +93,17 @@ test.beforeAll(async () => {
     .select('id')
     .single();
   const sequenceId = (seq as { id: string }).id;
+  // The day-0 step needs a linked template — the runner now skips templateless
+  // steps (no blank mail) rather than sending an empty subject/body.
+  const { data: tpl } = await admin
+    .from('templates')
+    .insert({ org_id: orgId, name: E2E_MARKER, subject: 'Hi {firstName}', body: 'Hello from {company}' })
+    .select('id')
+    .single();
+  const templateId = (tpl as { id: string }).id;
   await admin.from('sequence_steps').insert([
-    { org_id: orgId, sequence_id: sequenceId, step_order: 1, day_offset: 0, channel: 'email' },
-    { org_id: orgId, sequence_id: sequenceId, step_order: 2, day_offset: 3, channel: 'email' },
+    { org_id: orgId, sequence_id: sequenceId, step_order: 1, day_offset: 0, channel: 'email', template_id: templateId },
+    { org_id: orgId, sequence_id: sequenceId, step_order: 2, day_offset: 3, channel: 'email', template_id: templateId },
   ]);
 
   const { data: camp } = await admin

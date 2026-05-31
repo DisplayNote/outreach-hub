@@ -71,8 +71,16 @@ export interface CorrelationKeys {
 }
 
 export interface EmailStore {
-  /** Eligible + enrolled + non-suppressed contacts due on/before `today` (§5). */
-  dueContacts(today: string): Promise<DueContact[]>;
+  /**
+   * Eligible + enrolled + non-suppressed contacts due on/before `today` (§5),
+   * most-overdue first. `limit` bounds the fetch (the runner passes the daily
+   * cap) so a huge overdue queue isn't materialised — and the suppression lookup
+   * stays small — just to send a small capped batch.
+   */
+  dueContacts(today: string, limit?: number): Promise<DueContact[]>;
+  /** Cheap head count of due candidates (pre suppression/sequence-link filter),
+   * for reporting how many remain beyond the cap without materialising them. */
+  countDue(today: string): Promise<number>;
   /** Count of `sent` events on/after `today` (daily-cap accounting). */
   sentCountToday(today: string): Promise<number>;
   /** Persist a send: email_events(sent) + touchpoint + advance the contact (§4/§8). */
@@ -118,7 +126,7 @@ export function supabaseEmailStore(
   void skipWeekends; // scheduling is computed by the runner; kept for parity
 
   return {
-    async dueContacts(today) {
+    async dueContacts(today, limit) {
       // Candidate contacts: enrolled (follow_up set & due), non-terminal status,
       // has an email, and not already sent today. RLS scopes to the org.
       // org_id filtered EXPLICITLY — the cron path uses the service role
@@ -126,7 +134,7 @@ export function supabaseEmailStore(
       // contacts. `meeting` is excluded alongside notinterested/bounced: it's a
       // stronger terminal state (a booked meeting), so a contact who reached it
       // must not keep receiving automated follow-ups even without a suppression.
-      const { data: rows, error } = await client
+      let query = client
         .from('contacts')
         .select(CONTACT_SELECT)
         .eq('org_id', ctx.orgId)
@@ -135,6 +143,16 @@ export function supabaseEmailStore(
         .not('email', 'is', null)
         .not('status', 'in', '(notinterested,bounced,meeting)')
         .or(`last_emailed_at.is.null,last_emailed_at.lt.${today}T00:00:00.000Z`);
+      // Most-overdue first (matches the runner's primary sort key) + bound the
+      // fetch to the cap, so the query and the suppression `in(...)` below stay
+      // small even with a large overdue backlog.
+      if (limit !== undefined) {
+        query = query
+          .order('follow_up', { ascending: true })
+          .order('sequence_day', { ascending: true, nullsFirst: false })
+          .limit(limit);
+      }
+      const { data: rows, error } = await query;
       if (error) throw new Error(`dueContacts: ${error.message}`);
       const candidates = (rows ?? []).map((r) => toContact(r as ContactRow));
       if (candidates.length === 0) return [];
@@ -212,6 +230,23 @@ export function supabaseEmailStore(
         });
       }
       return due;
+    },
+
+    async countDue(today) {
+      // Head count (no rows) of the same pre-filter as dueContacts. Used to
+      // report how many remain beyond the cap; an upper estimate, since it
+      // doesn't subtract suppressed / sequence-unlinked candidates.
+      const { count, error } = await client
+        .from('contacts')
+        .select('id', { count: 'exact', head: true })
+        .eq('org_id', ctx.orgId)
+        .lte('follow_up', today)
+        .not('follow_up', 'is', null)
+        .not('email', 'is', null)
+        .not('status', 'in', '(notinterested,bounced,meeting)')
+        .or(`last_emailed_at.is.null,last_emailed_at.lt.${today}T00:00:00.000Z`);
+      if (error) throw new Error(`countDue: ${error.message}`);
+      return count ?? 0;
     },
 
     async sentCountToday(today) {

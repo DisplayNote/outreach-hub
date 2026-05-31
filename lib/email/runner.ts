@@ -79,22 +79,34 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
   const dailyRemaining = Math.max(0, dailyGoal - sentToday);
   const cap = Math.min(opts.limit ?? Number.POSITIVE_INFINITY, dailyRemaining);
 
-  const dueAll = (await deps.store.dueContacts(opts.today)).slice().sort(order);
+  // Fetch only up to the cap (most-overdue first), and report the rest via a
+  // cheap head count — so a large backlog isn't materialised to send a small
+  // batch. `remaining` is cap-relative ("eligible due beyond what this run can
+  // send"), so it's correct for dry runs and the 0/∞ cap too.
+  const fetchLimit = Number.isFinite(cap) ? cap : undefined;
+  const dueAll = (await deps.store.dueContacts(opts.today, fetchLimit)).slice().sort(order);
+  const dueTotal = await deps.store.countDue(opts.today);
 
   const result: RunSenderResult = { planned: [], sent: 0, skipped: 0, errors: [], remaining: 0 };
   let processed = 0;
 
   for (const item of dueAll) {
-    if (processed >= cap) {
-      result.remaining += 1;
-      continue;
-    }
+    // Defensive: the fetch is already bounded to the cap, but a fake/over-fetch
+    // could return more — never send past the cap.
+    if (processed >= cap) break;
     const { contact, step, steps, template } = item;
     if (!contact.email) {
       result.skipped += 1;
       continue;
     }
-    const rendered = renderTemplate(template ?? { subject: null, body: null }, contact, deps.settings);
+    // A step with no linked template would render an empty subject/body — skip
+    // and surface it rather than send blank mail (templateId is nullable).
+    if (!template) {
+      result.skipped += 1;
+      result.errors.push({ contactId: contact.id, message: 'skipped: sequence step has no template' });
+      continue;
+    }
+    const rendered = renderTemplate(template, contact, deps.settings);
     result.planned.push({ contactId: contact.id, to: contact.email, subject: rendered.subject });
 
     if (opts.dryRun) {
@@ -155,6 +167,11 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       });
     }
   }
+
+  // Eligible due contacts beyond what this run could send (cap-relative; 0 when
+  // the cap is unbounded). dueTotal is an upper estimate (pre suppression), so
+  // floor at 0.
+  result.remaining = Math.max(0, dueTotal - cap);
 
   return result;
 }

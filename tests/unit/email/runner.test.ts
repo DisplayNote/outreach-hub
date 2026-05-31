@@ -66,7 +66,12 @@ interface Rec {
 function fakeStore(rec: Rec): EmailStore {
   return {
     async dueContacts() {
+      // Ignores the limit param: returning the full list lets the runner's cap
+      // guard + countDue-based remaining be exercised deterministically.
       return rec.dueList;
+    },
+    async countDue() {
+      return rec.dueList.length;
     },
     async sentCountToday() {
       return rec.sentToday;
@@ -158,6 +163,15 @@ describe('runSender', () => {
     expect(res.sent).toBe(0);
     expect(driver.sent).toHaveLength(0);
     expect(rec.sent).toHaveLength(0);
+  });
+
+  it('skips (and surfaces) a step with no template instead of sending blank mail', async () => {
+    rec.dueList = [{ ...due('a'), template: null }, due('b')];
+    const res = await runSender(deps(rec, driver), { today: '2026-05-29' });
+    expect(res.sent).toBe(1); // only 'b' sent
+    expect(res.skipped).toBe(1);
+    expect(driver.sent.map((s) => s.message.to[0])).toEqual(['b@example.com']);
+    expect(res.errors.some((e) => /no template/.test(e.message))).toBe(true);
   });
 
   it('isolates a send error: records it and continues the batch', async () => {

@@ -16,6 +16,9 @@ function fakeStore(rec: Rec): EmailStore {
     async dueContacts() {
       return [];
     },
+    async countDue() {
+      return 0;
+    },
     async sentCountToday() {
       return 0;
     },
