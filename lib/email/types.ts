@@ -72,6 +72,10 @@ export interface EmailEvent {
   campaignId: string | null;
   type: EmailEventType;
   provider: string;
+  /** The address actually emailed on a `sent` event (normalised); null for inbound.
+   * Lets a bounce correlate by the address sent to even if the contact's email
+   * was corrected afterwards. */
+  recipient: string | null;
   messageId: string | null;
   conversationId: string | null;
   inReplyTo: string | null;
