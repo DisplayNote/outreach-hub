@@ -44,6 +44,47 @@ export interface Subscription {
   expiresAt: string;
 }
 
+// --- Phase 5 domain: email events + suppressions ----------------------------
+
+/** public.email_events.type — a sent message, or an inbound reply/bounce. */
+export type EmailEventType = 'sent' | 'reply' | 'bounce';
+
+/** public.suppressions.reason — why an address is on the do-not-send list. */
+export type SuppressionReason = 'replied' | 'bounced' | 'manual' | 'unsubscribed';
+
+/**
+ * public.email_events row (camelCase). Append-only per-message log: a `sent`
+ * record per outbound, a `reply`/`bounce` per correlated inbound. `messageId`
+ * is the provider id and the send-dedup key; `sequenceDay` is the step's
+ * day_offset for a send (null for inbound).
+ */
+export interface EmailEvent {
+  id: string;
+  orgId: string;
+  contactId: string;
+  campaignId: string | null;
+  type: EmailEventType;
+  provider: string;
+  messageId: string | null;
+  conversationId: string | null;
+  inReplyTo: string | null;
+  subject: string | null;
+  sequenceDay: number | null;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+  createdAt: string;
+}
+
+/** public.suppressions row (camelCase) — one do-not-send address per org. */
+export interface Suppression {
+  id: string;
+  orgId: string;
+  email: string;
+  reason: SuppressionReason;
+  contactId: string | null;
+  createdAt: string;
+}
+
 export class EmailDriverError extends Error {
   public readonly code?: string;
 
