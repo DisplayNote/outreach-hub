@@ -51,7 +51,7 @@
 - Create: `supabase/migrations/20260531120000_phase4_dialler_amd.sql`
 - Test: `tests/unit/dialler/amd-migration.test.ts` (schema assertions via a queries helper) — OR validate via `supabase db reset` (primary gate).
 
-- [ ] **Step 1: Write the migration** per spec §2 exactly — `create type public.call_attempt_state as enum ('queued','dialing','ringing','answered','amd_pending','machine','bridged','ended','failed')`; the three tables with denormalised `org_id`, FKs, indexes (incl. unique `call_control_id` where not null), `set_updated_at()` triggers on `call_runs`/`call_attempts`; RLS per §2.4 (SELECT+INSERT for org; `call_events` append-only — no UPDATE/DELETE policy; client UPDATE on `call_runs.status` + attempt cancel only); and `alter publication supabase_realtime add table public.call_runs, public.call_attempts, public.call_events;`.
+- [ ] **Step 1: Write the migration** per spec §2 exactly — `create type public.call_attempt_state as enum ('queued','dialing','ringing','answered','machine','bridged','ended','failed')` (no `amd_pending`; `answered` doubles as the AMD-analysis phase); the three tables with denormalised `org_id`, FKs, indexes (incl. unique `call_control_id` where not null, and a partial unique index on `call_attempts(run_id)` over non-terminal states for the one-live-attempt invariant), `set_updated_at()` triggers on `call_runs`/`call_attempts`; RLS per §2.4 — **SELECT-only client policies** (enables per-run Realtime); **all writes go through the service role** (webhook + Server Actions), so there are no client INSERT/UPDATE/DELETE policies and `call_events` is append-only; and `alter publication supabase_realtime add table public.call_runs, public.call_attempts, public.call_events;`.
 
 - [ ] **Step 2: Apply and verify** — Run: `supabase db reset`. Expected: completes with no error; the new objects exist. Spot-check: `supabase db reset 2>&1 | grep -i error` returns nothing.
 
@@ -100,7 +100,7 @@
 - Test: `tests/unit/dialler/amd-reducer.test.ts`
 
 - [ ] **Step 1: Write failing tests** covering every spec §3 transition and §4 disposition/side-effect:
-  - `call.initiated` from `queued`/`dialing` → `dialing`; `call.ringing` → `ringing`; `call.answered` → `answered` (NO bridge side-effect yet); the gap → `amd_pending`.
+  - `call.initiated` from `queued` → `dialing`; `call.ringing` → `ringing`; `call.answered` → `answered` (NO bridge side-effect yet; `answered` is the AMD-analysis phase). Progress transitions only advance forward (no regression on out-of-order webhooks).
   - `call.machine.detection.ended` result `machine`/`fax` → state `machine`, side-effects `['hangup','log-vm-touchpoint']`, disposition pending.
   - result `human`/`not_sure`/`human_residence` → state `bridged`, side-effect `['bridge']`, NO touchpoint.
   - `call.hangup` after machine → `ended`, disposition `voicemail-auto`; after bridge → `ended`, disposition `bridged-human`; after only ringing (never answered) → `ended`, disposition `no-answer`, NO touchpoint side-effect.
@@ -181,7 +181,7 @@
 - Create: `lib/dialler/amd/backend.ts`, `lib/dialler/amd/mock-backend.ts`
 - Test: `tests/unit/dialler/amd-mock-backend.test.ts`
 
-- [ ] **Step 1: Write failing tests** (vitest fake timers): `MockTelnyxBackend.placeCall({...,scenario:'machine'})` then advancing timers drives `applyEvent` through `dialing→ringing→answered→amd_pending→machine→ended` with disposition `voicemail-auto` and one auto-VM touchpoint; `scenario:'human'` ends `bridged-human` with a `bridge` actuation and no touchpoint; `scenario:'no-answer'` ends `no-answer` with no touchpoint; `scenario:'fail'` → `failed`. Scenario also derivable from number suffix per DECISION 7.1 (`…0001`=human/`0002`=machine/`0003`=no-answer) — test both the explicit override and the suffix mapping.
+- [ ] **Step 1: Write failing tests** (vitest fake timers): `MockTelnyxBackend.placeCall({...,scenario:'machine'})` then advancing timers drives `applyEvent` through `queued→dialing→ringing→answered→machine→ended` with disposition `voicemail-auto` and one auto-VM touchpoint; `scenario:'human'` ends `bridged-human` with a `bridge` actuation and no touchpoint; `scenario:'no-answer'` ends `no-answer` with no touchpoint; `scenario:'fail'` → `failed`. Scenario also derivable from number suffix per DECISION 7.1 (`…0001`=human/`0002`=machine/`0003`=no-answer) — test both the explicit override and the suffix mapping.
 
 - [ ] **Step 2: Run → fail** — Run: `pnpm vitest run tests/unit/dialler/amd-mock-backend.test.ts`. Expected: FAIL.
 

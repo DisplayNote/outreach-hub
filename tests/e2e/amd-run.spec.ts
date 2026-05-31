@@ -75,11 +75,13 @@ test.beforeAll(async () => {
     })
     .catch(() => undefined);
 
-  const { data: userRow } = await admin
+  const { data: userRow, error: userErr } = await admin
     .from('users')
     .select('org_id')
     .eq('email', 'dev@outreach.local')
     .single();
+  expect(userErr, `dev user lookup failed: ${userErr?.message}`).toBeNull();
+  expect(userRow, 'dev user row not found (handle_new_user trigger may not have run)').not.toBeNull();
   const orgId = (userRow as { org_id: string }).org_id;
 
   // Idempotent reseed: drop prior E2E contacts (+ their touchpoints via cascade).

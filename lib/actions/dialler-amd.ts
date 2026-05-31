@@ -167,10 +167,15 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
       .from('call_attempts')
       .update({ call_control_id: callControlId })
       .eq('id', attemptId)
+      .eq('org_id', orgId)
       .in('state', NON_TERMINAL)
       .select('id');
     if (ccErr) {
-      await client.from('call_attempts').update({ state: 'failed', error: ccErr.message }).eq('id', attemptId);
+      await client
+        .from('call_attempts')
+        .update({ state: 'failed', error: ccErr.message })
+        .eq('id', attemptId)
+        .eq('org_id', orgId);
       await backend.hangup(callControlId).catch(() => undefined);
       throw new Error(`placeAmdCall: failed to persist call_control_id: ${ccErr.message}`);
     }
@@ -180,7 +185,11 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
     }
   } catch (cause) {
     const message = cause instanceof AmdBackendError ? cause.message : 'dial failed';
-    await client.from('call_attempts').update({ state: 'failed', error: message }).eq('id', attemptId);
+    await client
+      .from('call_attempts')
+      .update({ state: 'failed', error: message })
+      .eq('id', attemptId)
+      .eq('org_id', orgId);
     throw cause;
   }
 
@@ -220,14 +229,21 @@ export async function cancelAttempt(attemptId: string): Promise<void> {
   const id = uuid.parse(attemptId);
   const orgId = await getCurrentOrgId();
   const { client } = createAmdRuntime();
-  const { error } = await client
+  const { data, error } = await client
     .from('call_attempts')
     .update({ state: 'ended', disposition: 'cancelled', ended_at: new Date().toISOString() })
     .eq('id', id)
     .eq('org_id', orgId)
     .is('call_control_id', null)
-    .in('state', ['queued', 'dialing']);
+    .in('state', ['queued', 'dialing'])
+    .select('id');
   if (error) throw new Error(`cancelAttempt: ${error.message}`);
+  // 0 rows = already correlated / progressed / terminal / wrong org. Throw so the
+  // UI keeps the contact (and the rep can hang up instead) rather than advancing
+  // past a still-live attempt.
+  if (!data || data.length !== 1) {
+    throw new Error('cancelAttempt: attempt not cancellable (already live or terminal)');
+  }
   revalidatePath('/dialler');
 }
 
