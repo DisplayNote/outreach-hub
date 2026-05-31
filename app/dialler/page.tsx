@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { getOrgSettings, getTodayContacts, listCampaigns } from '@/lib/supabase/queries';
 import { pickDialNumber } from '@/lib/dialler/normalise';
@@ -82,7 +83,8 @@ export default async function DiallerPage({ searchParams }: DiallerPageProps) {
     >
       <h1 style={{ marginBottom: '0.25rem' }}>Dialler</h1>
       <p style={{ marginTop: 0, color: '#666' }}>
-        Work through your due calls one contact at a time.
+        Work through your due calls one contact at a time.{' '}
+        <Link href="/dialler/amd">Start an AMD run →</Link>
       </p>
 
       {/* Campaign filter — a plain GET form so it works without client JS. */}

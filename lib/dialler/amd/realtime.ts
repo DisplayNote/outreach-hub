@@ -24,10 +24,7 @@ export function useAmdRun(runId: string | null): UseAmdRunResult {
   const [attempts, setAttempts] = useState<Record<string, CallAttempt>>({});
 
   useEffect(() => {
-    if (!runId) {
-      setAttempts({});
-      return;
-    }
+    if (!runId) return;
 
     let active = true;
     const supabase = createClient();
