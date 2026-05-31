@@ -38,13 +38,20 @@ create index campaigns_sequence_id_idx on public.campaigns (sequence_id);
 alter table public.contacts
   add column last_emailed_at timestamptz;
 
+-- Same-org composite-key targets so child rows below can enforce that an
+-- email_event / suppression references a contact (or campaign) in its OWN org —
+-- RLS only checks the child's org_id, so a plain id FK would let a known UUID
+-- from another org be referenced. (Mirrors the Phase-2 (id, org_id) pattern.)
+alter table public.contacts add constraint contacts_id_org_uk unique (id, org_id);
+alter table public.campaigns add constraint campaigns_id_org_uk unique (id, org_id);
+
 -- email_events — append-only per-message log ---------------------------------
 
 create table public.email_events (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations(id),
-  contact_id uuid not null references public.contacts(id) on delete cascade,
-  campaign_id uuid references public.campaigns(id) on delete set null,
+  contact_id uuid not null,
+  campaign_id uuid,
   type text not null check (type in ('sent', 'reply', 'bounce')),
   provider text not null,
   message_id text,
@@ -54,7 +61,10 @@ create table public.email_events (
   sequence_day int,
   payload jsonb not null default '{}'::jsonb,
   occurred_at timestamptz not null default now(),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Same-org composite FKs (see contacts/campaigns unique keys above).
+  foreign key (contact_id, org_id) references public.contacts (id, org_id) on delete cascade,
+  foreign key (campaign_id, org_id) references public.campaigns (id, org_id) on delete set null (campaign_id)
 );
 
 create index email_events_org_type_occurred_idx
@@ -75,8 +85,10 @@ create table public.suppressions (
   org_id uuid not null references public.organizations(id),
   email text not null,
   reason text not null check (reason in ('replied', 'bounced', 'manual', 'unsubscribed')),
-  contact_id uuid references public.contacts(id) on delete set null,
-  created_at timestamptz not null default now()
+  contact_id uuid,
+  created_at timestamptz not null default now(),
+  -- Same-org composite FK (nullable; cleared if the contact is removed).
+  foreign key (contact_id, org_id) references public.contacts (id, org_id) on delete set null (contact_id)
 );
 
 -- One suppression per address per org; the runner left-anti-joins on this.

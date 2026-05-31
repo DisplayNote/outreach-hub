@@ -269,7 +269,20 @@ export function supabaseEmailStore(
           .limit(1)
           .maybeSingle();
         if (error) throw new Error(`findSentForCorrelation.contact: ${error.message}`);
-        if (data) return { contactId: data.id as string, campaignId: (data.campaign_id as string) ?? null };
+        if (data) {
+          // Only correlate if we actually emailed this contact — otherwise an
+          // unsolicited inbound from an existing contact would be treated as a
+          // reply/bounce and mutate/suppress them.
+          const contactId = data.id as string;
+          const { count, error: sentErr } = await client
+            .from('email_events')
+            .select('id', { count: 'exact', head: true })
+            .eq('org_id', ctx.orgId)
+            .eq('contact_id', contactId)
+            .eq('type', 'sent');
+          if (sentErr) throw new Error(`findSentForCorrelation.sent: ${sentErr.message}`);
+          if ((count ?? 0) > 0) return { contactId, campaignId: (data.campaign_id as string) ?? null };
+        }
       }
       return null;
     },

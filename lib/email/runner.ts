@@ -118,10 +118,12 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
         now: deps.now(),
       });
       result.sent += 1;
+      // Only a SUCCESSFUL send consumes a daily-cap slot — a failed address must
+      // not prevent the run from reaching the configured send goal.
+      processed += 1;
     } catch (cause) {
       result.errors.push({ contactId: contact.id, message: cause instanceof Error ? cause.message : 'send failed' });
     }
-    processed += 1;
   }
 
   return result;
