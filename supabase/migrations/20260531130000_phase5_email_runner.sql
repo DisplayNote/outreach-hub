@@ -300,15 +300,31 @@ as $$
 declare
   claimed_rows int;
 begin
+  -- Re-check the FULL due_email_contacts predicate under the row lock, not just
+  -- status/last_emailed/suppression: if the contact was unenrolled, had its
+  -- follow_up pushed to the future, its email cleared, or its campaign sequence
+  -- unlinked / current email step removed between selection and claim, the
+  -- UPDATE must match 0 rows so the runner doesn't send a stale row.
   update public.contacts c
      set last_emailed_at = p_now
    where c.id = p_contact_id
      and c.org_id = p_org_id
+     and c.email is not null
+     and c.follow_up is not null
+     and c.follow_up <= p_today
      and c.status not in ('notinterested', 'bounced', 'meeting')
      and (c.last_emailed_at is null or c.last_emailed_at < (p_today::timestamp at time zone 'UTC'))
      and not exists (
        select 1 from public.suppressions s
         where s.org_id = c.org_id and s.email = lower(btrim(c.email))
+     )
+     and exists (
+       select 1
+         from public.campaigns cam
+         join public.sequence_steps ss
+           on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
+          and ss.day_offset = c.sequence_day and ss.channel = 'email'
+        where cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
      );
   get diagnostics claimed_rows = row_count;
   return claimed_rows > 0;

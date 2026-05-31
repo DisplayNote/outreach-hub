@@ -186,12 +186,17 @@ export function supabaseEmailStore(
     },
 
     async sentCountToday(today) {
+      // Count CLAIMED contacts (last_emailed_at today), not persisted
+      // email_events(sent): claim_email_send sets last_emailed_at before the
+      // external send, so a send that succeeded but whose recordSent failed is
+      // still counted — otherwise a later run the same day would see freed
+      // headroom and exceed dailyGoal after a persistence failure. One email per
+      // contact per day, so a contact count = emails sent today.
       const { count, error } = await client
-        .from('email_events')
+        .from('contacts')
         .select('id', { count: 'exact', head: true })
         .eq('org_id', ctx.orgId)
-        .eq('type', 'sent')
-        .gte('occurred_at', `${today}T00:00:00.000Z`);
+        .gte('last_emailed_at', `${today}T00:00:00.000Z`);
       if (error) throw new Error(`sentCountToday: ${error.message}`);
       return count ?? 0;
     },
