@@ -322,8 +322,11 @@ inbound message:
    append an `email` touchpoint "Reply received". (Status `green` = engaged; the rep
    triages — no content classification, **[RESOLVED]**.)
 
-`since` defaults to the max `email_events.occurred_at` of the last scan (a high-water mark),
-so re-scans are cheap.
+`since` defaults to the persisted inbox-scan high-water mark
+(`organizations.settings.lastInboxScanAt`); each scan advances it to the newest message it
+fetched — even when nothing correlated — so a quiet mailbox doesn't re-fetch the whole inbox
+every cron tick. The cursor only advances after a scan completes without error, so a mid-scan
+failure leaves it put and the next scan re-fetches and retries (dedup skips what was recorded).
 
 ---
 

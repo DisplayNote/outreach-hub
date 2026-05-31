@@ -75,5 +75,15 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
     else result.bounces += 1;
   }
 
+  // Advance the high-water to the newest message seen (messages are ascending),
+  // even if every one was ignored/deduped — otherwise a mailbox with no
+  // correlated inbound would re-fetch the whole inbox every scan. Only after the
+  // loop completes without throwing: a mid-scan failure leaves the cursor put so
+  // the next scan re-fetches and retries (dedup skips what was already recorded).
+  const newest = messages[messages.length - 1]?.receivedAt;
+  if (newest !== undefined && newest > since) {
+    await deps.store.advanceScanCursor(newest);
+  }
+
   return result;
 }

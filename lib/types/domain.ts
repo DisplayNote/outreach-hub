@@ -193,6 +193,13 @@ export interface OrgSettings {
   senderEmail?: string;
   defaultCountryCode?: string;
   seqSkipWeekends?: boolean;
+  /**
+   * Internal (not user-facing): ISO high-water mark for the inbox scanner. The
+   * next scan fetches inbound `receivedAt >= this`, and advances it to the
+   * newest message seen — so a mailbox with no correlated inbound still moves
+   * the cursor forward instead of re-fetching the whole inbox every cron tick.
+   */
+  lastInboxScanAt?: string;
   [key: string]: unknown;
 }
 

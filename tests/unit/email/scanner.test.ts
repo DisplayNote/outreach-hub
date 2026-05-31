@@ -8,6 +8,7 @@ interface Rec {
   inbound: RecordInboundInput[];
   recorded: Set<string>; // messageIds already recorded (dedup)
   correlatable: Set<string>; // sender emails that correlate to a contact
+  cursor: string | null; // persisted scan high-water
 }
 
 function fakeStore(rec: Rec): EmailStore {
@@ -33,7 +34,10 @@ function fakeStore(rec: Rec): EmailStore {
       rec.recorded.add(input.message.messageId);
     },
     async lastScanHighWater() {
-      return '2026-05-20T00:00:00.000Z';
+      return rec.cursor;
+    },
+    async advanceScanCursor(at) {
+      rec.cursor = at;
     },
   };
 }
@@ -55,7 +59,7 @@ describe('scanInbox', () => {
   let rec: Rec;
   let driver: MockDriver;
   beforeEach(() => {
-    rec = { inbound: [], recorded: new Set(), correlatable: new Set(['mike@example.com']) };
+    rec = { inbound: [], recorded: new Set(), correlatable: new Set(['mike@example.com']), cursor: '2026-05-20T00:00:00.000Z' };
     driver = new MockDriver();
   });
 
@@ -91,6 +95,18 @@ describe('scanInbox', () => {
     const res = await scanInbox(deps(rec, driver), {});
     expect(res.ignored).toBe(1);
     expect(rec.inbound).toHaveLength(0);
+  });
+
+  it('advances the scan cursor to the newest message even when all are uncorrelated', async () => {
+    driver.inbound.push(inbound({ messageId: 'x1', from: 'stranger@nowhere.com', receivedAt: '2026-05-29T11:00:00.000Z' }));
+    await scanInbox(deps(rec, driver), {});
+    // Cursor moved past the unrelated mail so the next scan won't re-fetch it.
+    expect(rec.cursor).toBe('2026-05-29T11:00:00.000Z');
+  });
+
+  it('does not rewind the cursor when no messages are newer than the high-water', async () => {
+    await scanInbox(deps(rec, driver), {}); // empty inbox
+    expect(rec.cursor).toBe('2026-05-20T00:00:00.000Z');
   });
 
   it('processes oldest-first even when the driver returns newest-first', async () => {

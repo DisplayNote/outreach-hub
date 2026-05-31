@@ -12,6 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Contact, OrgSettings, SequenceStep } from '@/lib/types/domain';
 import { resolveStatusEffect } from '@/lib/dialler/outcomes';
 import { escapeLike } from '@/lib/supabase/like';
+import { isSystemSender } from '@/lib/email/classify';
 import type { SentRef, InboundMessage } from '@/lib/email/types';
 import {
   CONTACT_SELECT,
@@ -82,8 +83,10 @@ export interface EmailStore {
   inboundAlreadyRecorded(provider: string, messageId: string): Promise<boolean>;
   /** Persist a reply/bounce: email_events + status + suppression + touchpoint (§8). */
   recordInbound(input: RecordInboundInput): Promise<void>;
-  /** Max occurred_at across email_events, as the scan high-water mark (§6), or null. */
+  /** The persisted inbox-scan high-water mark (§6), or null if never scanned. */
   lastScanHighWater(): Promise<string | null>;
+  /** Persist a new inbox-scan high-water mark (the newest message seen this scan). */
+  advanceScanCursor(at: string): Promise<void>;
 }
 
 // --- Supabase adapter --------------------------------------------------------
@@ -260,9 +263,14 @@ export function supabaseEmailStore(
       }
       // Fallback: the failed recipient (NDR) or sender address → a contact we
       // have a sent event for. For a bounce, `from` is the system mailer, so the
-      // recovered failedRecipient (the prospect) is what correlates.
-      const fromEmail = extractEmail(keys.failedRecipient ?? keys.from);
-      if (fromEmail) {
+      // recovered failedRecipient (the prospect) is what correlates. Never
+      // correlate on a system-mailer address itself: an NDR whose failed
+      // recipient couldn't be recovered must be ignored (the InboundMessage
+      // .failedRecipient contract), not matched against a contact who happens to
+      // share the postmaster/mailer-daemon address.
+      const correlationAddr = keys.failedRecipient ?? keys.from;
+      const fromEmail = extractEmail(correlationAddr);
+      if (fromEmail && !isSystemSender(correlationAddr)) {
         const { data, error } = await client
           .from('contacts')
           .select('id, campaign_id')
@@ -390,18 +398,31 @@ export function supabaseEmailStore(
     },
 
     async lastScanHighWater() {
-      // Track the last INBOUND processed (reply/bounce) — not sends — so the
-      // scan window covers replies that arrived around send time.
-      const { data, error } = await client
-        .from('email_events')
-        .select('occurred_at')
-        .eq('org_id', ctx.orgId)
-        .in('type', ['reply', 'bounce'])
-        .order('occurred_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw new Error(`lastScanHighWater: ${error.message}`);
-      return (data?.occurred_at as string) ?? null;
+      // The persisted cursor (organizations.settings.lastInboxScanAt), captured
+      // fresh per invocation via getOrgSettings. Deriving it from recorded
+      // reply/bounce events instead would never advance for a mailbox with no
+      // correlated inbound, re-fetching the whole inbox every cron tick.
+      return ctx.settings.lastInboxScanAt ?? null;
+    },
+
+    async advanceScanCursor(at) {
+      // Read-merge-write the JSONB settings (PostgREST has no portable partial
+      // jsonb merge) so the cursor moves forward without clobbering other
+      // settings. Scoped to ctx.orgId; RLS limits org UPDATE to the settings
+      // column (Phase 2), and the cron path uses the service role.
+      const { data: current, error: readErr } = await client
+        .from('organizations')
+        .select('settings')
+        .eq('id', ctx.orgId)
+        .single();
+      if (readErr) throw new Error(`advanceScanCursor.read: ${readErr.message}`);
+      const existing = ((current as { settings: Record<string, unknown> | null } | null)?.settings ??
+        {}) as Record<string, unknown>;
+      const { error: writeErr } = await client
+        .from('organizations')
+        .update({ settings: { ...existing, lastInboxScanAt: at } })
+        .eq('id', ctx.orgId);
+      if (writeErr) throw new Error(`advanceScanCursor.write: ${writeErr.message}`);
     },
   };
 }

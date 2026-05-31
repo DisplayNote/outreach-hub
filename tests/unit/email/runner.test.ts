@@ -84,6 +84,7 @@ function fakeStore(rec: Rec): EmailStore {
     async lastScanHighWater() {
       return null;
     },
+    async advanceScanCursor() {},
   };
 }
 

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isSystemSender } from '@/lib/email/classify';
 import type { EmailDriver } from '@/lib/email/driver';
 import {
   EmailDriverError,
@@ -13,8 +14,6 @@ export type GraphEnvironment = 'graph-dev' | 'graph-prod';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
-// NDR/system-mailer senders — an NDR's `from` is one of these, not the prospect.
-const SYSTEM_ADDR = /(postmaster|mailer-daemon|mail-delivery-system)@/i;
 // RFC 3464 delivery-status field naming the address that failed.
 const DSN_RECIPIENT = /(?:final|original)-recipient:\s*(?:rfc822;)?\s*([^\s;]+@[^\s;]+)/i;
 const ANY_EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
@@ -32,7 +31,7 @@ function parseFailedRecipient(text: string): string | undefined {
   const dsn = DSN_RECIPIENT.exec(text);
   if (dsn?.[1]) return dsn[1].toLowerCase();
   for (const addr of text.match(ANY_EMAIL) ?? []) {
-    if (!SYSTEM_ADDR.test(addr)) return addr.toLowerCase();
+    if (!isSystemSender(addr)) return addr.toLowerCase();
   }
   return undefined;
 }
@@ -160,7 +159,7 @@ export class GraphDriver implements EmailDriver {
     };
     if (m.bodyPreview !== undefined) out.bodyText = m.bodyPreview;
     if (m.conversationId !== undefined) out.conversationId = m.conversationId;
-    if (SYSTEM_ADDR.test(from)) {
+    if (isSystemSender(from)) {
       const failed = parseFailedRecipient(`${m.subject ?? ''}\n${m.bodyPreview ?? ''}`);
       if (failed !== undefined) out.failedRecipient = failed;
     }
