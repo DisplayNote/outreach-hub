@@ -47,7 +47,8 @@ export interface RunSenderResult {
   planned: PlannedSend[];
   sent: number;
   skipped: number;
-  errors: { contactId: string; message: string }[];
+  /** `persisted: false` flags a sent-but-not-recorded message (transport ok, DB write failed). */
+  errors: { contactId: string; message: string; persisted?: boolean }[];
   /** Eligible contacts left unsent because the daily cap was exhausted. */
   remaining: number;
 }
@@ -105,8 +106,24 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       bodyHtml: escapeHtml(rendered.body).replace(/\n/g, '<br>'),
     };
 
+    // Transport failure: nothing was sent — don't consume a cap slot, just record.
+    let ref;
     try {
-      const ref = await deps.driver.send(message);
+      ref = await deps.driver.send(message);
+    } catch (cause) {
+      result.errors.push({
+        contactId: contact.id,
+        message: `send: ${cause instanceof Error ? cause.message : 'failed'}`,
+        persisted: false,
+      });
+      continue;
+    }
+
+    // The email is OUT — it consumed a daily-cap slot regardless of whether the
+    // DB write below succeeds (so a persistence retry can't exceed the goal).
+    processed += 1;
+
+    try {
       const next = nextStep(steps, step.dayOffset);
       const nextFollowUp = next
         ? businessDayAdd(opts.today, next.dayOffset - step.dayOffset, skipWeekends)
@@ -123,11 +140,15 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
         now: deps.now(),
       });
       result.sent += 1;
-      // Only a SUCCESSFUL send consumes a daily-cap slot — a failed address must
-      // not prevent the run from reaching the configured send goal.
-      processed += 1;
     } catch (cause) {
-      result.errors.push({ contactId: contact.id, message: cause instanceof Error ? cause.message : 'send failed' });
+      // Persistence failed AFTER a successful external send: flagged distinctly
+      // (persisted:false). The contact wasn't advanced, so a later run may
+      // re-send — the unavoidable at-least-once for non-transactional email.
+      result.errors.push({
+        contactId: contact.id,
+        message: `recordSent: ${cause instanceof Error ? cause.message : 'failed'}`,
+        persisted: false,
+      });
     }
   }
 

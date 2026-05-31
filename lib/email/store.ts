@@ -133,6 +133,7 @@ export function supabaseEmailStore(
       const { data: campRows, error: campErr } = await client
         .from('campaigns')
         .select('id, sequence_id')
+        .eq('org_id', ctx.orgId) // service role bypasses RLS — scope explicitly
         .in('id', campaignIds)
         .not('sequence_id', 'is', null);
       if (campErr) throw new Error(`dueContacts.campaigns: ${campErr.message}`);
@@ -223,22 +224,30 @@ export function supabaseEmailStore(
     },
 
     async findSentForCorrelation(keys) {
-      // Match the inbound to a prior sent: by in_reply_to/conversation_id first,
-      // else by the sender address against a contact we emailed.
-      const orFilters: string[] = [];
-      if (keys.inReplyTo) orFilters.push(`message_id.eq.${keys.inReplyTo}`);
-      if (keys.conversationId) orFilters.push(`conversation_id.eq.${keys.conversationId}`);
-      if (orFilters.length > 0) {
+      // Match the inbound to a prior sent: by in_reply_to / conversation_id
+      // first, else by the sender address against a contact we emailed. Use
+      // parameterized .eq() per field — inbound header values are untrusted and
+      // must not be interpolated into a PostgREST .or() filter string (commas /
+      // filter syntax could change the query semantics).
+      const byField = async (column: 'message_id' | 'conversation_id', value: string) => {
         const { data, error } = await client
           .from('email_events')
           .select('contact_id, campaign_id')
           .eq('org_id', ctx.orgId)
           .eq('type', 'sent')
-          .or(orFilters.join(','))
+          .eq(column, value)
           .limit(1)
           .maybeSingle();
-        if (error) throw new Error(`findSentForCorrelation: ${error.message}`);
-        if (data) return { contactId: data.contact_id as string, campaignId: (data.campaign_id as string) ?? null };
+        if (error) throw new Error(`findSentForCorrelation.${column}: ${error.message}`);
+        return data ? { contactId: data.contact_id as string, campaignId: (data.campaign_id as string) ?? null } : null;
+      };
+      if (keys.inReplyTo) {
+        const hit = await byField('message_id', keys.inReplyTo);
+        if (hit) return hit;
+      }
+      if (keys.conversationId) {
+        const hit = await byField('conversation_id', keys.conversationId);
+        if (hit) return hit;
       }
       // Fallback: sender address → a contact we have a sent event for.
       const fromEmail = extractEmail(keys.from);

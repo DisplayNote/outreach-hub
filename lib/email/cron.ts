@@ -44,11 +44,19 @@ export async function scanInboxAllOrgs(client: SupabaseClient): Promise<{ orgs: 
   let replies = 0;
   let bounces = 0;
   const list = await orgs(client);
+  let scanned = 0;
   for (const org of list) {
+    // Correct multi-org scanning needs a PER-ORG mailbox/token (each org reads
+    // its OWN inbox); with a single shared driver mailbox, one inbound could be
+    // applied to several orgs. Until per-org token wiring lands (deploy concern,
+    // like the sender's senderEmail), only scan orgs that have a configured
+    // mailbox — and the deploy must point the driver at that org's mailbox.
+    if (!org.settings.senderEmail) continue;
+    scanned += 1;
     const store = supabaseEmailStore(client, { orgId: org.id, provider: driver.name, settings: org.settings });
     const res = await scanInbox({ store, driver, orgId: org.id }, {});
     replies += res.replies;
     bounces += res.bounces;
   }
-  return { orgs: list.length, replies, bounces };
+  return { orgs: scanned, replies, bounces };
 }
