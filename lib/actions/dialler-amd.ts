@@ -92,10 +92,23 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
 
   const { backend, client } = createAmdRuntime();
 
+  // Authorize the run: it must belong to the caller's org. The service-role
+  // client bypasses RLS, so without this an attacker could attach attempts to
+  // another org's run by guessing its UUID (cross-org IDOR).
+  const { data: runRow, error: runErr } = await client
+    .from('call_runs')
+    .select('id')
+    .eq('id', runId)
+    .eq('org_id', orgId)
+    .maybeSingle();
+  if (runErr) throw new Error(`placeAmdCall: ${runErr.message}`);
+  if (!runRow) throw new Error('placeAmdCall: run not found for this org');
+
   // Sequential invariant: refuse a second live attempt in the same run.
   const { count, error: countErr } = await client
     .from('call_attempts')
     .select('id', { count: 'exact', head: true })
+    .eq('org_id', orgId)
     .eq('run_id', runId)
     .in('state', NON_TERMINAL);
   if (countErr) throw new Error(`placeAmdCall: ${countErr.message}`);
@@ -140,47 +153,62 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
   return { attemptId };
 }
 
-/** Hang up a live attempt (asks the backend to terminate the call). */
+/** Hang up a live attempt (asks the backend to terminate the call). Org-scoped. */
 export async function hangupAttempt(attemptId: string): Promise<void> {
   const id = uuid.parse(attemptId);
-  await getCurrentOrgId(); // authorize (throws if unauthenticated / no org)
+  const orgId = await getCurrentOrgId();
   const { backend, client } = createAmdRuntime();
 
+  // Scope by org_id: the service-role client bypasses RLS, so a guessed attempt
+  // UUID must not let one org hang up another org's call.
   const { data, error } = await client
     .from('call_attempts')
     .select('call_control_id')
     .eq('id', id)
-    .single();
+    .eq('org_id', orgId)
+    .maybeSingle();
   if (error) throw new Error(`hangupAttempt: ${error.message}`);
+  if (!data) throw new Error('hangupAttempt: attempt not found for this org');
   const callControlId = (data as { call_control_id: string | null }).call_control_id;
   if (callControlId) await backend.hangup(callControlId);
 
   revalidatePath('/dialler');
 }
 
-/** Cancel a not-yet-dialled attempt (no Telnyx call placed). */
+/**
+ * Cancel an attempt that has not yet been correlated to a live Telnyx call
+ * (`call_control_id` still null) — the "Skip" path before a call connects. A
+ * correlated/live call must be ended via {@link hangupAttempt} instead, so this
+ * never silently abandons an in-progress call. Org-scoped.
+ */
 export async function cancelAttempt(attemptId: string): Promise<void> {
   const id = uuid.parse(attemptId);
-  await getCurrentOrgId();
+  const orgId = await getCurrentOrgId();
   const { client } = createAmdRuntime();
   const { error } = await client
     .from('call_attempts')
     .update({ state: 'ended', disposition: 'cancelled', ended_at: new Date().toISOString() })
     .eq('id', id)
-    .eq('state', 'queued');
+    .eq('org_id', orgId)
+    .is('call_control_id', null)
+    .in('state', ['queued', 'dialing']);
   if (error) throw new Error(`cancelAttempt: ${error.message}`);
   revalidatePath('/dialler');
 }
 
 const runStatusSchema = z.enum(['active', 'paused', 'done']);
 
-/** Pause / resume / finish a run. */
+/** Pause / resume / finish a run. Org-scoped. */
 export async function setRunStatus(runId: string, status: z.infer<typeof runStatusSchema>): Promise<void> {
   const id = uuid.parse(runId);
   const nextStatus = runStatusSchema.parse(status);
-  await getCurrentOrgId();
+  const orgId = await getCurrentOrgId();
   const { client } = createAmdRuntime();
-  const { error } = await client.from('call_runs').update({ status: nextStatus }).eq('id', id);
+  const { error } = await client
+    .from('call_runs')
+    .update({ status: nextStatus })
+    .eq('id', id)
+    .eq('org_id', orgId);
   if (error) throw new Error(`setRunStatus: ${error.message}`);
   revalidatePath('/dialler');
 }

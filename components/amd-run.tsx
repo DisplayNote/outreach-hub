@@ -217,17 +217,32 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
   }, [currentAttemptId]);
 
   const skip = useCallback(async () => {
-    if (currentAttemptId && currentAttempt && currentAttempt.state === 'queued') {
-      await cancelAttempt(currentAttemptId);
+    // Don't abandon a live call: hang up a correlated attempt, cancel a
+    // pre-correlation one, then advance. (placeAmdCall inserts attempts as
+    // 'dialing', so a plain index-advance would leave the call in progress and
+    // the next dial would hit the server's "call already in progress" guard.)
+    try {
+      if (currentAttemptId && currentAttempt && currentAttempt.state !== 'ended' && currentAttempt.state !== 'failed') {
+        if (currentAttempt.callControlId) await hangupAttempt(currentAttemptId);
+        else await cancelAttempt(currentAttemptId);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to skip');
+    } finally {
+      advance();
     }
-    advance();
   }, [currentAttemptId, currentAttempt, advance]);
 
   const togglePause = useCallback(async () => {
     if (!runId) return;
     const next = !paused;
     setPaused(next);
-    await setRunStatus(runId, next ? 'paused' : 'active');
+    try {
+      await setRunStatus(runId, next ? 'paused' : 'active');
+    } catch (e) {
+      setPaused(!next); // revert on failure
+      setError(e instanceof Error ? e.message : 'Failed to update run status');
+    }
   }, [runId, paused]);
 
   // --- Render ---------------------------------------------------------------

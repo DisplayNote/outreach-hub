@@ -41,10 +41,18 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const event = parseTelnyxWebhook(rawBody);
-  // Always ACK Telnyx (200) even for events we ignore, so it does not retry.
-  if (event) {
+  // Unhandled/ignored event types ACK with 200 so Telnyx does not retry them.
+  if (!event) return new NextResponse('OK', { status: 200 });
+
+  try {
     const { process } = createAmdRuntime();
     await process(event);
+  } catch (cause) {
+    // A processing failure returns a controlled 500 (not an uncaught 5xx) so
+    // Telnyx retries — safe because the reducer is idempotent for at-least-once
+    // delivery (duplicate events are no-ops once the attempt is terminal).
+    console.error('telnyx webhook processing failed', { eventType: event.eventType, cause });
+    return new NextResponse('processing error', { status: 500 });
   }
   return new NextResponse('OK', { status: 200 });
 }

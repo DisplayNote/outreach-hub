@@ -92,3 +92,24 @@ describe('reduceEvent — hangup disposition (PHASE_4_SPEC §4)', () => {
     expect(r.disposition).toBe('no-answer');
   });
 });
+
+describe('reduceEvent — idempotency (at-least-once webhooks)', () => {
+  it('ignores any event once the attempt is ended', () => {
+    const r = reduceEvent(attempt('ended', 'machine'), ev('call.hangup', { hangupCause: 'dup' }));
+    expect(r.nextState).toBe('ended');
+    expect(r.sideEffects).toEqual([]);
+    expect(r.disposition).toBeNull(); // does not re-finalise / overwrite
+  });
+
+  it('ignores a duplicate machine.detection.ended (no second touchpoint/hangup)', () => {
+    const r = reduceEvent(attempt('machine', 'machine'), ev('call.machine.detection.ended', { result: 'machine' }));
+    expect(r.sideEffects).toEqual([]);
+    expect(r.nextState).toBe('machine');
+  });
+
+  it('ignores a duplicate detection once a human was already bridged', () => {
+    const r = reduceEvent(attempt('bridged', 'human'), ev('call.machine.detection.ended', { result: 'human' }));
+    expect(r.sideEffects).toEqual([]);
+    expect(r.nextState).toBe('bridged');
+  });
+});

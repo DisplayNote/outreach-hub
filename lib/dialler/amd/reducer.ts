@@ -28,6 +28,13 @@ function noopTail(): Pick<ReduceResult, 'disposition' | 'amdResult' | 'sideEffec
 }
 
 export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceResult {
+  // Idempotency (webhooks are at-least-once): once an attempt is terminal, ignore
+  // any further/duplicate events. This keeps endedAt stable and prevents a
+  // replayed hangup from re-running side-effects.
+  if (attempt.state === 'ended' || attempt.state === 'failed') {
+    return { nextState: attempt.state, ...noopTail() };
+  }
+
   switch (event.eventType) {
     case 'call.initiated':
       return { nextState: 'dialing', ...noopTail() };
@@ -40,6 +47,11 @@ export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceRes
       return { nextState: 'answered', ...noopTail() };
 
     case 'call.machine.detection.ended': {
+      // Idempotency: AMD already decided for this attempt — don't re-emit the
+      // one-time hangup/bridge/touchpoint side-effects on a duplicate event.
+      if (attempt.amdResult !== null || attempt.state === 'machine' || attempt.state === 'bridged') {
+        return { nextState: attempt.state, ...noopTail() };
+      }
       const result = event.result ?? null;
       if (result !== null && MACHINE_AMD_RESULTS.has(result)) {
         // Machine/fax: hang up and auto-log the voicemail touchpoint.
