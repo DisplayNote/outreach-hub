@@ -135,4 +135,10 @@ describe('reduceEvent — idempotency (at-least-once webhooks)', () => {
     expect(r.sideEffects).toEqual(['bridge']);
     expect(r.nextState).toBe('bridged');
   });
+
+  it('re-emits hangup (never bridge) for a machine state even if amd_result did not persist', () => {
+    const r = reduceEvent(attempt('machine', null, null), ev('call.machine.detection.ended', { result: 'machine' }));
+    expect(r.sideEffects).toEqual(['hangup']);
+    expect(r.nextState).toBe('machine');
+  });
 });

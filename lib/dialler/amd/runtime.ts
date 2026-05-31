@@ -52,12 +52,14 @@ export function createAmdRuntime(): AmdRuntime {
   if (isDiallerMockEnabled()) {
     backend = new MockTelnyxBackend({ process });
   } else {
-    if (!env.TELNYX_API_KEY || !env.TELNYX_CONNECTION_ID || !env.BRIDGE_SIP_USERNAME) {
-      // BRIDGE_SIP_USERNAME is required too: without it a human AMD result would
-      // call backend.bridge() with an empty SIP target, which always fails (and
-      // can leave the attempt stuck / trigger Telnyx retries). Fail fast instead.
+    if (!env.TELNYX_API_KEY || !env.TELNYX_CONNECTION_ID || !env.BRIDGE_SIP_USERNAME || !env.TELNYX_PUBLIC_KEY) {
+      // All four are required for a working real backend:
+      // - BRIDGE_SIP_USERNAME: a human AMD result transfers to this SIP target;
+      //   an empty target always fails (stuck attempt / Telnyx retries).
+      // - TELNYX_PUBLIC_KEY: without it the webhook route rejects every inbound
+      //   event (401), so calls are placed but never progress and can leak.
       throw new AmdBackendError(
-        'Telnyx backend requires TELNYX_API_KEY, TELNYX_CONNECTION_ID and BRIDGE_SIP_USERNAME',
+        'Telnyx backend requires TELNYX_API_KEY, TELNYX_CONNECTION_ID, BRIDGE_SIP_USERNAME and TELNYX_PUBLIC_KEY',
         undefined,
         'TELNYX_CONFIG',
       );

@@ -78,8 +78,12 @@ export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceRes
       // actuation so it is eventually performed (at-least-once).
       if (attempt.amdResult !== null || attempt.state === 'machine' || attempt.state === 'bridged') {
         if (attempt.actuatedAt === null) {
-          const sideEffect: CallSideEffect =
-            attempt.amdResult !== null && MACHINE_AMD_RESULTS.has(attempt.amdResult) ? 'hangup' : 'bridge';
+          // Decide from state first: a `machine` attempt must re-emit hangup even
+          // if amd_result didn't persist — never bridge (transfer) a machine.
+          const isMachine =
+            attempt.state === 'machine' ||
+            (attempt.amdResult !== null && MACHINE_AMD_RESULTS.has(attempt.amdResult));
+          const sideEffect: CallSideEffect = isMachine ? 'hangup' : 'bridge';
           return { nextState: attempt.state, disposition: null, amdResult: null, sideEffects: [sideEffect] };
         }
         return { nextState: attempt.state, ...noopTail() };
