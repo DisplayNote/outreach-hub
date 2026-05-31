@@ -18,8 +18,12 @@ interface MailpitMessage {
   Snippet?: string;
 }
 
+/** How many messages to request per Mailpit list page. */
+const PAGE_SIZE = 200;
+
 export class MailpitDriver implements EmailDriver {
   readonly name = 'mailpit';
+  private readonly fetchImpl: typeof fetch;
 
   private readonly transporter = nodemailer.createTransport({
     host: DEFAULT_HOST,
@@ -27,6 +31,10 @@ export class MailpitDriver implements EmailDriver {
     secure: false,
     auth: undefined,
   });
+
+  constructor(opts: { fetchImpl?: typeof fetch } = {}) {
+    this.fetchImpl = opts.fetchImpl ?? fetch;
+  }
 
   async send(message: OutboundMessage): Promise<SentRef> {
     const info = await this.transporter.sendMail({
@@ -53,26 +61,43 @@ export class MailpitDriver implements EmailDriver {
    * higher-fidelity local path: a developer can hand-reply in the Mailpit UI and
    * the scanner picks it up. Maps to {@link InboundMessage} and filters by
    * `since`. (The default local path is the in-process `mock` driver.)
+   *
+   * Pages through the list (`start`/`limit`) and drains every page, so the
+   * scanner can't advance its cursor past unprocessed mail when more than one
+   * page arrived since the last scan.
    */
   async fetchReplies(opts: { since: string; mailbox?: string }): Promise<InboundMessage[]> {
-    const resp = await fetch(`${API_URL}/api/v1/messages?limit=200`, { headers: { Accept: 'application/json' } });
-    if (!resp.ok) {
-      throw new EmailDriverError(`Mailpit fetchReplies failed (${resp.status})`, undefined, 'MAILPIT_FETCH');
-    }
-    const body = (await resp.json()) as { messages?: MailpitMessage[] };
     const sinceMs = Date.parse(opts.since);
-    return (body.messages ?? [])
-      .filter((m) => !m.Created || Date.parse(m.Created) >= sinceMs)
-      .map((m) => {
-        const out: InboundMessage = {
-          messageId: m.MessageID ?? m.ID,
-          from: m.From?.Address ?? '',
-          to: (m.To ?? []).map((t) => t.Address ?? '').filter(Boolean),
-          subject: m.Subject ?? '',
-          receivedAt: m.Created ?? new Date().toISOString(),
-        };
-        if (m.Snippet !== undefined) out.bodyText = m.Snippet;
-        return out;
+    const out: InboundMessage[] = [];
+    for (let start = 0; ; start += PAGE_SIZE) {
+      const resp = await this.fetchImpl(`${API_URL}/api/v1/messages?limit=${PAGE_SIZE}&start=${start}`, {
+        headers: { Accept: 'application/json' },
       });
+      if (!resp.ok) {
+        throw new EmailDriverError(`Mailpit fetchReplies failed (${resp.status})`, undefined, 'MAILPIT_FETCH');
+      }
+      const body = (await resp.json()) as { messages?: MailpitMessage[]; total?: number };
+      const page = body.messages ?? [];
+      for (const m of page) {
+        if (m.Created && Date.parse(m.Created) < sinceMs) continue;
+        out.push(this.toInbound(m));
+      }
+      // Stop when the last page is short, or we've walked the whole mailbox.
+      if (page.length < PAGE_SIZE) break;
+      if (body.total !== undefined && start + page.length >= body.total) break;
+    }
+    return out;
+  }
+
+  private toInbound(m: MailpitMessage): InboundMessage {
+    const out: InboundMessage = {
+      messageId: m.MessageID ?? m.ID,
+      from: m.From?.Address ?? '',
+      to: (m.To ?? []).map((t) => t.Address ?? '').filter(Boolean),
+      subject: m.Subject ?? '',
+      receivedAt: m.Created ?? new Date().toISOString(),
+    };
+    if (m.Snippet !== undefined) out.bodyText = m.Snippet;
+    return out;
   }
 }

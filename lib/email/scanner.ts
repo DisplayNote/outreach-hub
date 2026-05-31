@@ -18,7 +18,8 @@ export interface ScanInboxDeps {
 }
 
 export interface ScanInboxOptions {
-  /** Defaults to the store's high-water mark (max email_events.occurred_at). */
+  /** Defaults to the store's persisted high-water mark
+   * (organizations.settings.lastInboxScanAt via lastScanHighWater()). */
   since?: string;
 }
 
