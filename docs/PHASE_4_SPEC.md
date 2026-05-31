@@ -194,6 +194,7 @@ the durable equivalent of the legacy in-browser `runId` (worker.js `runId` throu
 | `disposition` | text | terminal classification (`voicemail-auto` / `bridged-human` / `no-answer` / `failed` / `cancelled`) |
 | `hangup_cause` | text | from `call.hangup` (worker.js L253) |
 | `error` | text | driver/Telnyx failure detail |
+| `actuated_at` | timestamptz | set once the hangup/bridge actuation is confirmed; lets a retried webhook re-attempt a lost actuation without re-logging (at-least-once) |
 | `started_at` / `ended_at` | timestamptz | |
 | `created_at` / `updated_at` | timestamptz | |
 

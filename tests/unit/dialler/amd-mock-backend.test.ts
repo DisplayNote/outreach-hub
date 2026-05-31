@@ -21,6 +21,10 @@ function harness() {
     async insertTouchpoint(row) {
       touchpoints.push({ contactId: row.contactId, note: row.note });
     },
+    async markActuated(attemptId) {
+      const found = [...attempts.values()].find((a) => a.id === attemptId);
+      if (found) found.actuatedAt = '2026-05-31T12:00:00.000Z';
+    },
   };
 
   const backend = new MockTelnyxBackend({
@@ -61,6 +65,7 @@ function seedQueued(attempts: Map<string, CallAttempt>, id: string, to: string):
     disposition: null,
     hangupCause: null,
     error: null,
+    actuatedAt: null,
     startedAt: null,
     endedAt: null,
     createdAt: '2026-05-31T00:00:00.000Z',

@@ -17,7 +17,10 @@ function fakeStore(rec: Recorded): AmdStore {
       rec.events.push({ eventType: row.eventType, orgId: row.orgId, attemptId: row.attemptId });
     },
     async insertTouchpoint(row) {
-      rec.touchpoints.push(row);
+      rec.touchpoints.push({ orgId: row.orgId, contactId: row.contactId, note: row.note, occurredAt: row.occurredAt });
+    },
+    async markActuated() {
+      // not asserted here; exercised by processEvent
     },
   };
 }
@@ -37,6 +40,7 @@ function attempt(state: CallAttempt['state'], amdResult: CallAttempt['amdResult'
     disposition: null,
     hangupCause: null,
     error: null,
+    actuatedAt: null,
     startedAt: null,
     endedAt: null,
     createdAt: '2026-05-31T00:00:00.000Z',

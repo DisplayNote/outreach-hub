@@ -46,6 +46,8 @@ export interface AmdStore {
     occurredAt: string;
   }): Promise<void>;
   insertTouchpoint(row: { orgId: string; contactId: string; note: string; occurredAt: string }): Promise<void>;
+  /** Mark an attempt's hangup/bridge actuation confirmed (at-least-once support). */
+  markActuated(attemptId: string, occurredAt: string): Promise<void>;
 }
 
 /** Trim the event to the fields worth auditing (DECISION 11.2 — no raw dump). */

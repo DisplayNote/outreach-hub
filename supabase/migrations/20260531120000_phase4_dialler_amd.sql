@@ -57,6 +57,10 @@ create table public.call_attempts (
   disposition text,
   hangup_cause text,
   error text,
+  -- Set once the hangup/bridge actuation for this attempt has been confirmed.
+  -- Lets a retried webhook re-attempt a lost actuation without re-logging the
+  -- touchpoint or re-transitioning (at-least-once actuation; PHASE_4_SPEC §4).
+  actuated_at timestamptz,
   started_at timestamptz,
   ended_at timestamptz,
   created_at timestamptz not null default now(),

@@ -74,5 +74,12 @@ export function supabaseAmdStore(client: SupabaseClient): AmdStore {
       });
       if (error) throw new Error(`insertTouchpoint(${row.contactId}): ${error.message}`);
     },
+    async markActuated(attemptId, occurredAt) {
+      const { error } = await client
+        .from('call_attempts')
+        .update({ actuated_at: occurredAt })
+        .eq('id', attemptId);
+      if (error) throw new Error(`markActuated(${attemptId}): ${error.message}`);
+    },
   };
 }

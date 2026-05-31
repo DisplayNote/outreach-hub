@@ -18,6 +18,7 @@
 import {
   MACHINE_AMD_RESULTS,
   type CallAttempt,
+  type CallSideEffect,
   type ReduceResult,
   type TelnyxEvent,
 } from '@/lib/dialler/amd/types';
@@ -47,9 +48,16 @@ export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceRes
       return { nextState: 'answered', ...noopTail() };
 
     case 'call.machine.detection.ended': {
-      // Idempotency: AMD already decided for this attempt — don't re-emit the
-      // one-time hangup/bridge/touchpoint side-effects on a duplicate event.
+      // AMD already decided for this attempt (duplicate event). Don't re-log the
+      // touchpoint or re-transition — but if the actuation was never confirmed
+      // (e.g. the first hangup/bridge threw and Telnyx retried), re-emit JUST the
+      // actuation so it is eventually performed (at-least-once).
       if (attempt.amdResult !== null || attempt.state === 'machine' || attempt.state === 'bridged') {
+        if (attempt.actuatedAt === null) {
+          const sideEffect: CallSideEffect =
+            attempt.amdResult !== null && MACHINE_AMD_RESULTS.has(attempt.amdResult) ? 'hangup' : 'bridge';
+          return { nextState: attempt.state, disposition: null, amdResult: null, sideEffects: [sideEffect] };
+        }
         return { nextState: attempt.state, ...noopTail() };
       }
       const result = event.result ?? null;

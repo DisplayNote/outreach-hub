@@ -3,7 +3,11 @@ import { reduceEvent } from '@/lib/dialler/amd/reducer';
 import type { CallAttempt, TelnyxEvent } from '@/lib/dialler/amd/types';
 
 /** Minimal attempt stub in a given state (other fields irrelevant to the reducer). */
-function attempt(state: CallAttempt['state'], amdResult: CallAttempt['amdResult'] = null): CallAttempt {
+function attempt(
+  state: CallAttempt['state'],
+  amdResult: CallAttempt['amdResult'] = null,
+  actuatedAt: string | null = null,
+): CallAttempt {
   return {
     id: 'a1',
     orgId: 'o1',
@@ -18,6 +22,7 @@ function attempt(state: CallAttempt['state'], amdResult: CallAttempt['amdResult'
     disposition: null,
     hangupCause: null,
     error: null,
+    actuatedAt,
     startedAt: null,
     endedAt: null,
     createdAt: '2026-05-31T00:00:00.000Z',
@@ -101,15 +106,24 @@ describe('reduceEvent — idempotency (at-least-once webhooks)', () => {
     expect(r.disposition).toBeNull(); // does not re-finalise / overwrite
   });
 
-  it('ignores a duplicate machine.detection.ended (no second touchpoint/hangup)', () => {
-    const r = reduceEvent(attempt('machine', 'machine'), ev('call.machine.detection.ended', { result: 'machine' }));
-    expect(r.sideEffects).toEqual([]);
+  it('a duplicate machine detection re-emits ONLY the hangup when not yet actuated (no 2nd touchpoint)', () => {
+    const r = reduceEvent(attempt('machine', 'machine', null), ev('call.machine.detection.ended', { result: 'machine' }));
+    expect(r.sideEffects).toEqual(['hangup']);
     expect(r.nextState).toBe('machine');
+    expect(r.disposition).toBeNull();
   });
 
-  it('ignores a duplicate detection once a human was already bridged', () => {
-    const r = reduceEvent(attempt('bridged', 'human'), ev('call.machine.detection.ended', { result: 'human' }));
+  it('a duplicate machine detection is a full no-op once actuated', () => {
+    const r = reduceEvent(
+      attempt('machine', 'machine', '2026-05-31T12:00:00.000Z'),
+      ev('call.machine.detection.ended', { result: 'machine' }),
+    );
     expect(r.sideEffects).toEqual([]);
+  });
+
+  it('a duplicate detection re-emits ONLY the bridge for an unactuated human', () => {
+    const r = reduceEvent(attempt('bridged', 'human', null), ev('call.machine.detection.ended', { result: 'human' }));
+    expect(r.sideEffects).toEqual(['bridge']);
     expect(r.nextState).toBe('bridged');
   });
 });

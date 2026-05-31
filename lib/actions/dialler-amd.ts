@@ -130,8 +130,10 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
       to_number: toNumber,
       from_number: fromNumber || null,
       provider: backend.name,
-      state: 'dialing',
-      started_at: new Date().toISOString(),
+      // Insert as 'queued': the first provider webhook (call.initiated) then
+      // transitions it to 'dialing' and is captured in the event log. started_at
+      // is stamped by applyEvent on that call.initiated.
+      state: 'queued',
     })
     .select('id')
     .single();

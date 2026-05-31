@@ -179,6 +179,11 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
           setError(e instanceof Error ? e.message : 'Dial failed');
           advance();
         }
+      } finally {
+        // If the effect was torn down (pause / unmount / runId change) before the
+        // place settled, clear the per-index guard so resuming re-places this
+        // contact instead of stalling forever on `placedForIndex === index`.
+        if (cancelled) placedForIndex.current = -1;
       }
     })();
     return () => {

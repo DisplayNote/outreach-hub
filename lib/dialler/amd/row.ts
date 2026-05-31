@@ -6,7 +6,7 @@
 import type { CallAttempt } from '@/lib/dialler/amd/types';
 
 export const CALL_ATTEMPT_SELECT =
-  'id, org_id, run_id, contact_id, to_number, from_number, provider, call_control_id, state, amd_result, disposition, hangup_cause, error, started_at, ended_at, created_at, updated_at';
+  'id, org_id, run_id, contact_id, to_number, from_number, provider, call_control_id, state, amd_result, disposition, hangup_cause, error, actuated_at, started_at, ended_at, created_at, updated_at';
 
 export interface CallAttemptRow {
   id: string;
@@ -22,6 +22,7 @@ export interface CallAttemptRow {
   disposition: CallAttempt['disposition'];
   hangup_cause: string | null;
   error: string | null;
+  actuated_at: string | null;
   started_at: string | null;
   ended_at: string | null;
   created_at: string;
@@ -43,6 +44,7 @@ export function toCallAttempt(row: CallAttemptRow): CallAttempt {
     disposition: row.disposition,
     hangupCause: row.hangup_cause,
     error: row.error,
+    actuatedAt: row.actuated_at,
     startedAt: row.started_at,
     endedAt: row.ended_at,
     createdAt: row.created_at,

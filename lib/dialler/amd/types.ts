@@ -150,6 +150,8 @@ export interface CallAttempt {
   disposition: CallDisposition | null;
   hangupCause: string | null;
   error: string | null;
+  /** Set once the hangup/bridge actuation has been confirmed (at-least-once). */
+  actuatedAt: string | null;
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
