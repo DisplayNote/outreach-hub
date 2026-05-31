@@ -21,12 +21,13 @@ interface CampaignRow {
   org_id: string;
   name: string;
   sequence: string | null;
+  sequence_id: string | null;
   legacy_id: number | null;
   created_at: string;
   updated_at: string;
 }
 
-const CAMPAIGN_SELECT = 'id, org_id, name, sequence, legacy_id, created_at, updated_at';
+const CAMPAIGN_SELECT = 'id, org_id, name, sequence, sequence_id, legacy_id, created_at, updated_at';
 
 function toCampaign(row: CampaignRow): Campaign {
   return {
@@ -34,6 +35,7 @@ function toCampaign(row: CampaignRow): Campaign {
     orgId: row.org_id,
     name: row.name,
     sequence: row.sequence,
+    sequenceId: row.sequence_id,
     legacyId: row.legacy_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

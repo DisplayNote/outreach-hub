@@ -53,7 +53,10 @@ export interface Campaign {
   id: string;
   orgId: string;
   name: string;
+  /** Free-text legacy/display sequence name (no longer load-bearing). */
   sequence: string | null;
+  /** public.campaigns.sequence_id — FK to the sequence the runner walks (Phase 5); null if unlinked. */
+  sequenceId: string | null;
   legacyId: number | null;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +86,8 @@ export interface Contact {
   status: ContactStatus;
   sequenceDay: number | null;
   followUp: string | null;
+  /** public.contacts.last_emailed_at — last successful send (Phase 5); null if never. */
+  lastEmailedAt: string | null;
   notes: string | null;
   legacyId: number | null;
   /**

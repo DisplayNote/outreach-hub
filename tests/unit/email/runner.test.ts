@@ -22,6 +22,7 @@ function contact(id: string, over: Partial<Contact> = {}): Contact {
     status: 'none',
     sequenceDay: 0,
     followUp: '2026-05-25',
+    lastEmailedAt: null,
     notes: null,
     legacyId: null,
     metadata: {},

@@ -20,6 +20,7 @@ function contact(over: Partial<Contact> = {}): Contact {
     status: 'none',
     sequenceDay: null,
     followUp: null,
+    lastEmailedAt: null,
     notes: null,
     legacyId: null,
     metadata: {},

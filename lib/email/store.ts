@@ -169,20 +169,20 @@ export function supabaseEmailStore(
     },
 
     async claimForSend(contactId, today, now) {
-      // Conditional UPDATE = atomic claim: the row lock serialises concurrent
-      // runs, and the `last_emailed_at` predicate is re-checked after the lock,
-      // so only the first run matches a row. A claim-then-send-failure leaves the
-      // contact marked today (retried next day, not double-sent today) — the safe
-      // trade for preventing duplicate outbound mail.
-      const { data, error } = await client
-        .from('contacts')
-        .update({ last_emailed_at: now })
-        .eq('id', contactId)
-        .eq('org_id', ctx.orgId)
-        .or(`last_emailed_at.is.null,last_emailed_at.lt.${today}T00:00:00.000Z`)
-        .select('id');
+      // Atomic claim via the claim_email_send RPC: one conditional UPDATE that
+      // re-checks ALL the due stop conditions (not-sent-today, non-terminal
+      // status, not suppressed) under the row lock — so a late reply/bounce/manual
+      // suppression that landed after selection can't be raced into a send, and
+      // two overlapping runs can't both win. A claim-then-send-failure leaves the
+      // contact marked today (retried next day, not double-sent today).
+      const { data, error } = await client.rpc('claim_email_send', {
+        p_org_id: ctx.orgId,
+        p_contact_id: contactId,
+        p_today: today,
+        p_now: now,
+      });
       if (error) throw new Error(`claimForSend: ${error.message}`);
-      return (data?.length ?? 0) > 0;
+      return data === true;
     },
 
     async sentCountToday(today) {

@@ -38,6 +38,7 @@ interface ContactRow {
   status: Contact['status'];
   sequence_day: number | null;
   follow_up: string | null;
+  last_emailed_at: string | null;
   notes: string | null;
   legacy_id: number | null;
   // jsonb NOT NULL DEFAULT '{}' (Phase 2 migration), so reads never return null.
@@ -58,7 +59,7 @@ interface TouchpointRow {
 }
 
 const CONTACT_SELECT =
-  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, metadata, created_at, updated_at';
+  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, last_emailed_at, notes, legacy_id, metadata, created_at, updated_at';
 
 const TOUCHPOINT_SELECT =
   'id, org_id, contact_id, channel, note, occurred_at, legacy_id, created_at';
@@ -83,6 +84,7 @@ function toContact(row: ContactRow): Contact {
     status: row.status,
     sequenceDay: row.sequence_day,
     followUp: row.follow_up,
+    lastEmailedAt: row.last_emailed_at,
     notes: row.notes,
     legacyId: row.legacy_id,
     metadata: row.metadata,

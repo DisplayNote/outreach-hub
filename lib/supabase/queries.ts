@@ -36,6 +36,7 @@ interface CampaignRow {
   org_id: string;
   name: string;
   sequence: string | null;
+  sequence_id: string | null;
   legacy_id: number | null;
   created_at: string;
   updated_at: string;
@@ -58,6 +59,7 @@ export interface ContactRow {
   status: ContactStatus;
   sequence_day: number | null;
   follow_up: string | null;
+  last_emailed_at: string | null;
   notes: string | null;
   legacy_id: number | null;
   metadata: Record<string, unknown> | null;
@@ -79,7 +81,7 @@ interface TouchpointRow {
 // --- Selects -----------------------------------------------------------------
 
 export const CONTACT_SELECT =
-  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, notes, legacy_id, metadata, created_at, updated_at';
+  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, last_emailed_at, notes, legacy_id, metadata, created_at, updated_at';
 
 const TOUCHPOINT_SELECT =
   'id, org_id, contact_id, channel, note, occurred_at, legacy_id, created_at';
@@ -92,6 +94,7 @@ function toCampaign(row: CampaignRow): Campaign {
     orgId: row.org_id,
     name: row.name,
     sequence: row.sequence,
+    sequenceId: row.sequence_id,
     legacyId: row.legacy_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -116,6 +119,7 @@ export function toContact(row: ContactRow): Contact {
     status: row.status,
     sequenceDay: row.sequence_day,
     followUp: row.follow_up,
+    lastEmailedAt: row.last_emailed_at,
     notes: row.notes,
     legacyId: row.legacy_id,
     // `metadata` is NOT NULL default '{}' in Postgres, but coalesce defensively
@@ -207,7 +211,7 @@ export async function listCampaigns(): Promise<Campaign[]> {
 
   const { data, error } = await supabase
     .from('campaigns')
-    .select('id, org_id, name, sequence, legacy_id, created_at, updated_at')
+    .select('id, org_id, name, sequence, sequence_id, legacy_id, created_at, updated_at')
     .order('name', { ascending: true });
 
   if (error) {
