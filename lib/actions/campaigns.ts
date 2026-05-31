@@ -42,6 +42,7 @@ function toCampaign(row: CampaignRow): Campaign {
 
 /** Routes whose rendered output depends on campaign data. */
 function revalidateCampaignRoutes(): void {
+  revalidatePath('/campaigns');
   revalidatePath('/today');
   revalidatePath('/pipeline');
   revalidatePath('/contacts');
