@@ -341,9 +341,8 @@ export function supabaseEmailStore(
       // leaves the marker absent and the next scan re-applies the (idempotent)
       // effects — the stop-sequence effect can't be lost.
 
-      // Read the contact's status AND email together: the suppression must use
-      // the contact's own address, NOT the inbound sender (a real NDR is from
-      // postmaster@…, not the failed prospect).
+      // Read the contact's status AND email together (for the status effect and
+      // the reply suppression address).
       const { data: cur, error: curErr } = await client
         .from('contacts')
         .select('status, email')
@@ -363,14 +362,25 @@ export function supabaseEmailStore(
         }
       }
 
-      // Address-level suppression on the CONTACT's email (deduped via the unique
-      // (org_id, email) index). Skip if the contact somehow has no address.
-      const contactEmail = (cur?.email as string | null)?.trim().toLowerCase() ?? null;
-      if (contactEmail) {
+      // Address to suppress (deduped via the unique (org_id, email) index):
+      //   • BOUNCE → the address that actually bounced (the NDR's failed
+      //     recipient), NOT the contact's CURRENT email. If the email was
+      //     corrected between send and bounce-scan, suppressing the current
+      //     address would block a good address and leave the bad one unsuppressed.
+      //     (failedRecipient is the prospect recovered from the NDR — never the
+      //     postmaster/mailer-daemon sender.)
+      //   • REPLY → the contact's email (the address we send to), to stop the
+      //     sequence to that prospect.
+      const suppressSource =
+        input.kind === 'bounce'
+          ? (input.message.failedRecipient ?? (cur?.email as string | null))
+          : (cur?.email as string | null);
+      const suppressEmail = suppressSource?.trim().toLowerCase() ?? null;
+      if (suppressEmail) {
         const { error: supErr } = await client.from('suppressions').upsert(
           {
             org_id: input.orgId,
-            email: contactEmail,
+            email: suppressEmail,
             reason,
             contact_id: input.contactId,
           },

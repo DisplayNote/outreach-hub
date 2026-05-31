@@ -18,11 +18,15 @@ export default async function SuppressionsPage() {
   if (!user) redirect('/login');
 
   const orgId = await getCurrentOrgId();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('suppressions')
     .select('id, email, reason, created_at')
     .eq('org_id', orgId)
     .order('created_at', { ascending: false });
+  // Surface a load failure instead of rendering an empty list — a silent empty
+  // suppression list reads as "nobody is suppressed" and would let an operator
+  // re-enable sending to addresses that are actually still suppressed.
+  if (error) throw new Error(`SuppressionsPage: failed to load suppressions: ${error.message}`);
 
   const rows: SuppressionRow[] = (data ?? []).map((r) => ({
     id: r.id as string,
