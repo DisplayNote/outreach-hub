@@ -1,0 +1,103 @@
+/**
+ * Persists the effect of one inbound call event: runs the pure {@link reduceEvent},
+ * writes the new attempt state + an append-only event row, and (only on a machine
+ * detection) the one server-side auto-voicemail touchpoint (PHASE_4_SPEC §3/§4).
+ *
+ * Writes go through an injected {@link AmdStore} so the orchestration is unit-
+ * testable with a fake; the real adapter ({@link supabaseAmdStore}) runs against
+ * the service-role Supabase client (the only writer of call state — DECISION 4.1).
+ * `now` is passed in (no `Date.now()` here) to keep the logic deterministic.
+ *
+ * Returns the reduce result plus the `hangup` / `bridge` actuations the caller
+ * must perform on the dialler backend (applyEvent never calls Telnyx itself).
+ */
+import { reduceEvent } from '@/lib/dialler/amd/reducer';
+import type {
+  AmdResult,
+  CallAttempt,
+  CallAttemptState,
+  CallDisposition,
+  ReduceResult,
+  TelnyxEvent,
+} from '@/lib/dialler/amd/types';
+
+/** The auto-logged note when AMD hangs up on a machine (handover §4.3). */
+export const AUTO_VOICEMAIL_NOTE = 'Voicemail reached — auto';
+
+/** Columns of `call_attempts` that an event transition may set. */
+export interface AttemptPatch {
+  state?: CallAttemptState;
+  amdResult?: AmdResult | null;
+  disposition?: CallDisposition | null;
+  hangupCause?: string | null;
+  callControlId?: string;
+  startedAt?: string;
+  endedAt?: string;
+}
+
+/** The narrow write surface applyEvent needs (real adapter or a test fake). */
+export interface AmdStore {
+  updateAttempt(id: string, patch: AttemptPatch): Promise<void>;
+  insertEvent(row: {
+    orgId: string;
+    attemptId: string;
+    eventType: string;
+    payload: Record<string, unknown>;
+    occurredAt: string;
+  }): Promise<void>;
+  insertTouchpoint(row: { orgId: string; contactId: string; note: string }): Promise<void>;
+}
+
+/** Trim the event to the fields worth auditing (DECISION 11.2 — no raw dump). */
+function trimPayload(event: TelnyxEvent): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  if (event.result !== undefined) payload.result = event.result;
+  if (event.hangupCause !== undefined) payload.hangupCause = event.hangupCause;
+  if (event.customHeaders !== undefined) payload.customHeaders = event.customHeaders;
+  return payload;
+}
+
+export interface ApplyEventResult {
+  result: ReduceResult;
+  /** Backend calls the caller must actuate, in order. */
+  actuations: ('hangup' | 'bridge')[];
+}
+
+export async function applyEvent(
+  store: AmdStore,
+  attempt: CallAttempt,
+  event: TelnyxEvent,
+  now: string,
+): Promise<ApplyEventResult> {
+  const result = reduceEvent(attempt, event);
+
+  const patch: AttemptPatch = { state: result.nextState };
+  if (result.amdResult !== null) patch.amdResult = result.amdResult;
+  if (result.disposition !== null) patch.disposition = result.disposition;
+  if (event.hangupCause !== undefined) patch.hangupCause = event.hangupCause;
+  if (event.eventType === 'call.initiated' && attempt.startedAt === null) patch.startedAt = now;
+  if (result.nextState === 'ended') patch.endedAt = now;
+
+  await store.updateAttempt(attempt.id, patch);
+
+  await store.insertEvent({
+    orgId: attempt.orgId,
+    attemptId: attempt.id,
+    eventType: event.eventType,
+    payload: trimPayload(event),
+    occurredAt: now,
+  });
+
+  if (result.sideEffects.includes('log-vm-touchpoint')) {
+    await store.insertTouchpoint({
+      orgId: attempt.orgId,
+      contactId: attempt.contactId,
+      note: AUTO_VOICEMAIL_NOTE,
+    });
+  }
+
+  const actuations = result.sideEffects.filter(
+    (e): e is 'hangup' | 'bridge' => e === 'hangup' || e === 'bridge',
+  );
+  return { result, actuations };
+}
