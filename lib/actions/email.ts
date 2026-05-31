@@ -89,8 +89,8 @@ export async function runSenderNow(input: RunSenderNowInput = {}): Promise<RunSe
 }
 
 export async function scanInboxNow(): Promise<ScanInboxResult> {
-  const { orgId, driver, store } = await buildContext();
-  const result = await scanInbox({ store, driver, orgId }, {});
+  const { orgId, driver, store, from } = await buildContext();
+  const result = await scanInbox({ store, driver, orgId, mailbox: from }, {});
   revalidatePath('/queue');
   revalidatePath('/pipeline');
   return result;

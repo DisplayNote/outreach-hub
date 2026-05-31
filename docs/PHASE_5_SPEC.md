@@ -79,7 +79,17 @@ Implementation-oriented; no app code here. **[RESOLVED]** = decided with the pro
   (`session.provider_token`) so they never borrow the cron mailbox — failing clearly if it's
   absent. What's deferred is persisting/refreshing that delegated token beyond the live session
   (Supabase doesn't auto-refresh `provider_token`), e.g. via Vault + the refresh token, so
-  manual Graph actions keep working after the session's provider token expires.
+  manual Graph actions keep working after the session's provider token expires. Tracked, with
+  the rest of the per-rep multi-mailbox work, in
+  [PHASE_5_FOLLOWUP_PER_REP_MAILBOXES.md](PHASE_5_FOLLOWUP_PER_REP_MAILBOXES.md).
+- **True per-rep multi-mailbox outreach** — contact/campaign ownership (`user_id`), a
+  per-mailbox daily send cap, per-user Graph token storage/refresh, and per-user cron iteration
+  (the cron today scans the single configured `CRON_ORG_ID` mailbox). The inbox-scan cursor is
+  now keyed **per mailbox** (`organizations.settings.inboxScanCursors`), which is the data-model
+  prerequisite that makes adding more mailboxes safe without retroactively skipping mail; the
+  remaining work is documented in
+  [PHASE_5_FOLLOWUP_PER_REP_MAILBOXES.md](PHASE_5_FOLLOWUP_PER_REP_MAILBOXES.md). This is a
+  distinct follow-up, **not** Phase 6 (which is Compliance + audit per the execution plan).
 - **A durable transactional outbox for sends.** `record_email_sent` is a single atomic RPC, so
   a sent-but-unpersisted message only occurs if the DB is unreachable mid-send. In that window
   the missing `email_events(sent)` row means the scanner's sender-fallback can't correlate a

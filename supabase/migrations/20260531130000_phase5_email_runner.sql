@@ -198,27 +198,41 @@ begin
 end;
 $$;
 
--- Inbox-scan cursor (atomic) --------------------------------------------------
--- Advance the scanner high-water without a read-merge-write round trip: the
--- single `||` jsonb concat updates only those keys in one statement, so a
--- concurrent settings save can't be clobbered by a stale read. The cursor is a
--- pair: lastInboxScanAt (the newest message's ISO timestamp, stored verbatim so
--- it round-trips) plus lastInboxScanIds (the message-ids seen AT that exact
--- timestamp). The next scan fetches `receivedAt >= lastInboxScanAt` and skips
--- the ids in lastInboxScanIds — so a boundary message is never re-processed,
--- while a genuinely new message sharing that millisecond (a different id) still
--- is. SECURITY INVOKER: manual path under the caller's RLS (org UPDATE is
+-- Inbox-scan cursor (atomic, PER MAILBOX) -------------------------------------
+-- Advance the scanner high-water for ONE mailbox without a read-merge-write: a
+-- single jsonb_set updates only settings.inboxScanCursors.<mailbox>, so a
+-- concurrent settings save can't be clobbered by a stale read, and one mailbox's
+-- scan never touches another mailbox's cursor or any sibling setting. The cursor
+-- is a pair: at (newest message's ISO timestamp, stored verbatim so it
+-- round-trips) plus ids (the message-ids seen AT that exact timestamp). The next
+-- scan fetches receivedAt >= at and skips the ids — so a boundary message is
+-- never re-processed, while a genuinely new message sharing that millisecond (a
+-- different id) still is. p_mailbox is the normalised (lower+trim) mailbox key.
+-- jsonb_set create_missing => true seeds inboxScanCursors (and its parent) when
+-- absent. SECURITY INVOKER: manual path under the caller's RLS (org UPDATE is
 -- restricted to the settings column), cron via the service role.
 create or replace function public.advance_inbox_scan_cursor(
   p_org_id uuid,
+  p_mailbox text,
   p_at text,
   p_ids jsonb
 ) returns void
   language sql
 as $$
   update public.organizations
-    set settings = settings
-      || jsonb_build_object('lastInboxScanAt', p_at, 'lastInboxScanIds', p_ids)
+    set settings = jsonb_set(
+      -- Ensure inboxScanCursors exists so the two-level path set below can target
+      -- it; coalesce guards a settings with no inboxScanCursors key yet.
+      jsonb_set(
+        settings,
+        '{inboxScanCursors}',
+        coalesce(settings -> 'inboxScanCursors', '{}'::jsonb),
+        true
+      ),
+      array['inboxScanCursors', p_mailbox],
+      jsonb_build_object('at', p_at, 'ids', p_ids),
+      true
+    )
     where id = p_org_id;
 $$;
 

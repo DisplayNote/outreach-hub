@@ -87,10 +87,10 @@ function fakeStore(rec: Rec): EmailStore {
       return false;
     },
     async recordInbound() {},
-    async loadScanCursor() {
+    async loadScanCursor(_mailbox) {
       return null;
     },
-    async advanceScanCursor() {},
+    async advanceScanCursor(_mailbox) {},
   };
 }
 

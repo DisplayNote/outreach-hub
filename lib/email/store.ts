@@ -106,13 +106,14 @@ export interface EmailStore {
   /** Persist a reply/bounce: email_events + status + suppression + touchpoint (§8). */
   recordInbound(input: RecordInboundInput): Promise<void>;
   /**
-   * The persisted inbox-scan cursor (§6): the newest message's ISO timestamp
-   * (`at`) plus the message-ids seen at exactly that timestamp (`ids`, the
-   * boundary tie-breaker). Null if never scanned.
+   * The persisted inbox-scan cursor for the given mailbox (§6): the newest
+   * message's ISO timestamp (`at`) plus the message-ids seen at exactly that
+   * timestamp (`ids`, the boundary tie-breaker). Per-mailbox so one mailbox's
+   * scan can't advance/skip another's. Null if that mailbox was never scanned.
    */
-  loadScanCursor(): Promise<ScanCursor | null>;
-  /** Persist a new inbox-scan cursor (newest timestamp + the ids seen at it). */
-  advanceScanCursor(at: string, ids: string[]): Promise<void>;
+  loadScanCursor(mailbox: string): Promise<ScanCursor | null>;
+  /** Persist a new per-mailbox inbox-scan cursor (newest timestamp + the ids seen at it). */
+  advanceScanCursor(mailbox: string, at: string, ids: string[]): Promise<void>;
 }
 
 /** Inbox-scan high-water mark plus the boundary ids seen at `at` (see §6). */
@@ -411,25 +412,28 @@ export function supabaseEmailStore(
       if (evErr) throw new Error(`recordInbound.event: ${evErr.message}`);
     },
 
-    async loadScanCursor() {
-      // The persisted cursor (organizations.settings.lastInboxScan{At,Ids}),
-      // captured fresh per invocation via getOrgSettings. Deriving it from
+    async loadScanCursor(mailbox) {
+      // Per-mailbox cursor (organizations.settings.inboxScanCursors[mailbox]),
+      // captured fresh per invocation via getOrgSettings. Keyed by mailbox so a
+      // different mailbox's scan can't advance/skip this one. Deriving it from
       // recorded reply/bounce events instead would never advance for a mailbox
-      // with no correlated inbound, re-fetching the whole inbox every cron tick.
-      const at = ctx.settings.lastInboxScanAt;
-      if (typeof at !== 'string') return null;
-      const raw = ctx.settings.lastInboxScanIds;
+      // with no correlated inbound, re-fetching the whole inbox every tick.
+      const map = ctx.settings.inboxScanCursors;
+      const entry = map && typeof map === 'object' ? map[mailbox] : undefined;
+      if (!entry || typeof entry.at !== 'string') return null;
+      const raw = (entry as { ids?: unknown }).ids;
       const ids = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
-      return { at, ids };
+      return { at: entry.at, ids };
     },
 
-    async advanceScanCursor(at, ids) {
-      // Atomic single-statement jsonb merge (advance_inbox_scan_cursor RPC): only
-      // the lastInboxScan{At,Ids} keys change, so a concurrent settings save can't
-      // be clobbered by a stale read-merge-write. Scoped to ctx.orgId; RLS limits
-      // org UPDATE to the settings column (Phase 2), cron uses the service role.
+    async advanceScanCursor(mailbox, at, ids) {
+      // Atomic per-mailbox jsonb_set merge (advance_inbox_scan_cursor RPC): only
+      // settings.inboxScanCursors[mailbox] changes, so a concurrent settings save
+      // and other mailboxes' cursors are never clobbered. Scoped to ctx.orgId; RLS
+      // limits org UPDATE to the settings column (Phase 2), cron uses service role.
       const { error } = await client.rpc('advance_inbox_scan_cursor', {
         p_org_id: ctx.orgId,
+        p_mailbox: mailbox,
         p_at: at,
         p_ids: ids,
       });

@@ -75,14 +75,15 @@ export async function scanInboxAllOrgs(
     // like the sender's senderEmail), only scan a configured org — settings
     // .senderEmail or the deploy-wide CRON_SENDER_EMAIL marks it; the deploy must
     // point the driver at that org's mailbox. Skip LOUDLY if neither is set.
-    if (!(org.settings.senderEmail ?? fallbackFrom)) {
+    const mailbox = org.settings.senderEmail ?? fallbackFrom;
+    if (!mailbox) {
       skipped += 1;
       console.warn(`cron scanInbox: org ${org.id} has no senderEmail and CRON_SENDER_EMAIL is unset — skipped`);
       continue;
     }
     scanned += 1;
     const store = supabaseEmailStore(client, { orgId: org.id, provider: driver.name, settings: org.settings });
-    const res = await scanInbox({ store, driver, orgId: org.id }, {});
+    const res = await scanInbox({ store, driver, orgId: org.id, mailbox }, {});
     replies += res.replies;
     bounces += res.bounces;
   }

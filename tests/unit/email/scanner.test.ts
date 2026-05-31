@@ -8,7 +8,7 @@ interface Rec {
   inbound: RecordInboundInput[];
   recorded: Set<string>; // messageIds already recorded (dedup)
   correlatable: Set<string>; // sender emails that correlate to a contact
-  cursor: ScanCursor | null; // persisted scan high-water + boundary ids
+  cursors: Record<string, ScanCursor>; // persisted scan high-water + boundary ids, per mailbox
 }
 
 function fakeStore(rec: Rec): EmailStore {
@@ -40,11 +40,11 @@ function fakeStore(rec: Rec): EmailStore {
       rec.inbound.push(input);
       rec.recorded.add(input.message.messageId);
     },
-    async loadScanCursor() {
-      return rec.cursor;
+    async loadScanCursor(mailbox) {
+      return rec.cursors[mailbox] ?? null;
     },
-    async advanceScanCursor(at, ids) {
-      rec.cursor = { at, ids };
+    async advanceScanCursor(mailbox, at, ids) {
+      rec.cursors[mailbox] = { at, ids };
     },
   };
 }
@@ -60,13 +60,23 @@ function inbound(over: Partial<InboundMessage>): InboundMessage {
   };
 }
 
-const deps = (rec: Rec, driver: MockDriver) => ({ store: fakeStore(rec), driver, orgId: 'o1' });
+const deps = (rec: Rec, driver: MockDriver, mailbox = 'paul@displaynote.com') => ({
+  store: fakeStore(rec),
+  driver,
+  orgId: 'o1',
+  mailbox,
+});
 
 describe('scanInbox', () => {
   let rec: Rec;
   let driver: MockDriver;
   beforeEach(() => {
-    rec = { inbound: [], recorded: new Set(), correlatable: new Set(['mike@example.com']), cursor: { at: '2026-05-20T00:00:00.000Z', ids: [] } };
+    rec = {
+      inbound: [],
+      recorded: new Set(),
+      correlatable: new Set(['mike@example.com']),
+      cursors: { 'paul@displaynote.com': { at: '2026-05-20T00:00:00.000Z', ids: [] } },
+    };
     driver = new MockDriver();
   });
 
@@ -109,18 +119,18 @@ describe('scanInbox', () => {
     await scanInbox(deps(rec, driver), {});
     // Lands ON the boundary (not past it) and records the id seen there, so a late
     // same-ms message (different id) isn't skipped while x1 isn't re-processed.
-    expect(rec.cursor).toEqual({ at: '2026-05-29T11:00:00.000Z', ids: ['x1'] });
+    expect(rec.cursors['paul@displaynote.com']).toEqual({ at: '2026-05-29T11:00:00.000Z', ids: ['x1'] });
   });
 
   it('does not advance the cursor when the inbox is empty', async () => {
     await scanInbox(deps(rec, driver), {}); // empty inbox
-    expect(rec.cursor).toEqual({ at: '2026-05-20T00:00:00.000Z', ids: [] });
+    expect(rec.cursors['paul@displaynote.com']).toEqual({ at: '2026-05-20T00:00:00.000Z', ids: [] });
   });
 
   it('skips a boundary message already seen, but processes a NEW same-ms message', async () => {
     rec.correlatable.add('amy@example.com');
     // Prior scan already saw `seen` at exactly the cursor timestamp.
-    rec.cursor = { at: '2026-05-29T10:00:00.000Z', ids: ['seen'] };
+    rec.cursors['paul@displaynote.com'] = { at: '2026-05-29T10:00:00.000Z', ids: ['seen'] };
     // Driver re-returns `seen` (>= since) plus a NEW message at the same ms.
     driver.inbound.push(inbound({ messageId: 'seen', from: 'mike@example.com', receivedAt: '2026-05-29T10:00:00.000Z' }));
     driver.inbound.push(inbound({ messageId: 'fresh', from: 'amy@example.com', receivedAt: '2026-05-29T10:00:00.000Z' }));
@@ -129,8 +139,9 @@ describe('scanInbox', () => {
     expect(res.replies).toBe(1);
     expect(rec.inbound.map((i) => i.message.messageId)).toEqual(['fresh']);
     // New boundary set covers BOTH ids at that timestamp so neither re-processes.
-    expect(rec.cursor.at).toBe('2026-05-29T10:00:00.000Z');
-    expect([...rec.cursor.ids].sort()).toEqual(['fresh', 'seen']);
+    const c = rec.cursors['paul@displaynote.com']!;
+    expect(c.at).toBe('2026-05-29T10:00:00.000Z');
+    expect([...c.ids].sort()).toEqual(['fresh', 'seen']);
   });
 
   it('orders by parsed time, not raw ISO string (mixed precision)', async () => {
@@ -160,5 +171,27 @@ describe('scanInbox', () => {
     const res = await scanInbox(deps(rec, driver), {});
     expect(res.replies).toBe(0);
     expect(rec.inbound).toHaveLength(0);
+  });
+
+  it('keeps cursors isolated per mailbox: one mailbox cannot advance another past its messages', async () => {
+    // Mailbox A scans and lands its cursor far in the future...
+    rec.cursors = {
+      'a@org.com': { at: '2026-05-20T00:00:00.000Z', ids: [] },
+      'b@org.com': { at: '2026-05-20T00:00:00.000Z', ids: [] },
+    };
+    driver.inbound.push(inbound({ messageId: 'a1', from: 'mike@example.com', receivedAt: '2026-05-29T12:00:00.000Z' }));
+    await scanInbox(deps(rec, driver, 'a@org.com'), {});
+    // A advanced only its own cursor; B's is untouched.
+    expect(rec.cursors['a@org.com']).toEqual({ at: '2026-05-29T12:00:00.000Z', ids: ['a1'] });
+    expect(rec.cursors['b@org.com']).toEqual({ at: '2026-05-20T00:00:00.000Z', ids: [] });
+
+    // Now a message arrives for B at a time BEFORE A's advanced cursor. Because B
+    // reads ITS OWN (older) cursor, B still sees and records it — the pre-fix bug
+    // (shared org cursor) would have skipped it permanently.
+    const driverB = new MockDriver();
+    driverB.inbound.push(inbound({ messageId: 'b1', from: 'mike@example.com', receivedAt: '2026-05-29T11:00:00.000Z' }));
+    const resB = await scanInbox(deps(rec, driverB, 'b@org.com'), {});
+    expect(resB.replies).toBe(1);
+    expect(rec.cursors['b@org.com']).toEqual({ at: '2026-05-29T11:00:00.000Z', ids: ['b1'] });
   });
 });

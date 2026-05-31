@@ -199,12 +199,15 @@ export interface OrgSettings {
   defaultCountryCode?: string;
   seqSkipWeekends?: boolean;
   /**
-   * Internal (not user-facing): ISO high-water mark for the inbox scanner. The
-   * next scan fetches inbound `receivedAt >= this`, and advances it to the
-   * newest message seen — so a mailbox with no correlated inbound still moves
-   * the cursor forward instead of re-fetching the whole inbox every cron tick.
+   * Internal (not user-facing): per-mailbox inbox-scan high-water marks. Keyed by
+   * the mailbox identity being scanned (manual = the signed-in user's mailbox;
+   * cron = the org's configured senderEmail/cron mailbox), so one mailbox's scan
+   * can never advance another mailbox's position and skip its replies/bounces.
+   * Each entry is { at: newest message's ISO timestamp, ids: message-ids seen AT
+   * that exact timestamp (the boundary tie-breaker) }. Replaces the former flat
+   * lastInboxScanAt / lastInboxScanIds keys.
    */
-  lastInboxScanAt?: string;
+  inboxScanCursors?: Record<string, { at: string; ids: string[] }>;
   [key: string]: unknown;
 }
 

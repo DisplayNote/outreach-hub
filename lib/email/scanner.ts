@@ -15,11 +15,15 @@ export interface ScanInboxDeps {
   store: EmailStore;
   driver: EmailDriver;
   orgId: string;
+  /** The mailbox identity being scanned (the inbox the driver reads). The scan
+   * cursor is keyed by this, so mailbox A's scan never advances mailbox B's
+   * position. Normalised (lower+trim) here before use as the cursor key. */
+  mailbox: string;
 }
 
 export interface ScanInboxOptions {
-  /** Defaults to the store's persisted high-water mark
-   * (organizations.settings.lastInboxScanAt via lastScanHighWater()). */
+  /** Defaults to the mailbox's persisted high-water mark
+   * (organizations.settings.inboxScanCursors[mailbox] via loadScanCursor(mailbox)). */
   since?: string;
 }
 
@@ -35,7 +39,8 @@ const EPOCH = '1970-01-01T00:00:00.000Z';
 export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Promise<ScanInboxResult> {
   // The persisted cursor: a timestamp + the ids seen AT that exact timestamp.
   // (An explicit opts.since override is a one-off, so it carries no boundary set.)
-  const cursor = opts.since ? null : await deps.store.loadScanCursor();
+  const mailboxKey = deps.mailbox.trim().toLowerCase();
+  const cursor = opts.since ? null : await deps.store.loadScanCursor(mailboxKey);
   const since = opts.since ?? cursor?.at ?? EPOCH;
   const sinceMs = Date.parse(since);
   const boundarySeen = new Set(cursor?.ids ?? []);
@@ -111,7 +116,7 @@ export async function scanInbox(deps: ScanInboxDeps, opts: ScanInboxOptions): Pr
   if (finiteTimes.length > 0) {
     const newestMs = Math.max(...finiteTimes);
     const boundaryIds = fetched.filter((m) => Date.parse(m.receivedAt) === newestMs).map((m) => m.messageId);
-    await deps.store.advanceScanCursor(new Date(newestMs).toISOString(), boundaryIds);
+    await deps.store.advanceScanCursor(mailboxKey, new Date(newestMs).toISOString(), boundaryIds);
   }
 
   return result;
