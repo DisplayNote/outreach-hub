@@ -18,8 +18,23 @@ const barStyle: React.CSSProperties = {
 const linksStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
+  flexWrap: 'wrap',
   gap: '1.25rem',
 };
+
+const NAV_LINKS: ReadonlyArray<{ href: string; label: string }> = [
+  { href: '/today', label: 'Today' },
+  { href: '/pipeline', label: 'Pipeline' },
+  { href: '/dialler', label: 'Dialler' },
+  { href: '/contacts', label: 'Contacts' },
+  { href: '/campaigns', label: 'Campaigns' },
+  { href: '/sequences', label: 'Sequences' },
+  { href: '/templates', label: 'Templates' },
+  { href: '/activity', label: 'Activity' },
+  { href: '/reports', label: 'Reports' },
+  { href: '/import', label: 'Import' },
+  { href: '/settings', label: 'Settings' },
+];
 
 const brandStyle: React.CSSProperties = {
   fontWeight: 700,
@@ -56,12 +71,11 @@ export default async function SiteNav() {
         <Link href="/" style={brandStyle}>
           Outreach Hub
         </Link>
-        <Link href="/today" style={linkStyle}>
-          Today
-        </Link>
-        <Link href="/pipeline" style={linkStyle}>
-          Pipeline
-        </Link>
+        {NAV_LINKS.map((link) => (
+          <Link key={link.href} href={link.href} style={linkStyle}>
+            {link.label}
+          </Link>
+        ))}
       </div>
       <form action="/auth/signout" method="post">
         <button type="submit" style={signOutStyle}>

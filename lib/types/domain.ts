@@ -85,6 +85,12 @@ export interface Contact {
   followUp: string | null;
   notes: string | null;
   legacyId: number | null;
+  /**
+   * public.contacts.metadata (jsonb, NOT NULL default '{}'). Free-form
+   * extension map for enrichment fields (e.g. Apollo) that have no dedicated
+   * column. Always present (never null); an empty row is `{}`.
+   */
+  metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -111,4 +117,122 @@ export interface Touchpoint {
 export interface PipelineStatusCount {
   status: ContactStatus;
   count: number;
+}
+
+/**
+ * public.templates row.
+ *
+ * Reusable email template. `subject` and `body` are nullable text (a template
+ * may be created as a stub before its content is filled in). `name` is NOT
+ * NULL.
+ */
+export interface Template {
+  id: string;
+  orgId: string;
+  name: string;
+  subject: string | null;
+  body: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * public.sequences row.
+ *
+ * A named outreach cadence; its ordered steps live in `sequence_steps`. `name`
+ * is NOT NULL.
+ */
+export interface Sequence {
+  id: string;
+  orgId: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * public.sequence_steps row.
+ *
+ * One ordered step of a `Sequence`. `stepOrder` (NOT NULL, unique per
+ * sequence) is the 1-based position; `dayOffset` (NOT NULL) is days from
+ * sequence start. `channel` is NOT NULL. `templateId` is nullable — a step may
+ * have no template, and the FK is `on delete set null`. The table tracks only
+ * `createdAt` (no `updatedAt`); steps can be edited in place via
+ * `updateSequenceStep`.
+ */
+export interface SequenceStep {
+  id: string;
+  orgId: string;
+  sequenceId: string;
+  stepOrder: number;
+  dayOffset: number;
+  channel: TouchpointChannel;
+  templateId: string | null;
+  createdAt: string;
+}
+
+/**
+ * public.organizations.settings (jsonb, NOT NULL default '{}').
+ *
+ * A loose record of known, all-optional org-level settings. Every field is
+ * optional because the stored object may be `{}` or carry only a subset; under
+ * exactOptionalPropertyTypes an absent key means "unset", so readers must
+ * tolerate `undefined`. Unknown keys are permitted via the index signature so
+ * the type does not have to enumerate every future setting.
+ */
+export interface OrgSettings {
+  dailyGoal?: number;
+  weeklyCallsGoal?: number;
+  weeklyEmailsGoal?: number;
+  rhythmGreen?: number;
+  rhythmAmber?: number;
+  rhythmRed?: number;
+  rhythmNone?: number;
+  signature?: string;
+  defaultCountryCode?: string;
+  seqSkipWeekends?: boolean;
+  [key: string]: unknown;
+}
+
+/**
+ * A `Sequence` with its ordered `sequence_steps` resolved. `steps` is sorted by
+ * `stepOrder` ascending and may be empty (a sequence with no steps yet).
+ */
+export interface SequenceWithSteps extends Sequence {
+  steps: SequenceStep[];
+}
+
+/**
+ * One entry in the cross-contact activity feed: a `Touchpoint` joined with the
+ * display fields of its parent contact, for rendering a recent-activity list
+ * without a second lookup. `contactName` is a best-effort label derived from the
+ * contact's first/last name (falling back to email, then a dash); `contactCompany`
+ * is the parent contact's company (nullable, as on the contact row).
+ */
+export interface ActivityItem extends Touchpoint {
+  contactName: string;
+  contactCompany: string | null;
+}
+
+/**
+ * Aggregate metrics for the reports view. All counts are RLS-scoped to the
+ * caller's org.
+ *
+ * - `totalContacts` — every contact in the org.
+ * - `byStatus` — the pipeline rollup (one bucket per status, in schema order).
+ * - `meetings` / `bounced` — convenience extracts of the `meeting` / `bounced`
+ *   status buckets.
+ * - `touchpointsLast7Days` — touchpoints with `occurred_at` within the last 7
+ *   days (a simple recent-cadence signal).
+ * - `contactsDueToday` / `contactsOverdue` — contacts whose `follow_up` is today,
+ *   resp. strictly before today.
+ */
+export interface ReportMetrics {
+  totalContacts: number;
+  byStatus: PipelineStatusCount[];
+  meetings: number;
+  bounced: number;
+  touchpointsLast7Days: number;
+  contactsDueToday: number;
+  contactsOverdue: number;
 }
