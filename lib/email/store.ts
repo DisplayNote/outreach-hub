@@ -397,14 +397,34 @@ export function supabaseEmailStore(
       // good) address with a terminal status. A reply always applies its effect.
       const applyStatus = input.kind === 'reply' || (failedRecipient !== null && failedRecipient === contactEmail);
       if (cur && applyStatus) {
-        const next = resolveStatusEffect((cur.status as Contact['status']) ?? 'none', nextStatus);
-        if (next !== null) {
-          const { error: sErr } = await client
+        // Compare-and-set with retry: resolveStatusEffect encodes the precedence
+        // (e.g. reply→green must NOT downgrade a `meeting`) in app code, so a plain
+        // read-then-write could clobber a concurrent manual status change made
+        // between our read and write. Re-evaluate precedence against the LIVE
+        // status and only write when it's unchanged since we read it; on a
+        // concurrent change, re-read and recompute (bounded retries).
+        let observed = (cur.status as Contact['status']) ?? 'none';
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          const next = resolveStatusEffect(observed, nextStatus);
+          if (next === null || next === observed) break; // precedence says no change
+          const { data: changed, error: sErr } = await client
             .from('contacts')
             .update({ status: next })
             .eq('id', input.contactId)
-            .eq('org_id', input.orgId);
+            .eq('org_id', input.orgId)
+            .eq('status', observed) // CAS guard: only if status hasn't moved
+            .select('id');
           if (sErr) throw new Error(`recordInbound.status: ${sErr.message}`);
+          if ((changed?.length ?? 0) > 0) break; // won the CAS
+          const { data: reread, error: rErr } = await client
+            .from('contacts')
+            .select('status')
+            .eq('id', input.contactId)
+            .eq('org_id', input.orgId)
+            .maybeSingle();
+          if (rErr) throw new Error(`recordInbound.status.reread: ${rErr.message}`);
+          if (!reread) break; // contact gone
+          observed = (reread.status as Contact['status']) ?? 'none';
         }
       }
 

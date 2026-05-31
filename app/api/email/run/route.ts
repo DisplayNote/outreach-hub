@@ -29,7 +29,11 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   }
   try {
     const result = await runSenderAllOrgs(createServiceClient());
-    return NextResponse.json({ ok: true, ...result });
+    // Surface per-contact send failures as a non-2xx so monitoring alerts: a
+    // deploy misconfiguration (e.g. a missing Graph token) can make every send
+    // fail while the route would otherwise look healthy with { ok: true }.
+    const ok = result.errors === 0;
+    return NextResponse.json({ ok, ...result }, { status: ok ? 200 : 500 });
   } catch (cause) {
     console.error('email run cron failed', cause);
     return new NextResponse('run failed', { status: 500 });
