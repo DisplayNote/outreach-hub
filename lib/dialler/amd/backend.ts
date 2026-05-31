@@ -1,8 +1,9 @@
 /**
  * The server-side AMD control plane (PHASE_4_SPEC §5). Implemented by
  * {@link TelnyxAmdBackend} (real Call-Control API) and {@link MockTelnyxBackend}
- * (in-process simulation). Selected by {@link getAmdBackend}, which returns the
- * mock only when {@link isDiallerMockEnabled} (dev + flag + loopback).
+ * (in-process simulation). Selected by `createAmdRuntime()` (see runtime.ts),
+ * which returns the mock only when {@link isDiallerMockEnabled} (dev + flag +
+ * loopback).
  *
  * The browser never calls these — they run inside Server Actions / the webhook
  * route. `placeCall`/`hangup`/`bridge` are app→Telnyx calls; the lifecycle comes

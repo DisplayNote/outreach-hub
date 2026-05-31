@@ -70,7 +70,7 @@ export function supabaseAmdStore(client: SupabaseClient): AmdStore {
         contact_id: row.contactId,
         channel: 'phone',
         note: row.note,
-        occurred_at: new Date().toISOString(),
+        occurred_at: row.occurredAt,
       });
       if (error) throw new Error(`insertTouchpoint(${row.contactId}): ${error.message}`);
     },

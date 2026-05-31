@@ -5,7 +5,7 @@
  * `call_control_id`, or an event type we don't act on (which the route ACKs and
  * ignores, like the legacy worker). Never throws.
  */
-import type { AmdResult, TelnyxEvent, TelnyxEventType } from '@/lib/dialler/amd/types';
+import { asAmdResult, type TelnyxEvent, type TelnyxEventType } from '@/lib/dialler/amd/types';
 
 const HANDLED: ReadonlySet<string> = new Set<TelnyxEventType>([
   'call.initiated',
@@ -52,7 +52,10 @@ export function parseTelnyxWebhook(rawBody: string): TelnyxEvent | null {
     eventType: eventType as TelnyxEventType,
     callControlId,
   };
-  if (typeof payload.result === 'string') event.result = payload.result as AmdResult;
+  // Whitelist the AMD result; ignore unknown/new values rather than persisting
+  // an unsound amd_result (an unrecognised value just leaves result unset).
+  const result = asAmdResult(payload.result);
+  if (result !== null) event.result = result;
   if (typeof payload.hangup_cause === 'string') event.hangupCause = payload.hangup_cause;
   const headers = readHeaders(payload.custom_headers);
   if (headers !== undefined) event.customHeaders = headers;

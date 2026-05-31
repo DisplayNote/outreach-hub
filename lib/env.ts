@@ -122,8 +122,8 @@ export function isAuthMockEnabled(env: EnvRecord = process.env): boolean {
  *   1. NODE_ENV must not be `production`,
  *   2. `DIALLER_MOCK_ENABLED` must be explicitly `true`, and
  *   3. NEXT_PUBLIC_SUPABASE_URL must point at the local stack (loopback host).
- * When true, `getAmdBackend()` returns the in-process MockTelnyxBackend and the
- * webhook route accepts mock-originated events without a Telnyx signature.
+ * When true, `createAmdRuntime()` selects the in-process MockTelnyxBackend and
+ * the webhook route accepts mock-originated events without a Telnyx signature.
  */
 export function isDiallerMockEnabled(env: EnvRecord = process.env): boolean {
   return (

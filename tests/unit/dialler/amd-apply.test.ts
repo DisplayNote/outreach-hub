@@ -5,7 +5,7 @@ import type { CallAttempt } from '@/lib/dialler/amd/types';
 interface Recorded {
   patches: { id: string; patch: AttemptPatch }[];
   events: { eventType: string; orgId: string; attemptId: string }[];
-  touchpoints: { orgId: string; contactId: string; note: string }[];
+  touchpoints: { orgId: string; contactId: string; note: string; occurredAt: string }[];
 }
 
 function fakeStore(rec: Recorded): AmdStore {
@@ -70,7 +70,9 @@ describe('applyEvent', () => {
     );
     expect(rec.patches[0]?.patch.state).toBe('machine');
     expect(rec.patches[0]?.patch.amdResult).toBe('machine');
-    expect(rec.touchpoints).toEqual([{ orgId: 'o1', contactId: 'c1', note: 'Voicemail reached — auto' }]);
+    expect(rec.touchpoints).toEqual([
+      { orgId: 'o1', contactId: 'c1', note: 'Voicemail reached — auto', occurredAt: NOW },
+    ]);
     expect(out.actuations).toEqual(['hangup']);
   });
 

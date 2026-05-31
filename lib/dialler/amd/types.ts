@@ -43,6 +43,20 @@ export type AmdResult = 'human' | 'machine' | 'not_sure' | 'fax' | 'human_reside
 /** AMD results that mean "a machine answered" (auto-hangup branch). */
 export const MACHINE_AMD_RESULTS: ReadonlySet<AmdResult> = new Set<AmdResult>(['machine', 'fax']);
 
+/** Every known AMD result — used to validate inbound webhook payloads. */
+export const AMD_RESULTS: ReadonlySet<AmdResult> = new Set<AmdResult>([
+  'human',
+  'machine',
+  'not_sure',
+  'fax',
+  'human_residence',
+]);
+
+/** Narrow an arbitrary value to a known {@link AmdResult}, or null. */
+export function asAmdResult(value: unknown): AmdResult | null {
+  return typeof value === 'string' && AMD_RESULTS.has(value as AmdResult) ? (value as AmdResult) : null;
+}
+
 /**
  * Terminal classification written to `call_attempts.disposition` once a call
  * ends (PHASE_4_SPEC §2.2).

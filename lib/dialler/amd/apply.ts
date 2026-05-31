@@ -45,7 +45,7 @@ export interface AmdStore {
     payload: Record<string, unknown>;
     occurredAt: string;
   }): Promise<void>;
-  insertTouchpoint(row: { orgId: string; contactId: string; note: string }): Promise<void>;
+  insertTouchpoint(row: { orgId: string; contactId: string; note: string; occurredAt: string }): Promise<void>;
 }
 
 /** Trim the event to the fields worth auditing (DECISION 11.2 — no raw dump). */
@@ -109,6 +109,7 @@ export async function applyEvent(
       orgId: attempt.orgId,
       contactId: attempt.contactId,
       note: AUTO_VOICEMAIL_NOTE,
+      occurredAt: now,
     });
   }
 

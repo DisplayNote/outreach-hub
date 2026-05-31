@@ -19,8 +19,19 @@ function readEnvLocal(): Record<string, string> {
     const raw = readFileSync('.env.local', 'utf8');
     const out: Record<string, string> = {};
     for (const line of raw.split('\n')) {
-      const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
-      if (m) out[m[1]!] = m[2]!;
+      const trimmed = line.trim();
+      if (trimmed === '' || trimmed.startsWith('#')) continue;
+      const m = /^([A-Z0-9_]+)=(.*)$/.exec(trimmed);
+      if (!m) continue;
+      let value = m[2]!.trim();
+      // Strip a single pair of surrounding quotes if present.
+      if (
+        value.length >= 2 &&
+        ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+      ) {
+        value = value.slice(1, -1);
+      }
+      out[m[1]!] = value;
     }
     return out;
   } catch {
