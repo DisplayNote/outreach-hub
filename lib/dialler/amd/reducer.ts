@@ -18,6 +18,7 @@
 import {
   MACHINE_AMD_RESULTS,
   type CallAttempt,
+  type CallAttemptState,
   type CallSideEffect,
   type ReduceResult,
   type TelnyxEvent,
@@ -26,6 +27,29 @@ import {
 /** Fresh "no disposition / no effects" tail (a new array each call, never shared). */
 function noopTail(): Pick<ReduceResult, 'disposition' | 'amdResult' | 'sideEffects'> {
   return { disposition: null, amdResult: null, sideEffects: [] };
+}
+
+/**
+ * Monotonic rank of the early "progress" states. Used to apply
+ * initiated/ringing/answered transitions only when they move FORWARD, so an
+ * out-of-order or retried earlier webhook (e.g. a late `call.initiated` after
+ * `call.answered`) can't regress the state. States past this phase
+ * (machine/bridged/ended/failed) are absent → any progress event is a no-op.
+ */
+const PROGRESS_RANK: Partial<Record<CallAttemptState, number>> = {
+  queued: 0,
+  dialing: 1,
+  ringing: 2,
+  answered: 3,
+};
+
+function advanceProgress(attempt: CallAttempt, target: CallAttemptState): ReduceResult {
+  const current = PROGRESS_RANK[attempt.state];
+  const next = PROGRESS_RANK[target];
+  if (current === undefined || next === undefined || next <= current) {
+    return { nextState: attempt.state, ...noopTail() }; // don't regress / already past
+  }
+  return { nextState: target, ...noopTail() };
 }
 
 export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceResult {
@@ -38,14 +62,14 @@ export function reduceEvent(attempt: CallAttempt, event: TelnyxEvent): ReduceRes
 
   switch (event.eventType) {
     case 'call.initiated':
-      return { nextState: 'dialing', ...noopTail() };
+      return advanceProgress(attempt, 'dialing');
 
     case 'call.ringing':
-      return { nextState: 'ringing', ...noopTail() };
+      return advanceProgress(attempt, 'ringing');
 
     case 'call.answered':
       // Do NOT bridge yet — wait for the AMD result (worker.js L210).
-      return { nextState: 'answered', ...noopTail() };
+      return advanceProgress(attempt, 'answered');
 
     case 'call.machine.detection.ended': {
       // AMD already decided for this attempt (duplicate event). Don't re-log the

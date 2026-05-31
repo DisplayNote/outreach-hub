@@ -48,6 +48,15 @@ describe('reduceEvent — progress transitions', () => {
     expect(r.nextState).toBe('answered');
     expect(r.sideEffects).toEqual([]);
   });
+
+  it('does not regress on an out-of-order/retried earlier progress event', () => {
+    // A late call.initiated after call.answered must NOT move answered → dialing.
+    expect(reduceEvent(attempt('answered'), ev('call.initiated')).nextState).toBe('answered');
+    // A late call.ringing after machine detection is a no-op, not a regression.
+    expect(reduceEvent(attempt('machine', 'machine'), ev('call.ringing')).nextState).toBe('machine');
+    // A duplicate same-state progress event is a no-op.
+    expect(reduceEvent(attempt('ringing'), ev('call.ringing')).nextState).toBe('ringing');
+  });
 });
 
 describe('reduceEvent — AMD detection', () => {

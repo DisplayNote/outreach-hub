@@ -99,8 +99,6 @@ export interface TelnyxEvent {
   result?: AmdResult;
   hangupCause?: string;
   customHeaders?: { attemptId?: string; runId?: string; contactId?: string };
-  /** Raw (trimmed) provider payload, persisted to call_events.payload. */
-  payload?: Record<string, unknown>;
 }
 
 /**
