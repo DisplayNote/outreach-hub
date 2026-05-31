@@ -198,8 +198,11 @@ export async function importApolloCsv(input: ImportApolloCsvInput): Promise<Impo
     const cells = rows[r] as string[];
 
     // Build the recognised-column values + the metadata map for this row.
+    // `metadata` is keyed by raw CSV headers (user-controlled), so use a
+    // null-prototype map: a header literally named `__proto__`/`constructor`
+    // is then stored as ordinary data instead of mutating Object.prototype.
     const mapped: Record<string, string | null> = {};
-    const metadata: Record<string, unknown> = {};
+    const metadata: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
 
     for (let c = 0; c < headerKeys.length; c += 1) {
       const key = headerKeys[c] as string;

@@ -28,4 +28,13 @@ describe('mergeOrgSettingsPatch', () => {
     mergeOrgSettingsPatch(existing, { dailyGoal: 9 });
     expect(existing).toEqual({ dailyGoal: 5 });
   });
+
+  it('does not allow a __proto__ key in the patch to pollute Object.prototype', () => {
+    // JSON.parse yields a real own "__proto__" key (not the accessor).
+    const maliciousPatch = JSON.parse('{"__proto__": {"polluted": true}}') as Record<string, unknown>;
+    const merged = mergeOrgSettingsPatch({}, maliciousPatch);
+    expect((merged as Record<string, unknown>)['__proto__']).toEqual({ polluted: true });
+    expect(({} as Record<string, unknown>)['polluted']).toBeUndefined();
+    expect((Object.prototype as Record<string, unknown>)['polluted']).toBeUndefined();
+  });
 });

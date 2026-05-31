@@ -14,7 +14,11 @@ export function mergeOrgSettingsPatch(
   existing: Record<string, unknown>,
   patch: Record<string, unknown>,
 ): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...existing };
+  // Null-prototype target: the patch comes from a `.passthrough()` schema, so a
+  // caller-supplied `__proto__`/`constructor` key would otherwise pollute
+  // Object.prototype via the assignment below. With no prototype, every key is
+  // a plain data property.
+  const merged: Record<string, unknown> = Object.assign(Object.create(null), existing);
   for (const [key, value] of Object.entries(patch)) {
     if (value !== undefined) {
       merged[key] = value;
