@@ -376,6 +376,11 @@ begin
          join public.sequence_steps ss
            on ss.sequence_id = cam.sequence_id and ss.org_id = c.org_id
           and ss.day_offset = c.sequence_day and ss.channel = 'email'
+          -- Require a TEMPLATE too: if the step lost its template between
+          -- due_email_contacts selection and this claim, fail the claim so the
+          -- runner skips rather than sending the stale rendered snapshot. The
+          -- contact stays due; the next run surfaces it as a templateless skip.
+          and ss.template_id is not null
         where cam.id = c.campaign_id and cam.org_id = c.org_id and cam.sequence_id is not null
      )
      -- Daily cap, enforced atomically across runs: contacts already claimed today.
