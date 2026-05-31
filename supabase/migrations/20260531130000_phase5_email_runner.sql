@@ -329,18 +329,20 @@ $$;
 -- between selection and send. Enforcing the cap HERE (count of contacts already
 -- claimed today < p_daily_goal) — rather than once per run before claiming — is
 -- what stops two concurrent runs from collectively exceeding the goal via their
--- over-fetch buffers. Returns whether this call won. SECURITY INVOKER.
+-- over-fetch buffers. Returns the contact's CURRENT email when the claim is won
+-- (so the runner sends to the live address it just claimed, not the possibly
+-- stale pre-claim snapshot), or NULL when the claim is lost. SECURITY INVOKER.
 create or replace function public.claim_email_send(
   p_org_id uuid,
   p_contact_id uuid,
   p_today date,
   p_now timestamptz,
   p_daily_goal int
-) returns boolean
+) returns text
   language plpgsql
 as $$
 declare
-  claimed_rows int;
+  claimed_email text;
   day_start timestamptz := p_today::timestamp at time zone 'UTC';
 begin
   -- Serialise claims PER ORG for the duration of this transaction, so the daily
@@ -380,9 +382,10 @@ begin
      and (
        select count(*) from public.contacts cc
         where cc.org_id = p_org_id and cc.last_emailed_at >= day_start
-     ) < p_daily_goal;
-  get diagnostics claimed_rows = row_count;
-  return claimed_rows > 0;
+     ) < p_daily_goal
+  returning c.email into claimed_email;
+  -- claimed_email is NULL when no row matched (claim lost / not eligible).
+  return claimed_email;
 end;
 $$;
 

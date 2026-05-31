@@ -69,7 +69,10 @@ function fakeStore(rec: Rec): EmailStore {
       return rec.dueList.length;
     },
     async claimForSend(contactId) {
-      return !rec.claimLost?.has(contactId);
+      // Returns the contact's current email when won (the runner sends to it), or
+      // null when the claim was lost to a concurrent run.
+      if (rec.claimLost?.has(contactId)) return null;
+      return rec.dueList.find((d) => d.contact.id === contactId)?.contact.email ?? null;
     },
     async releaseClaim(contactId) {
       (rec.released ??= []).push(contactId);

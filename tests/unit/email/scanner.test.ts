@@ -21,7 +21,7 @@ function fakeStore(rec: Rec): EmailStore {
       return 0;
     },
     async claimForSend() {
-      return true;
+      return 'noop@local'; // scanner never sends; any non-null is fine
     },
     async releaseClaim() {},
     async sentCountToday() {

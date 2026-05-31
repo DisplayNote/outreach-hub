@@ -122,15 +122,18 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
     // Atomically claim the contact BEFORE sending: a concurrent run (cron +
     // manual, or overlapping ticks) could have fetched the same due row, and the
     // per-send message id won't let email_events dedupe a double-send. The loser
-    // of the claim skips silently — the winner sends.
+    // of the claim skips silently — the winner sends. The claim returns the
+    // contact's CURRENT email — send to THAT, not the pre-claim snapshot, so an
+    // address edited between dueContacts() and now is honoured (no stale send).
     const claimNow = deps.now();
-    if (!(await deps.store.claimForSend(contact.id, opts.today, claimNow, dailyGoal))) {
+    const claimedEmail = await deps.store.claimForSend(contact.id, opts.today, claimNow, dailyGoal);
+    if (!claimedEmail) {
       continue;
     }
 
     const message: OutboundMessage = {
       from: deps.from,
-      to: [contact.email],
+      to: [claimedEmail],
       subject: rendered.subject,
       bodyText: rendered.body,
       bodyHtml: escapeHtml(rendered.body).replace(/\n/g, '<br>'),
@@ -169,6 +172,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
         orgId: contact.orgId,
         contact,
         campaignId: item.campaignId,
+        recipient: claimedEmail,
         ref,
         subject: rendered.subject,
         sequenceDay,

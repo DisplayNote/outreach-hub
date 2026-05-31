@@ -32,6 +32,9 @@ export interface RecordSentInput {
   orgId: string;
   contact: Contact;
   campaignId: string;
+  /** The address actually emailed (the claimed live address), recorded as the
+   * sent event's recipient for bounce-by-recipient correlation. */
+  recipient: string;
   ref: SentRef;
   subject: string;
   sequenceDay: number;
@@ -80,13 +83,14 @@ export interface EmailStore {
   /**
    * Atomically claim a contact for sending: set last_emailed_at = `now` only if
    * it still passes the FULL due predicate AND fewer than `dailyGoal` contacts
-   * have already been claimed today, returning whether THIS call won. Two
-   * overlapping runs that both fetched the same due row can't both send — the
-   * loser gets false — and the in-claim cap check stops concurrent runs from
-   * collectively exceeding the goal via their over-fetch buffers. On a TRANSPORT
-   * failure the caller must {@link releaseClaim} to undo this marker.
+   * have already been claimed today. Returns the contact's CURRENT email when
+   * THIS call won the claim (so the caller sends to the live address it just
+   * claimed, not a possibly-stale pre-claim snapshot), or null when lost. Two
+   * overlapping runs can't both win, and the in-claim cap check stops concurrent
+   * runs from collectively exceeding the goal via their over-fetch buffers. On a
+   * TRANSPORT failure the caller must {@link releaseClaim} to undo this marker.
    */
-  claimForSend(contactId: string, today: string, now: string, dailyGoal: number): Promise<boolean>;
+  claimForSend(contactId: string, today: string, now: string, dailyGoal: number): Promise<string | null>;
   /**
    * Undo a claim when the send never left (transport error): restore
    * last_emailed_at to `priorLastEmailedAt`, but only if it still equals
@@ -203,7 +207,9 @@ export function supabaseEmailStore(
         p_daily_goal: dailyGoal,
       });
       if (error) throw new Error(`claimForSend: ${error.message}`);
-      return data === true;
+      // RPC returns the claimed CURRENT email (won) or null (lost). Send to this,
+      // not the pre-claim snapshot, so an email edited since selection is honoured.
+      return (data as string | null) ?? null;
     },
 
     async releaseClaim(contactId, claimedAt, priorLastEmailedAt) {
@@ -250,7 +256,7 @@ export function supabaseEmailStore(
         p_message_id: input.ref.messageId,
         // The address we actually emailed (normalised), so a later bounce for it
         // correlates even if the contact's email is corrected afterwards.
-        p_recipient: input.contact.email?.trim().toLowerCase() ?? null,
+        p_recipient: input.recipient.trim().toLowerCase(),
         p_subject: input.subject,
         p_sequence_day: input.sequenceDay,
         p_next_sequence_day: input.nextSequenceDay,
