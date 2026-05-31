@@ -97,16 +97,26 @@ describe('scanInbox', () => {
     expect(rec.inbound).toHaveLength(0);
   });
 
-  it('advances the scan cursor to the newest message even when all are uncorrelated', async () => {
+  it('advances the cursor 1ms PAST the newest message even when all are uncorrelated', async () => {
     driver.inbound.push(inbound({ messageId: 'x1', from: 'stranger@nowhere.com', receivedAt: '2026-05-29T11:00:00.000Z' }));
     await scanInbox(deps(rec, driver), {});
-    // Cursor moved past the unrelated mail so the next scan won't re-fetch it.
-    expect(rec.cursor).toBe('2026-05-29T11:00:00.000Z');
+    // +1ms so the boundary message isn't re-fetched by the next `>= since` scan.
+    expect(rec.cursor).toBe('2026-05-29T11:00:00.001Z');
   });
 
-  it('does not rewind the cursor when no messages are newer than the high-water', async () => {
+  it('does not advance the cursor when the inbox is empty', async () => {
     await scanInbox(deps(rec, driver), {}); // empty inbox
     expect(rec.cursor).toBe('2026-05-20T00:00:00.000Z');
+  });
+
+  it('orders by parsed time, not raw ISO string (mixed precision)', async () => {
+    rec.correlatable.add('amy@example.com');
+    // As text, `…00.500Z` < `…00Z`, but it is 500ms LATER — must process the
+    // whole-second message first.
+    driver.inbound.push(inbound({ messageId: 'later', from: 'amy@example.com', receivedAt: '2026-05-29T10:00:00.500Z' }));
+    driver.inbound.push(inbound({ messageId: 'earlier', from: 'mike@example.com', receivedAt: '2026-05-29T10:00:00Z' }));
+    await scanInbox(deps(rec, driver), {});
+    expect(rec.inbound.map((i) => i.message.messageId)).toEqual(['earlier', 'later']);
   });
 
   it('processes oldest-first even when the driver returns newest-first', async () => {
