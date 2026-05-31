@@ -119,6 +119,14 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       continue;
     }
 
+    // Atomically claim the contact BEFORE sending: a concurrent run (cron +
+    // manual, or overlapping ticks) could have fetched the same due row, and the
+    // per-send message id won't let email_events dedupe a double-send. The loser
+    // of the claim skips silently — the winner sends.
+    if (!(await deps.store.claimForSend(contact.id, opts.today, deps.now()))) {
+      continue;
+    }
+
     const message: OutboundMessage = {
       from: deps.from,
       to: [contact.email],

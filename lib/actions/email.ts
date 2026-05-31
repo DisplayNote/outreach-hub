@@ -21,6 +21,7 @@ import { scanInbox, type ScanInboxResult } from '@/lib/email/scanner';
 import { businessDayAdd } from '@/lib/email/schedule';
 import { buildSimulatedReply, buildSimulatedBounce } from '@/lib/email/mock';
 import { pushDevInbound } from '@/lib/email/dev-inbox';
+import { escapeLike } from '@/lib/supabase/like';
 import { isEmailMockEnabled } from '@/lib/env';
 import type { SuppressionReason } from '@/lib/email/types';
 
@@ -157,9 +158,33 @@ export async function addSuppression(input: AddSuppressionInput): Promise<void> 
 /** Un-suppress (the legacy "un-skip" path). */
 export async function removeSuppression(suppressionId: string): Promise<void> {
   const id = uuid.parse(suppressionId);
+  const orgId = await getCurrentOrgId();
   const supabase = await createClient();
-  const { error } = await supabase.from('suppressions').delete().eq('id', id);
+  const { data: deleted, error } = await supabase
+    .from('suppressions')
+    .delete()
+    .eq('id', id)
+    .select('email')
+    .maybeSingle();
   if (error) throw new Error(`removeSuppression: ${error.message}`);
+
+  // A bounce sets BOTH a suppression and status='bounced'; deleting the
+  // suppression alone leaves the contact terminal (the runner excludes
+  // 'bounced'), so un-suppress would be a no-op for re-enabling sends. Clear that
+  // bounce status back to neutral so the contact can be re-queued. Only 'bounced'
+  // is reset — 'notinterested'/'meeting' are deliberate human states, untouched.
+  // (suppressions.email is normalised lower+trim; contacts.email may be mixed
+  // case, so match case-insensitively with LIKE wildcards escaped.)
+  const email = (deleted as { email: string } | null)?.email;
+  if (email) {
+    const { error: statusErr } = await supabase
+      .from('contacts')
+      .update({ status: 'none' })
+      .eq('org_id', orgId)
+      .eq('status', 'bounced')
+      .ilike('email', escapeLike(email));
+    if (statusErr) throw new Error(`removeSuppression.status: ${statusErr.message}`);
+  }
   revalidatePath('/suppressions');
 }
 

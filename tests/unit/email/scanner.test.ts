@@ -19,6 +19,9 @@ function fakeStore(rec: Rec): EmailStore {
     async countDue() {
       return 0;
     },
+    async claimForSend() {
+      return true;
+    },
     async sentCountToday() {
       return 0;
     },

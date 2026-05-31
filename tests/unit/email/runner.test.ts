@@ -51,6 +51,8 @@ interface Rec {
   sent: RecordSentInput[];
   sentToday: number;
   dueList: DueContact[];
+  /** Contact ids the claim should LOSE (simulating a concurrent run). */
+  claimLost?: Set<string>;
 }
 
 function fakeStore(rec: Rec): EmailStore {
@@ -62,6 +64,9 @@ function fakeStore(rec: Rec): EmailStore {
     },
     async countDue() {
       return rec.dueList.length;
+    },
+    async claimForSend(contactId) {
+      return !rec.claimLost?.has(contactId);
     },
     async sentCountToday() {
       return rec.sentToday;
@@ -162,6 +167,14 @@ describe('runSender', () => {
     expect(res.skipped).toBe(1);
     expect(driver.sent.map((s) => s.message.to[0])).toEqual(['b@example.com']);
     expect(res.errors.some((e) => /no template/.test(e.message))).toBe(true);
+  });
+
+  it('skips a contact whose claim was lost to a concurrent run (no double-send)', async () => {
+    rec.dueList = [due('a'), due('b')];
+    rec.claimLost = new Set(['a']); // another run already claimed 'a'
+    const res = await runSender(deps(rec, driver), { today: '2026-05-29' });
+    expect(res.sent).toBe(1); // only 'b'
+    expect(driver.sent.map((s) => s.message.to[0])).toEqual(['b@example.com']);
   });
 
   it('isolates a send error: records it and continues the batch', async () => {

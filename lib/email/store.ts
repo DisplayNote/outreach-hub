@@ -70,9 +70,17 @@ export interface EmailStore {
    * stays small — just to send a small capped batch.
    */
   dueContacts(today: string, limit?: number): Promise<DueContact[]>;
-  /** Cheap head count of due candidates (pre suppression/sequence-link filter),
+  /** Cheap head count of due candidates (POST suppression/sequence/step filter),
    * for reporting how many remain beyond the cap without materialising them. */
   countDue(today: string): Promise<number>;
+  /**
+   * Atomically claim a contact for sending: set last_emailed_at = `now` only if
+   * it's still un-sent today, returning whether THIS call won the claim. Two
+   * overlapping runs that both fetched the same due row can't both send — the
+   * loser gets false. (The provider message id is per-send, so the email_events
+   * unique index can't dedupe a concurrent double-send; this is the guard.)
+   */
+  claimForSend(contactId: string, today: string, now: string): Promise<boolean>;
   /** Count of `sent` events on/after `today` (daily-cap accounting). */
   sentCountToday(today: string): Promise<number>;
   /** Persist a send: email_events(sent) + touchpoint + advance the contact (§4/§8). */
@@ -158,6 +166,23 @@ export function supabaseEmailStore(
       });
       if (error) throw new Error(`countDue: ${error.message}`);
       return (data as number | null) ?? 0;
+    },
+
+    async claimForSend(contactId, today, now) {
+      // Conditional UPDATE = atomic claim: the row lock serialises concurrent
+      // runs, and the `last_emailed_at` predicate is re-checked after the lock,
+      // so only the first run matches a row. A claim-then-send-failure leaves the
+      // contact marked today (retried next day, not double-sent today) — the safe
+      // trade for preventing duplicate outbound mail.
+      const { data, error } = await client
+        .from('contacts')
+        .update({ last_emailed_at: now })
+        .eq('id', contactId)
+        .eq('org_id', ctx.orgId)
+        .or(`last_emailed_at.is.null,last_emailed_at.lt.${today}T00:00:00.000Z`)
+        .select('id');
+      if (error) throw new Error(`claimForSend: ${error.message}`);
+      return (data?.length ?? 0) > 0;
     },
 
     async sentCountToday(today) {
