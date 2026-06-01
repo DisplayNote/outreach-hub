@@ -81,12 +81,16 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
   const skipWeekends = deps.settings.seqSkipWeekends ?? true;
   if (skipWeekends && isWeekend(opts.today)) return empty;
 
-  const dailyGoal = deps.settings.dailyGoal ?? DEFAULT_DAILY_GOAL;
+  // Daily send cap is an ACCOUNT-tier setting: the cron sender is org-scoped
+  // (one configured mailbox, no per-user context), so it reads the org's
+  // `seqDailyCap`, not any user's personal `dailyGoal` (which moved to the
+  // per-user tier and drives the Today view, not the sender).
+  const dailyCap = deps.settings.seqDailyCap ?? DEFAULT_DAILY_GOAL;
   const sentToday = await deps.store.sentCountToday(opts.today);
-  // Daily-goal headroom first, THEN clamp by the optional per-run limit — so a
+  // Daily-cap headroom first, THEN clamp by the optional per-run limit — so a
   // small `limit` caps this run without spuriously zeroing the cap once some
-  // sends already happened today (e.g. goal 30, sentToday 28, limit 5 → 2, not 0).
-  const dailyRemaining = Math.max(0, dailyGoal - sentToday);
+  // sends already happened today (e.g. cap 30, sentToday 28, limit 5 → 2, not 0).
+  const dailyRemaining = Math.max(0, dailyCap - sentToday);
   const cap = Math.min(opts.limit ?? Number.POSITIVE_INFINITY, dailyRemaining);
 
   // Fetch only up to the cap (+ a small buffer to absorb per-contact failures),
@@ -132,7 +136,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
     // contact's CURRENT email — send to THAT, not the pre-claim snapshot, so an
     // address edited between dueContacts() and now is honoured (no stale send).
     const claimNow = deps.now();
-    const claimedEmail = await deps.store.claimForSend(contact.id, opts.today, claimNow, dailyGoal);
+    const claimedEmail = await deps.store.claimForSend(contact.id, opts.today, claimNow, dailyCap);
     if (!claimedEmail) {
       continue;
     }

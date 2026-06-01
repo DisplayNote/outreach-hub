@@ -26,6 +26,7 @@ import type {
   Template,
   Touchpoint,
   TouchpointChannel,
+  UserSettings,
 } from '@/lib/types/domain';
 import { CONTACT_STATUSES } from '@/lib/types/domain';
 
@@ -389,6 +390,29 @@ export async function getOrgSettings(): Promise<OrgSettings> {
 
   const settings = (data as OrgSettingsRow | null)?.settings;
   return (settings ?? {}) as OrgSettings;
+}
+
+/**
+ * The caller's per-user settings (`user_settings.settings`, jsonb). RLS scopes
+ * the table to the caller's own row, so the single visible row (if any) is the
+ * caller's — we use `maybeSingle` and coalesce a missing row / null column to an
+ * empty `{}`. The stored shape is loose; we widen it to `UserSettings`, whose
+ * fields are all optional, so readers fall back to defaults for unset keys.
+ */
+export async function getUserSettings(): Promise<UserSettings> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('settings')
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getUserSettings: failed to load user settings: ${error.message}`);
+  }
+
+  const settings = (data as OrgSettingsRow | null)?.settings;
+  return (settings ?? {}) as UserSettings;
 }
 
 /** All templates visible to the caller's org, ordered by name ascending. */

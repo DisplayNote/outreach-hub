@@ -97,7 +97,7 @@ function fakeStore(rec: Rec): EmailStore {
   };
 }
 
-const settings: OrgSettings = { dailyGoal: 30, seqSkipWeekends: true, signature: 'Paul' };
+const settings: OrgSettings = { seqDailyCap: 30, seqSkipWeekends: true, signature: 'Paul' };
 const deps = (rec: Rec, driver: MockDriver) => ({
   store: fakeStore(rec),
   driver,

@@ -16,7 +16,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCurrentOrgId } from '@/lib/supabase/org';
 import { createClient } from '@/lib/supabase/server';
-import { getOrgSettings } from '@/lib/supabase/queries';
+import { getOrgSettings, getUserSettings } from '@/lib/supabase/queries';
 import { createAmdRuntime } from '@/lib/dialler/amd/runtime';
 import { pickDialNumber } from '@/lib/dialler/normalise';
 import type { AmdScenario, CallAttemptState } from '@/lib/dialler/amd/types';
@@ -73,9 +73,12 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
   const orgId = await getCurrentOrgId();
   const supabase = await createClient();
 
-  const settings = await getOrgSettings();
-  const defaultCc = settings.defaultCountryCode ?? '+44';
-  const fromNumber = typeof settings.txCallerId === 'string' ? settings.txCallerId : '';
+  // Number normalisation uses the org-wide default calling code; the outbound
+  // caller ID is per-user (each rep dials from their own number / credential
+  // connection), so it comes from the caller's own settings, not the org's.
+  const [orgSettings, userSettings] = await Promise.all([getOrgSettings(), getUserSettings()]);
+  const defaultCc = orgSettings.defaultCountryCode ?? '+44';
+  const fromNumber = typeof userSettings.txCallerId === 'string' ? userSettings.txCallerId : '';
 
   const { data: contactRow, error: contactErr } = await supabase
     .from('contacts')
@@ -106,7 +109,7 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
   // The real backend needs a caller ID; an empty `from` would fail opaquely at
   // the Telnyx API. The mock ignores `from`, so mock runs still proceed.
   if (backend.name !== 'mock' && !fromNumber) {
-    throw new Error('placeAmdCall: no outbound caller ID configured (set txCallerId in org settings)');
+    throw new Error('placeAmdCall: no outbound caller ID configured (set your outbound CLI in Settings)');
   }
 
   // Sequential invariant: refuse a second live attempt in the same run.

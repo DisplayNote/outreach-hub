@@ -186,18 +186,42 @@ export interface SequenceStep {
  * the type does not have to enumerate every future setting.
  */
 export interface OrgSettings {
-  dailyGoal?: number;
-  weeklyCallsGoal?: number;
-  weeklyEmailsGoal?: number;
-  rhythmGreen?: number;
-  rhythmAmber?: number;
-  rhythmRed?: number;
-  rhythmNone?: number;
-  signature?: string;
+  // --- Account-tier settings (edited in the /admin panel) --------------------
+  /** Sequence sender daily send cap. Consumed by the org-scoped cron runner. */
+  seqDailyCap?: number;
+  /** Sequence send window start hour (UK time, 0–23). */
+  seqSendWindowFrom?: number;
+  /** Sequence send window end hour (UK time, 0–23). */
+  seqSendWindowTo?: number;
+  seqSkipWeekends?: boolean;
+  /** Calling code used as the org-wide fallback for phone normalisation. */
+  defaultCountryCode?: string;
+  /** Base URL for the Zoho CRM new-lead page (per-account integration). */
+  zohoCrmUrl?: string;
   /** The mailbox the email runner sends from (a real address, unlike `signature`). */
   senderEmail?: string;
-  defaultCountryCode?: string;
-  seqSkipWeekends?: boolean;
+
+  // --- Deprecated: moved to per-user `UserSettings` (see below) --------------
+  // These keys may still exist on legacy org rows (the user_settings migration
+  // backfilled owners and left org copies in place). They are no longer read
+  // from here; readers use UserSettings. Kept in the type so the backfill and
+  // any in-flight reads stay valid — do not hard-remove.
+  /** @deprecated per-user — see {@link UserSettings.dailyGoal} */
+  dailyGoal?: number;
+  /** @deprecated per-user — see {@link UserSettings.weeklyCallsGoal} */
+  weeklyCallsGoal?: number;
+  /** @deprecated per-user — see {@link UserSettings.weeklyEmailsGoal} */
+  weeklyEmailsGoal?: number;
+  /** @deprecated per-user — see {@link UserSettings.rhythmGreen} */
+  rhythmGreen?: number;
+  /** @deprecated per-user — see {@link UserSettings.rhythmAmber} */
+  rhythmAmber?: number;
+  /** @deprecated per-user — see {@link UserSettings.rhythmRed} */
+  rhythmRed?: number;
+  /** @deprecated per-user — see {@link UserSettings.rhythmNone} */
+  rhythmNone?: number;
+  /** @deprecated per-user — see {@link UserSettings.signature} */
+  signature?: string;
   /**
    * Internal (not user-facing): per-mailbox inbox-scan high-water marks. Keyed by
    * the mailbox identity being scanned (manual = the signed-in user's mailbox;
@@ -208,6 +232,46 @@ export interface OrgSettings {
    * lastInboxScanAt / lastInboxScanIds keys.
    */
   inboxScanCursors?: Record<string, { at: string; ids: string[] }>;
+  [key: string]: unknown;
+}
+
+/**
+ * Per-user settings, stored in public.user_settings.settings (jsonb, NOT NULL
+ * default '{}'), RLS-scoped to the owning user. Mirrors {@link OrgSettings}'s
+ * loose, all-optional shape: the stored object may be `{}` or carry only a
+ * subset, so under exactOptionalPropertyTypes an absent key means "unset" and
+ * readers must tolerate `undefined` (falling back to a sensible default).
+ * Unknown keys are permitted via the index signature.
+ */
+export interface UserSettings {
+  /** Daily touchpoint target shown in the Today view. */
+  dailyGoal?: number;
+  weeklyCallsGoal?: number;
+  weeklyEmailsGoal?: number;
+  /** Days until the next follow-up is due, by status. */
+  rhythmGreen?: number;
+  rhythmAmber?: number;
+  rhythmRed?: number;
+  rhythmNone?: number;
+  /** Personal email signature. */
+  signature?: string;
+  /** Reusable quick-note snippets the user can insert into note fields. */
+  noteSnippets?: string[];
+  /** Telnyx SIP username (the user's own credential connection). */
+  txSipUser?: string;
+  /** Outbound caller ID (the number prospects see when this user calls). */
+  txCallerId?: string;
+  // NOTE: the SIP password (txSipPass) is intentionally NOT stored here — it is
+  // a secret, jsonb is readable by the user and any service-role path, and there
+  // is no live SIP softphone consumer yet (basic dialler uses tel: links; AMD
+  // bridges server-side via BRIDGE_SIP_USERNAME). A future WebRTC softphone
+  // should store it Vault-backed in a restricted per-user secret store.
+  /** Seconds to wait between consecutive auto-dial calls. */
+  diallerInterCallDelaySec?: number;
+  /** Auto-dial the next contact after logging an outcome. */
+  diallerAutoDial?: boolean;
+  /** Use browser-synthesised dial/ring tones instead of network ringback. */
+  diallerSynthTones?: boolean;
   [key: string]: unknown;
 }
 

@@ -13,7 +13,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrgId } from '@/lib/supabase/org';
-import { getOrgSettings } from '@/lib/supabase/queries';
+import { getOrgSettings, getUserSettings } from '@/lib/supabase/queries';
 import { getEmailDriver } from '@/lib/email/index';
 import { supabaseEmailStore } from '@/lib/email/store';
 import { runSender, type RunSenderResult } from '@/lib/email/runner';
@@ -24,6 +24,7 @@ import { pushDevInbound } from '@/lib/email/dev-inbox';
 import { escapeLike } from '@/lib/supabase/like';
 import { isEmailMockEnabled } from '@/lib/env';
 import type { SuppressionReason } from '@/lib/email/types';
+import type { OrgSettings } from '@/lib/types/domain';
 
 const uuid = z.string().uuid();
 
@@ -38,7 +39,15 @@ async function buildContext() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const settings = await getOrgSettings();
+  // Manual sends render with the SIGNED-IN USER's signature (a per-user-tier
+  // setting), falling back to any org-level signature for users who haven't set
+  // one. Everything else (sender mailbox, weekend rule, cap) stays org-scoped.
+  const orgSettings = await getOrgSettings();
+  const userSettings = await getUserSettings();
+  const settings: OrgSettings = {
+    ...orgSettings,
+    ...(userSettings.signature !== undefined ? { signature: userSettings.signature } : {}),
+  };
 
   // Manual (per-user) path: bind the Graph driver to the SIGNED-IN USER'S
   // delegated token (their Supabase Azure/Entra session's provider_token), NOT
