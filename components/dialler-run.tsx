@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { logCallOutcome } from '@/lib/actions/dialler';
 import type { CallOutcomeKey } from '@/lib/dialler/types';
 import { getDiallerDriver, getDiallerOutcomes } from '@/lib/dialler';
+import { DEFAULT_INTER_CALL_DELAY_SEC } from '@/lib/dialler/prefs';
+import { createTonePlayer, type ToneName } from '@/lib/dialler/tones';
 import type { CallControl, CallState } from '@/lib/dialler/types';
 import type { ContactStatus } from '@/lib/types/domain';
 import { Avatar, Button, Card, EmptyState, Icon, Pill } from '@/components/ui';
@@ -18,8 +20,21 @@ import { initials } from '@/lib/ui/initials';
  * (`idle` → `dialling` → `ringing` → `connected` → `ended`), then surfaces the
  * outcome buttons. Recording an outcome calls the `logCallOutcome` Server Action
  * (which appends a `phone` touchpoint and advances the contact's status), then
- * auto-advances to the next contact. Skip/next move through the queue without
+ * advances to the next contact. Skip/next move through the queue without
  * writing.
+ *
+ * Three per-user preferences (resolved server-side from `user_settings` and
+ * passed in as props) tune the run:
+ *  - `autoDial` — after an outcome is recorded, advance to the next contact and
+ *    automatically place the call after `interCallDelaySec` seconds, instead of
+ *    waiting for a manual click. A visible countdown lets the user cancel or
+ *    dial immediately.
+ *  - `synthTones` — play browser-synthesised dial/ring tones over the call
+ *    lifecycle (for networks that strip Telnyx ringback); off by default, in
+ *    which case we rely on network ringback.
+ *
+ * All three default to the prior manual behaviour when unset, so an org that
+ * never touches the settings sees no change.
  *
  * `'use client'` because the call lifecycle is timer-driven and every control is
  * interactive. The queue itself is fetched server-side and passed in as a plain
@@ -42,6 +57,12 @@ export interface DiallerQueueItem {
 
 export interface DiallerRunProps {
   queue: readonly DiallerQueueItem[];
+  /** Auto-dial the next due contact after an outcome is recorded. Default false. */
+  autoDial?: boolean;
+  /** Seconds to pause before auto-dialling the next contact. Default 3s. */
+  interCallDelaySec?: number;
+  /** Play browser-synthesised dial/ring tones instead of network ringback. Default false. */
+  synthTones?: boolean;
 }
 
 // --- Display helpers ---------------------------------------------------------
@@ -60,6 +81,17 @@ function isLive(state: CallState): boolean {
   return state === 'dialling' || state === 'ringing' || state === 'connected';
 }
 
+/**
+ * Synth tone to play as the call enters a given state (when synth tones are
+ * enabled). Terminal states are handled separately: `ended` plays `hangup` via
+ * the driver's `onEnded`, and `idle`/`awaiting-outcome` are silent.
+ */
+const TONE_FOR_STATE: Partial<Record<CallState, ToneName>> = {
+  dialling: 'dialling',
+  ringing: 'ringing',
+  connected: 'answered',
+};
+
 /** Tone for the live-state badge dot/text. */
 const STATE_TONE: Record<CallState, { color: string; bg: string; pulse: boolean }> = {
   idle: { color: 'var(--text-tertiary)', bg: 'var(--neutral-100)', pulse: false },
@@ -70,14 +102,26 @@ const STATE_TONE: Record<CallState, { color: string; bg: string; pulse: boolean 
   'awaiting-outcome': { color: 'var(--violet-700)', bg: 'var(--violet-50)', pulse: false },
 };
 
-export default function DiallerRun({ queue }: DiallerRunProps) {
+export default function DiallerRun({
+  queue,
+  autoDial = false,
+  interCallDelaySec = DEFAULT_INTER_CALL_DELAY_SEC,
+  synthTones = false,
+}: DiallerRunProps) {
   const outcomes = useMemo(() => getDiallerOutcomes(), []);
+
+  // Lifecycle tone player. A no-op when synth tones are off, so it can be driven
+  // unconditionally; identity is stable for the life of a run (synthTones is a
+  // server-resolved prop that does not change client-side).
+  const tonePlayer = useMemo(() => createTonePlayer(synthTones), [synthTones]);
 
   const [index, setIndex] = useState(0);
   const [callState, setCallState] = useState<CallState>('idle');
   const [callError, setCallError] = useState<string | null>(null);
   const [recording, setRecording] = useState<CallOutcomeKey | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  // Seconds left before the next contact auto-dials, or null when not pending.
+  const [autoCountdown, setAutoCountdown] = useState<number | null>(null);
 
   const controlRef = useRef<CallControl | null>(null);
 
@@ -89,27 +133,33 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
   const resetForNext = useCallback(() => {
     controlRef.current?.hangup();
     controlRef.current = null;
+    tonePlayer.stop();
     setCallState('idle');
     setCallError(null);
     setRecording(null);
     setRecordError(null);
-  }, []);
+  }, [tonePlayer]);
 
   useEffect(() => {
-    // Cleanup on unmount: stop any in-flight mock call timers.
+    // Cleanup on unmount: stop any in-flight mock call timers, and dispose the
+    // tone player so its AudioContext is closed (not just paused) — browsers
+    // cap AudioContexts per page, so we must release it on every unmount.
     return () => {
       controlRef.current?.hangup();
       controlRef.current = null;
+      tonePlayer.dispose();
     };
-  }, []);
+  }, [tonePlayer]);
 
   const advance = useCallback(() => {
+    setAutoCountdown(null);
     resetForNext();
     setIndex((i) => i + 1);
   }, [resetForNext]);
 
   const startCall = useCallback(() => {
     if (!current) return;
+    setAutoCountdown(null); // a manual/auto dial supersedes any pending countdown
     setCallError(null);
     try {
       // getDiallerDriver()/placeCall can throw synchronously (e.g. the Telnyx
@@ -117,9 +167,17 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
       // misconfigured driver surfaces an error state instead of crashing.
       const driver = getDiallerDriver();
       const control = driver.placeCall(current.dialNumber, {
-        onStateChange: (call) => setCallState(call.state),
-        onEnded: () => setCallState('awaiting-outcome'),
+        onStateChange: (call) => {
+          setCallState(call.state);
+          const tone = TONE_FOR_STATE[call.state];
+          if (tone) tonePlayer.play(tone);
+        },
+        onEnded: () => {
+          tonePlayer.play('hangup');
+          setCallState('awaiting-outcome');
+        },
         onError: (err) => {
+          tonePlayer.stop();
           setCallError(err.message);
           setCallState('idle');
         },
@@ -129,11 +187,13 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
       setCallError(err instanceof Error ? err.message : 'Could not start the call');
       setCallState('idle');
     }
-  }, [current]);
+  }, [current, tonePlayer]);
 
   const hangup = useCallback(() => {
     controlRef.current?.hangup();
   }, []);
+
+  const cancelAutoDial = useCallback(() => setAutoCountdown(null), []);
 
   const record = useCallback(
     async (outcome: CallOutcomeKey) => {
@@ -142,14 +202,41 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
       setRecordError(null);
       try {
         await logCallOutcome(current.id, { outcome });
+        const hasNext = index + 1 < total;
         advance();
+        // In auto-dial mode, queue the next contact to dial itself after the
+        // inter-call delay (the countdown effect picks this up once `advance`
+        // has moved to the next contact). Manual mode waits for a click.
+        if (autoDial && hasNext) {
+          setAutoCountdown(interCallDelaySec);
+        }
       } catch (err) {
         setRecordError(err instanceof Error ? err.message : 'Failed to record outcome');
         setRecording(null);
       }
     },
-    [current, recording, advance],
+    [current, recording, advance, autoDial, interCallDelaySec, index, total],
   );
+
+  // Auto-dial countdown: tick once a second, then place the call on the (already
+  // advanced) current contact when it reaches zero. Cancelled by clearing
+  // `autoCountdown` (manual dial, skip, or the explicit Cancel button).
+  useEffect(() => {
+    if (autoCountdown === null) return undefined;
+    if (autoCountdown <= 0) {
+      // Time's up — fire from the timeout callback (not synchronously in the
+      // effect body) so we don't trigger a cascading render.
+      const timer = setTimeout(() => {
+        setAutoCountdown(null);
+        if (current && callState === 'idle') startCall();
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+    const timer = setTimeout(() => {
+      setAutoCountdown((c) => (c === null ? null : c - 1));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [autoCountdown, current, callState, startCall]);
 
   // --- Empty / completed states ---------------------------------------------
 
@@ -268,9 +355,23 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
           </div>
 
           {callState === 'idle' ? (
-            <Button variant="primary" size="lg" icon="phone" onClick={startCall}>
-              Call
-            </Button>
+            autoCountdown !== null ? (
+              <div className="row gap-3 center">
+                <span className="sm muted" role="status" style={{ whiteSpace: 'nowrap' }}>
+                  Auto-dialling in {autoCountdown}s…
+                </span>
+                <Button variant="secondary" size="lg" onClick={cancelAutoDial}>
+                  Cancel
+                </Button>
+                <Button variant="primary" size="lg" icon="phone" onClick={startCall}>
+                  Call now
+                </Button>
+              </div>
+            ) : (
+              <Button variant="primary" size="lg" icon="phone" onClick={startCall}>
+                Call
+              </Button>
+            )
           ) : isLive(callState) ? (
             <Button variant="danger" size="lg" icon="phoneOff" onClick={hangup}>
               Hang up
