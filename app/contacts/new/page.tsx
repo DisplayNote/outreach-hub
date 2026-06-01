@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ContactForm from '@/components/contact-form';
 import { createContact } from '@/lib/actions/contacts';
@@ -6,6 +7,7 @@ import { createClient } from '@/lib/supabase/server';
 import { listCampaigns } from '@/lib/supabase/queries';
 import type { ContactStatus } from '@/lib/types/domain';
 import { CONTACT_STATUSES } from '@/lib/types/domain';
+import { Card, EmptyState } from '@/components/ui';
 
 // Auth state + campaign list change per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -37,13 +39,6 @@ function sequenceDay(formData: FormData): number | null {
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
 
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
-
 export default async function NewContactPage() {
   const supabase = await createClient();
   const {
@@ -60,42 +55,26 @@ export default async function NewContactPage() {
   // first rather than rendering a form that can never submit.
   if (campaigns.length === 0) {
     return (
-      <main style={mainStyle}>
-        <h1 style={{ marginBottom: '0.25rem' }}>New contact</h1>
-        <div
-          style={{
-            marginTop: '1.5rem',
-            padding: '2rem',
-            textAlign: 'center',
-            color: '#666',
-            background: '#fafafa',
-            border: '1px solid #eee',
-            borderRadius: 6,
-          }}
-        >
-          <p style={{ margin: 0, fontSize: '1.05rem' }}>No campaigns yet.</p>
-          <p style={{ margin: '0.5rem 0 1.25rem', fontSize: '0.9rem' }}>
-            Every contact belongs to a campaign. Create a campaign first, then
-            add contacts to it.
-          </p>
-          <a
-            href="/campaigns/new"
-            style={{
-              padding: '0.55rem 1.25rem',
-              background: '#111',
-              color: '#fff',
-              border: '1px solid #111',
-              borderRadius: 4,
-              fontSize: '0.9375rem',
-              fontWeight: 600,
-              textDecoration: 'none',
-              display: 'inline-block',
-            }}
-          >
-            Create a campaign
-          </a>
+      <div className="content__inner">
+        <div className="page-head">
+          <div>
+            <div className="page-head__title">New contact</div>
+            <div className="page-head__sub">Add a contact to one of your campaigns.</div>
+          </div>
         </div>
-      </main>
+        <Card>
+          <EmptyState
+            icon="campaign"
+            title="No campaigns yet"
+            desc="Every contact belongs to a campaign. Create a campaign first, then add contacts to it."
+            action={
+              <Link href="/campaigns/new" className="btn btn--primary">
+                Create a campaign
+              </Link>
+            }
+          />
+        </Card>
+      </div>
     );
   }
 
@@ -128,17 +107,21 @@ export default async function NewContactPage() {
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>New contact</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Add a contact to one of your campaigns.
-      </p>
-      <ContactForm
-        action={action}
-        campaigns={campaigns}
-        submitLabel="Create contact"
-        cancelHref="/contacts"
-      />
-    </main>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">New contact</div>
+          <div className="page-head__sub">Add a contact to one of your campaigns.</div>
+        </div>
+      </div>
+      <Card>
+        <ContactForm
+          action={action}
+          campaigns={campaigns}
+          submitLabel="Create contact"
+          cancelHref="/contacts"
+        />
+      </Card>
+    </div>
   );
 }

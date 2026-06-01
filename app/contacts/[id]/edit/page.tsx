@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getContact, listCampaigns } from '@/lib/supabase/queries';
 import type { ContactStatus } from '@/lib/types/domain';
 import { CONTACT_STATUSES } from '@/lib/types/domain';
+import { Card } from '@/components/ui';
 
 // Auth state + contact/campaign data change per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -36,13 +37,6 @@ function sequenceDay(formData: FormData): number | null {
   const n = Number(raw);
   return Number.isInteger(n) && n >= 0 ? n : null;
 }
-
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
 
 export default async function EditContactPage({
   params,
@@ -95,18 +89,22 @@ export default async function EditContactPage({
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Edit contact</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Update this contact&rsquo;s details.
-      </p>
-      <ContactForm
-        action={action}
-        campaigns={campaigns}
-        contact={contact}
-        submitLabel="Save changes"
-        cancelHref={`/contacts/${id}`}
-      />
-    </main>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Edit contact</div>
+          <div className="page-head__sub">Update this contact&rsquo;s details.</div>
+        </div>
+      </div>
+      <Card>
+        <ContactForm
+          action={action}
+          campaigns={campaigns}
+          contact={contact}
+          submitLabel="Save changes"
+          cancelHref={`/contacts/${id}`}
+        />
+      </Card>
+    </div>
   );
 }
