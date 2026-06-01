@@ -140,7 +140,7 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
         <div className="row gap-5 center" style={{ flexWrap: 'wrap' }}>
           <select
             aria-label="Campaign"
-            className="select"
+            className="input"
             value={campaignId}
             onChange={(e) => setCampaignId(e.target.value)}
           >
@@ -152,7 +152,7 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
           </select>
           <select
             aria-label="Sequence"
-            className="select"
+            className="input"
             value={sequenceId}
             onChange={(e) => setSequenceId(e.target.value)}
           >

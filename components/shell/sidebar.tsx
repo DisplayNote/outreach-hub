@@ -61,6 +61,7 @@ export default function Sidebar({
               type="submit"
               className="nav-item"
               style={{ width: 'auto', padding: '0 8px' }}
+              aria-label="Sign out"
               title="Sign out"
             >
               <Icon name="logout" size={16} />

@@ -86,7 +86,7 @@ export default function ApolloImportForm({ campaigns }: ApolloImportFormProps) {
               id="campaignId"
               name="campaignId"
               required
-              className="select"
+              className="input"
               value={campaignId}
               onChange={(e) => setCampaignId(e.target.value)}
             >

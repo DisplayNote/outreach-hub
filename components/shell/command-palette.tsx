@@ -31,7 +31,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, filtered.length - 1)); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, Math.max(0, filtered.length - 1))); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
       else if (e.key === 'Enter') {
         const it = filtered[active];

@@ -2,8 +2,6 @@ export interface NavItem {
   href: string;
   label: string;
   icon: string;
-  /** When set, render a count badge sourced at render time. */
-  badge?: 'queueDue';
 }
 export interface NavGroup {
   group: string;
@@ -15,7 +13,7 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     group: 'Outreach',
     items: [
       { href: '/today', label: 'Today', icon: 'dashboard' },
-      { href: '/queue', label: 'Email Queue', icon: 'queue', badge: 'queueDue' },
+      { href: '/queue', label: 'Email Queue', icon: 'queue' },
       { href: '/dialler', label: 'Dialler', icon: 'dialler' },
       { href: '/pipeline', label: 'Pipeline', icon: 'pipeline' },
     ],
