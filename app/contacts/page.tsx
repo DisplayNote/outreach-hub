@@ -20,7 +20,6 @@ function contactName(contact: ContactWithCampaign): string {
   return 'Unnamed contact';
 }
 
-/** Up-to-two-letter initials for the avatar, derived from name/email. */
 /** Format an ISO `YYYY-MM-DD` follow-up date for display. */
 function formatDate(isoDate: string): string {
   // Parse as UTC midnight so the displayed day matches the stored `date`.
@@ -88,7 +87,7 @@ export default async function ContactsPage() {
               </thead>
               <tbody>
                 {contacts.map((contact) => (
-                  <tr key={contact.id} className="row-link">
+                  <tr key={contact.id}>
                     <td>
                       <Link href={`/contacts/${contact.id}`} className="row gap-5 center">
                         <Avatar initials={contactInitials(contact)} size="sm" />

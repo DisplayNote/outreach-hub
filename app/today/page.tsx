@@ -27,7 +27,6 @@ function contactName(contact: Contact): string {
   return 'Unnamed contact';
 }
 
-/** Up-to-two-letter initials for the avatar, derived from name/email. */
 /** `YYYY-MM-DD` today, in UTC, to match how `follow_up` (a SQL date) is compared. */
 function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);

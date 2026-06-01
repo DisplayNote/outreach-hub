@@ -71,7 +71,7 @@ export default async function SequencesPage() {
               </thead>
               <tbody>
                 {sequences.map((sequence) => (
-                  <tr key={sequence.id} className="row-link">
+                  <tr key={sequence.id}>
                     <td>
                       <Link href={`/sequences/${sequence.id}`} className="medb">
                         {sequence.name}

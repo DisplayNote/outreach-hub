@@ -56,7 +56,7 @@ export default async function CampaignsPage() {
               </thead>
               <tbody>
                 {campaigns.map((campaign) => (
-                  <tr key={campaign.id} className="row-link">
+                  <tr key={campaign.id}>
                     <td>
                       <Link href={`/campaigns/${campaign.id}/edit`} className="medb">
                         {campaign.name}

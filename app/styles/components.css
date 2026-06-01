@@ -135,7 +135,6 @@ textarea.input { height: auto; padding: var(--space-4) var(--space-5); line-heig
 .tbl tbody tr.is-selected { background: var(--accent-soft); }
 .tbl tbody tr:last-child td { border-bottom: none; }
 .tbl td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-secondary); }
-.tbl .row-link { cursor: pointer; }
 .tbl-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-5); padding: var(--space-5) var(--space-6); border-top: 1px solid var(--border-subtle); background: var(--bg-subtle); font-size: var(--fs-sm); color: var(--text-secondary); }
 
 /* ---------------- Avatar ---------------- */
