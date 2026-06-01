@@ -18,6 +18,9 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
     [q],
   );
 
+  // State reset on open is handled by the `key` remount in app-shell-client.tsx,
+  // which avoids the react-hooks/set-state-in-effect lint rule. This effect only
+  // manages focus.
   useEffect(() => {
     if (!open) return undefined;
     const t = setTimeout(() => inputRef.current?.focus(), 30);
