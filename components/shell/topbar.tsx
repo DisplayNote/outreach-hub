@@ -42,6 +42,7 @@ export default function Topbar({
   return (
     <header className="topbar">
       <button
+        type="button"
         className="topbar__collapse"
         onClick={onToggle}
         aria-label="Toggle sidebar"
@@ -51,12 +52,13 @@ export default function Topbar({
       </button>
       <div className="topbar__title">{titleForPath(pathname)}</div>
       <div style={{ flex: 1 }} />
-      <button className="topbar__search focusable" onClick={onOpenCommand}>
+      <button type="button" className="topbar__search focusable" onClick={onOpenCommand}>
         <Icon name="search" size={15} />
         <span>Search or jump to…</span>
         <kbd className="kbd">⌘K</kbd>
       </button>
       <button
+        type="button"
         className="topbar__icon-btn"
         onClick={toggleTheme}
         aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}

@@ -48,12 +48,13 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
       className="cmd-overlay"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="cmd" role="dialog" aria-modal="true">
+      <div className="cmd" role="dialog" aria-modal="true" aria-label="Command palette">
         <div className="cmd__input-row">
           <Icon name="search" size={20} style={{ color: 'var(--text-tertiary)' }} />
           <input
             ref={inputRef}
             className="cmd__input"
+            aria-label="Jump to a page"
             placeholder="Jump to a page…"
             value={q}
             onChange={(e) => { setQ(e.target.value); setActive(0); }}
