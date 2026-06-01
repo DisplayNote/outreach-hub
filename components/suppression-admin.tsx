@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addSuppression, removeSuppression } from '@/lib/actions/email';
+import { Button, Card, EmptyState, Field, Icon } from '@/components/ui';
 
 export interface SuppressionRow {
   id: string;
@@ -10,15 +11,6 @@ export interface SuppressionRow {
   reason: string;
   createdAt: string;
 }
-
-const btn: React.CSSProperties = {
-  padding: '0.4rem 0.8rem',
-  border: '1px solid #d1d5db',
-  borderRadius: 6,
-  background: '#fff',
-  fontSize: '0.85rem',
-  cursor: 'pointer',
-};
 
 export default function SuppressionAdmin({ rows }: { rows: readonly SuppressionRow[] }) {
   const router = useRouter();
@@ -43,47 +35,88 @@ export default function SuppressionAdmin({ rows }: { rows: readonly SuppressionR
   );
 
   return (
-    <div>
-      <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
-        <input
-          type="email"
-          aria-label="Email address to suppress"
-          placeholder="address@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{ ...btn, minWidth: 260, cursor: 'text' }}
-        />
-        <button
-          type="button"
-          disabled={busy || email.trim() === ''}
-          onClick={() => run(async () => { await addSuppression({ email, reason: 'manual' }); setEmail(''); })}
-          style={{ ...btn, background: '#111', color: '#fff', borderColor: '#111' }}
-        >
-          Add manual suppression
-        </button>
-      </div>
-      {error ? <p style={{ color: '#b91c1c', fontSize: '0.85rem' }}>{error}</p> : null}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+      <Card title="Add a manual suppression">
+        <div className="row gap-5 center" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ minWidth: 280 }}>
+            <Field label="Email address to suppress" htmlFor="suppress-email">
+              <input
+                id="suppress-email"
+                type="email"
+                className="input"
+                aria-label="Email address to suppress"
+                placeholder="address@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </Field>
+          </div>
+          <Button
+            variant="primary"
+            icon="suppress"
+            disabled={busy || email.trim() === ''}
+            onClick={() =>
+              run(async () => {
+                await addSuppression({ email, reason: 'manual' });
+                setEmail('');
+              })
+            }
+          >
+            Add manual suppression
+          </Button>
+        </div>
+      </Card>
 
-      <ul style={{ listStyle: 'none', padding: 0, marginTop: '1.5rem' }}>
+      {error ? (
+        <div className="banner banner--warning">
+          <span className="banner__icon">
+            <Icon name="alertCircle" size={16} />
+          </span>
+          <span>{error}</span>
+        </div>
+      ) : null}
+
+      <Card title={`Suppressed addresses (${rows.length})`} bodyStyle={{ padding: 0 }}>
         {rows.length === 0 ? (
-          <li style={{ color: '#6b7280', fontSize: '0.9rem' }}>No suppressions.</li>
+          <EmptyState
+            icon="suppress"
+            title="No suppressions"
+            desc="Replies and bounces add addresses here automatically. You can also add one manually above."
+          />
         ) : (
-          rows.map((r) => (
-            <li
-              key={r.id}
-              style={{ padding: '0.6rem 0', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              <span>
-                <strong>{r.email}</strong>{' '}
-                <span style={{ color: '#6b7280', fontSize: '0.85rem' }}>· {r.reason}</span>
-              </span>
-              <button type="button" disabled={busy} onClick={() => run(() => removeSuppression(r.id))} style={btn}>
-                Remove
-              </button>
-            </li>
-          ))
+          <div className="tbl-wrap" style={{ border: 'none', borderRadius: 0 }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th scope="col">Address</th>
+                  <th scope="col">Reason</th>
+                  <th scope="col" style={{ width: 60 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="mono sm">{r.email}</td>
+                    <td className="sm muted">{r.reason}</td>
+                    <td className="num">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon="x"
+                        disabled={busy}
+                        aria-label={`Remove ${r.email}`}
+                        onClick={() => run(() => removeSuppression(r.id))}
+                      >
+                        Remove
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </ul>
+      </Card>
     </div>
   );
 }

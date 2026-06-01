@@ -36,13 +36,17 @@ export default async function SuppressionsPage() {
   }));
 
   return (
-    <main style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: 720, margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Suppressions</h1>
-      <p style={{ marginTop: 0, color: '#666' }}>
-        Addresses that will never be emailed (across all campaigns). Replies and bounces add
-        these automatically; remove one to re-enable sending.
-      </p>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Suppressions</div>
+          <div className="page-head__sub">
+            Addresses that will never be emailed (across all campaigns). Replies and bounces add
+            these automatically; remove one to re-enable sending.
+          </div>
+        </div>
+      </div>
       <SuppressionAdmin rows={rows} />
-    </main>
+    </div>
   );
 }
