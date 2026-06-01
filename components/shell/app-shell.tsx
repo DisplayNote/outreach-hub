@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/server';
-import { getOrgName } from '@/lib/supabase/queries';
 import AppShellClient from './app-shell-client';
 
 export default async function AppShell({ children }: { children: ReactNode }) {
@@ -16,8 +15,11 @@ export default async function AppShell({ children }: { children: ReactNode }) {
   const email = user.email ?? '';
   const mailbox = email || user.id;
   const initials = (email.slice(0, 2) || 'OH').toUpperCase();
-  // Real org name (RLS-scoped) instead of a hard-coded label; fall back if absent.
-  const org = (await getOrgName()) ?? 'Outreach Hub';
+  // Real org name (RLS-scoped) instead of a hard-coded label, read via the
+  // client already created above; fall back if absent. No throw — a missing
+  // org name should never break the shell on every page.
+  const { data: orgRow } = await supabase.from('organizations').select('name').maybeSingle();
+  const org = (orgRow as { name: string | null } | null)?.name ?? 'Outreach Hub';
 
   return (
     <AppShellClient

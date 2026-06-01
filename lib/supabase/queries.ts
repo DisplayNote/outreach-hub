@@ -391,26 +391,6 @@ export async function getOrgSettings(): Promise<OrgSettings> {
   return (settings ?? {}) as OrgSettings;
 }
 
-/**
- * The caller's organization display name (`organizations.name`). RLS scopes the
- * table to the caller's own org, so the single visible row is theirs. Returns
- * `null` when no row is visible, letting the caller pick a fallback label.
- */
-export async function getOrgName(): Promise<string | null> {
-  const supabase = await createClient();
-
-  const { data, error } = await supabase
-    .from('organizations')
-    .select('name')
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`getOrgName: failed to load org name: ${error.message}`);
-  }
-
-  return (data as { name: string | null } | null)?.name ?? null;
-}
-
 /** All templates visible to the caller's org, ordered by name ascending. */
 export async function listTemplates(): Promise<Template[]> {
   const supabase = await createClient();

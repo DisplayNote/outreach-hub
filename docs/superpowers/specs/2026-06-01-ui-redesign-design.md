@@ -51,10 +51,11 @@ data will not be copied. Its CSS will be.
 - No changes to server actions, route handlers, mutations, or any business
   logic. **This is presentation-only.** Small, read-only additions under
   `lib/` that exist purely to drive UI chrome are permitted — specifically a
-  presentation module (`lib/ui/status.ts`, the status pill/label maps) and a
-  read-only query helper (`getOrgName` in `lib/supabase/queries.ts`, used by
-  the app shell to show the real org name). No existing `lib/` logic is
-  modified.
+  presentation module (`lib/ui/status.ts`, the status pill/label maps). The
+  app shell also shows the real org name via a single read-only
+  `organizations.name` select issued through the Supabase client it already
+  created for the auth check (no extra client, no new query helper). No
+  existing `lib/` logic is modified.
 - No new product features beyond presentation.
 - No fake/non-functional UI. Anything in the prototype that lacks a real
   backend is omitted (see §5).
@@ -151,10 +152,10 @@ planning); they are not dropped.
 
 - No edits to `app/**/actions.ts`, `app/api/**`, `app/auth/**`, or any
   mutation/business logic. Presentation layer only, with the one exception
-  noted in §2: read-only `lib/` additions for UI chrome (`lib/ui/status.ts`
-  and the `getOrgName` read query) are allowed. The app shell calls
-  `getOrgName` once per authenticated request to render the real org name — a
-  single RLS-scoped, indexed, read-only lookup with no side effects.
+  noted in §2: a read-only presentation module (`lib/ui/status.ts`) for UI
+  chrome. The app shell renders the real org name with a single RLS-scoped,
+  read-only `organizations.name` select, reusing the Supabase client it
+  already created for the auth check (no second client, no side effects).
 - Every interactive element keeps its **current accessible name / visible
   text** so the e2e suite stays green. Known test-coupled strings that MUST be
   preserved:
