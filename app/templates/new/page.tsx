@@ -3,6 +3,7 @@ import TemplateForm from '@/components/template-form';
 import { createTemplate } from '@/lib/actions/templates';
 import type { CreateTemplateInput } from '@/lib/actions/templates';
 import { createClient } from '@/lib/supabase/server';
+import { Card } from '@/components/ui';
 
 // Auth state changes per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -16,13 +17,6 @@ function text(formData: FormData, key: string): string | null {
   const trimmed = raw.trim();
   return trimmed === '' ? null : trimmed;
 }
-
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
 
 export default async function NewTemplatePage() {
   const supabase = await createClient();
@@ -51,12 +45,16 @@ export default async function NewTemplatePage() {
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>New template</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Create a reusable email template.
-      </p>
-      <TemplateForm action={action} submitLabel="Create template" cancelHref="/templates" />
-    </main>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">New template</div>
+          <div className="page-head__sub">Create a reusable email template.</div>
+        </div>
+      </div>
+      <Card>
+        <TemplateForm action={action} submitLabel="Create template" cancelHref="/templates" />
+      </Card>
+    </div>
   );
 }

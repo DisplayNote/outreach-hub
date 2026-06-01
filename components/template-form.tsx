@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import type { Template } from '@/lib/types/domain';
+import { Button, Field } from '@/components/ui';
 
 /**
  * Shared create/edit form for an email template. Renders one control per
@@ -13,53 +15,9 @@ import type { Template } from '@/lib/types/domain';
  * so a double-click can't fire the action twice. Field names map 1:1 to the
  * camelCase keys the page-level action expects.
  *
- * Styling mirrors the inline-style approach used elsewhere (Tailwind is not
- * wired yet — see components/contact-form.tsx, app/today/page.tsx).
+ * Styling uses the shared design system (Field + .input classes, Button
+ * primitive) — see components/campaign-form.tsx for established conventions.
  */
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: '0.35rem',
-};
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.625rem',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-};
-
-const fieldGroupStyle: React.CSSProperties = {
-  marginBottom: '1.1rem',
-};
-
-const submitStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const cancelStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#fff',
-  color: '#374151',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  textDecoration: 'none',
-  display: 'inline-block',
-};
 
 export interface TemplateFormProps {
   /** Server Action that receives the form's FormData and redirects on success. */
@@ -87,58 +45,55 @@ export default function TemplateForm({
   const [pending, setPending] = useState(false);
 
   return (
-    <form
-      action={action}
-      onSubmit={() => setPending(true)}
-      style={{ fontFamily: 'system-ui, sans-serif' }}
-    >
-      <div style={fieldGroupStyle}>
-        <label htmlFor="name" style={labelStyle}>
-          Name *
-        </label>
-        <input
-          id="name"
-          name="name"
-          type="text"
-          required
-          defaultValue={value(template?.name)}
-          style={fieldStyle}
-        />
+    <form action={action} onSubmit={() => setPending(true)}>
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field label="Name" htmlFor="name" required>
+          <input
+            id="name"
+            name="name"
+            type="text"
+            required
+            defaultValue={value(template?.name)}
+            className="input"
+          />
+        </Field>
       </div>
 
-      <div style={fieldGroupStyle}>
-        <label htmlFor="subject" style={labelStyle}>
-          Subject
-        </label>
-        <input
-          id="subject"
-          name="subject"
-          type="text"
-          defaultValue={value(template?.subject)}
-          style={fieldStyle}
-        />
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field label="Subject" htmlFor="subject">
+          <input
+            id="subject"
+            name="subject"
+            type="text"
+            defaultValue={value(template?.subject)}
+            className="input"
+          />
+        </Field>
       </div>
 
-      <div style={fieldGroupStyle}>
-        <label htmlFor="body" style={labelStyle}>
-          Body
-        </label>
-        <textarea
-          id="body"
-          name="body"
-          rows={12}
-          defaultValue={value(template?.body)}
-          style={{ ...fieldStyle, resize: 'vertical' }}
-        />
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field
+          label="Body"
+          htmlFor="body"
+          hint="Use {firstName}, {company} and other variables — they're rendered per contact when the email sends."
+        >
+          <textarea
+            id="body"
+            name="body"
+            rows={12}
+            defaultValue={value(template?.body)}
+            className="input"
+          />
+        </Field>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-        <button type="submit" disabled={pending} style={submitStyle}>
+      <div className="row gap-4" style={{ marginTop: 'var(--space-7)' }}>
+        <Button type="submit" variant="primary" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}
-        </button>
-        <a href={cancelHref} style={cancelStyle}>
+        </Button>
+        <Link href={cancelHref} className="btn btn--ghost">
           Cancel
-        </a>
+        </Link>
       </div>
     </form>
   );
