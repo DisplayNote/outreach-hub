@@ -5,6 +5,7 @@ import { getOrgSettings, getTodayContacts } from '@/lib/supabase/queries';
 import { pickDialNumber } from '@/lib/dialler/normalise';
 import { isDiallerMockEnabled } from '@/lib/env';
 import type { Contact } from '@/lib/types/domain';
+import { Icon } from '@/components/ui';
 import AmdRun from '@/components/amd-run';
 import type { DiallerQueueItem } from '@/components/dialler-run';
 
@@ -62,29 +63,32 @@ export default async function AmdPage({ searchParams }: AmdPageProps) {
     });
 
   return (
-    <main style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: 720, margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '0.25rem' }}>AMD Run</h1>
-      <p style={{ marginTop: 0, color: '#666' }}>
-        Server-orchestrated dialling with answering-machine detection. <Link href="/dialler">← Back to dialler</Link>
-      </p>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">AMD Run</div>
+          <div className="page-head__sub">
+            Server-orchestrated dialling with answering-machine detection.
+          </div>
+        </div>
+        <div className="page-actions">
+          <Link href="/dialler" className="btn btn--secondary btn--md">
+            <Icon name="chevronsLeft" size={16} />
+            <span>Back to dialler</span>
+          </Link>
+        </div>
+      </div>
+
       {isDiallerMockEnabled() ? (
-        <p
-          style={{
-            display: 'inline-block',
-            margin: '0.5rem 0 0',
-            padding: '0.2rem 0.6rem',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            color: '#92400e',
-            background: '#fef3c7',
-            borderRadius: 4,
-          }}
-        >
-          Mock dialler — no real calls placed
-        </p>
+        <div className="banner banner--warning" style={{ marginBottom: 'var(--space-6)' }}>
+          <span className="banner__icon">
+            <Icon name="voicemail" size={16} />
+          </span>
+          <span>Mock dialler — no real calls placed</span>
+        </div>
       ) : null}
 
       <AmdRun queue={queue} callDelayMs={callDelayMs} />
-    </main>
+    </div>
   );
 }
