@@ -139,10 +139,10 @@ export default async function SequenceEditorPage({
       <div style={{ marginTop: 'var(--space-6)' }}>
         <Card title="Steps" bodyStyle={{ padding: 0 }}>
           <div style={{ padding: 'var(--space-5) var(--space-6) 0' }}>
-          <p className="sm muted" style={{ margin: 0 }}>
-            Ordered touchpoints, each scheduled a number of days from the sequence start.
-          </p>
-        </div>
+            <p className="sm muted" style={{ margin: 0 }}>
+              Ordered touchpoints, each scheduled a number of days from the sequence start.
+            </p>
+          </div>
 
         {sequence.steps.length === 0 ? (
           <EmptyState

@@ -16,9 +16,16 @@ export default async function AppShell({ children }: { children: ReactNode }) {
   const mailbox = email || user.id;
   const initials = (email.slice(0, 2) || 'OH').toUpperCase();
   // Real org name (RLS-scoped) instead of a hard-coded label, read via the
-  // client already created above; fall back if absent. No throw — a missing
-  // org name should never break the shell on every page.
-  const { data: orgRow } = await supabase.from('organizations').select('name').maybeSingle();
+  // client already created above; fall back if absent. We don't throw — a
+  // missing/failed org name should never break the shell on every page — but
+  // we log any error so an RLS misconfig or multi-row result is still findable.
+  const { data: orgRow, error: orgError } = await supabase
+    .from('organizations')
+    .select('name')
+    .maybeSingle();
+  if (orgError) {
+    console.error('AppShell: failed to load org name', orgError);
+  }
   const org = (orgRow as { name: string | null } | null)?.name ?? 'Outreach Hub';
 
   return (

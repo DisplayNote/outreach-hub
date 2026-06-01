@@ -69,7 +69,16 @@ export default function Topbar({
       <div className="sending-as" title={`Sending as ${user.mailbox}`}>
         <span className="sending-as__dot" />
         <Icon name="microsoft" size={13} />
-        <span>{user.mailbox.split('@')[0]}</span>
+        <span
+          style={{
+            maxWidth: 160,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {user.mailbox.split('@')[0]}
+        </span>
       </div>
     </header>
   );
