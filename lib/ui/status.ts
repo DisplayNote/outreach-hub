@@ -1,5 +1,16 @@
 import type { ContactStatus } from '@/lib/types/domain';
-import type { PillSpec } from '@/components/ui/pill';
+
+/**
+ * Presentational spec for a status pill. Defined here (not in the Pill
+ * component) so this `lib/` module doesn't depend on `components/`; the Pill
+ * component imports the type from here instead.
+ */
+export interface PillSpec {
+  label: string;
+  fg: string;
+  bg: string;
+  dot: string;
+}
 
 export const STATUS_PILLS: Record<ContactStatus, PillSpec> = {
   none: { label: 'No status', fg: 'var(--neutral-600)', bg: 'var(--neutral-100)', dot: 'var(--neutral-400)' },

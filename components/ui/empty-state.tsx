@@ -19,7 +19,7 @@ export default function EmptyState({
       </div>
       <div className="empty__title">{title}</div>
       {desc && <div className="empty__desc">{desc}</div>}
-      {action && <div style={{ marginTop: 4 }}>{action}</div>}
+      {action && <div style={{ marginTop: 'var(--space-2)' }}>{action}</div>}
     </div>
   );
 }

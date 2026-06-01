@@ -1,9 +1,6 @@
-export interface PillSpec {
-  label: string;
-  fg: string;
-  bg: string;
-  dot: string;
-}
+import type { PillSpec } from '@/lib/ui/status';
+
+export type { PillSpec };
 
 export default function Pill({ spec, withDot = true }: { spec: PillSpec; withDot?: boolean }) {
   return (
