@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getOrgSettings, getTodayContacts, listCampaigns } from '@/lib/supabase/queries';
 import { pickDialNumber } from '@/lib/dialler/normalise';
 import type { Contact } from '@/lib/types/domain';
+import { Button, Card, Field, Icon } from '@/components/ui';
 import DiallerRun, { type DiallerQueueItem } from '@/components/dialler-run';
 
 // Auth state + the due-call queue change per request; never prerender.
@@ -73,64 +74,44 @@ export default async function DiallerPage({ searchParams }: DiallerPageProps) {
     });
 
   return (
-    <main
-      style={{
-        padding: '2rem',
-        fontFamily: 'system-ui, sans-serif',
-        maxWidth: 720,
-        margin: '0 auto',
-      }}
-    >
-      <h1 style={{ marginBottom: '0.25rem' }}>Dialler</h1>
-      <p style={{ marginTop: 0, color: '#666' }}>
-        Work through your due calls one contact at a time.{' '}
-        <Link href="/dialler/amd">Start an AMD run →</Link>
-      </p>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Dialler</div>
+          <div className="page-head__sub">Work through your due calls one contact at a time.</div>
+        </div>
+        <div className="page-actions">
+          <Link href="/dialler/amd" className="btn btn--secondary btn--md">
+            <Icon name="voicemail" size={16} />
+            <span>Start an AMD run</span>
+          </Link>
+        </div>
+      </div>
 
       {/* Campaign filter — a plain GET form so it works without client JS. */}
-      <form
-        method="get"
-        style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}
-      >
-        <label htmlFor="campaign" style={{ fontSize: '0.875rem', color: '#374151' }}>
-          Campaign
-        </label>
-        <select
-          id="campaign"
-          name="campaign"
-          defaultValue={campaignFilter ?? ''}
-          style={{
-            padding: '0.4rem 0.6rem',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
-            fontSize: '0.9rem',
-            fontFamily: 'inherit',
-          }}
-        >
-          <option value="">All campaigns</option>
-          {campaigns.map((campaign) => (
-            <option key={campaign.id} value={campaign.id}>
-              {campaign.name}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          style={{
-            padding: '0.4rem 0.9rem',
-            background: '#fff',
-            color: '#374151',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
-            fontSize: '0.9rem',
-            cursor: 'pointer',
-          }}
-        >
-          Apply
-        </button>
-      </form>
+      <Card bodyStyle={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-5)', alignItems: 'flex-end' }}>
+        <form method="get" className="row gap-5" style={{ alignItems: 'flex-end' }}>
+          <div style={{ minWidth: 220 }}>
+            <Field label="Campaign" htmlFor="campaign">
+              <select id="campaign" name="campaign" className="input" defaultValue={campaignFilter ?? ''}>
+                <option value="">All campaigns</option>
+                {campaigns.map((campaign) => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Button type="submit" variant="secondary" icon="search">
+            Apply
+          </Button>
+        </form>
+      </Card>
 
-      <DiallerRun queue={queue} />
-    </main>
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <DiallerRun queue={queue} />
+      </div>
+    </div>
   );
 }

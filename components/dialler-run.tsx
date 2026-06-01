@@ -5,6 +5,8 @@ import { logCallOutcome, type CallOutcomeKey } from '@/lib/actions/dialler';
 import { getDiallerDriver, getDiallerOutcomes } from '@/lib/dialler';
 import type { CallControl, CallState } from '@/lib/dialler/types';
 import type { ContactStatus } from '@/lib/types/domain';
+import { Avatar, Button, Card, EmptyState, Icon, Pill } from '@/components/ui';
+import { STATUS_PILLS } from '@/lib/ui/status';
 
 /**
  * Client-side dialler run controller.
@@ -42,15 +44,15 @@ export interface DiallerRunProps {
 
 // --- Display helpers ---------------------------------------------------------
 
-const STATUS_LABELS: Record<ContactStatus, string> = {
-  none: 'No status',
-  amber: 'Amber',
-  red: 'Red',
-  green: 'Green',
-  meeting: 'Meeting',
-  notinterested: 'Not interested',
-  bounced: 'Bounced',
-};
+/** Up-to-two-letter initials from a queue item's display name. */
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
+  }
+  const single = parts[0] ?? '';
+  return (single.slice(0, 2) || '?').toUpperCase();
+}
 
 const CALL_STATE_LABELS: Record<CallState, string> = {
   idle: 'Ready to call',
@@ -66,54 +68,14 @@ function isLive(state: CallState): boolean {
   return state === 'dialling' || state === 'ringing' || state === 'connected';
 }
 
-// --- Styles ------------------------------------------------------------------
-
-const cardStyle: React.CSSProperties = {
-  marginTop: '1.5rem',
-  padding: '1.5rem',
-  border: '1px solid #e5e7eb',
-  borderRadius: 8,
-  background: '#fff',
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  padding: '0.6rem 1.4rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 6,
-  fontSize: '0.95rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  padding: '0.6rem 1.2rem',
-  background: '#fff',
-  color: '#374151',
-  border: '1px solid #d1d5db',
-  borderRadius: 6,
-  fontSize: '0.9375rem',
-  cursor: 'pointer',
-};
-
-const dangerButtonStyle: React.CSSProperties = {
-  ...primaryButtonStyle,
-  background: '#b91c1c',
-  borderColor: '#b91c1c',
-};
-
-const outcomeButtonStyle: React.CSSProperties = {
-  display: 'block',
-  width: '100%',
-  textAlign: 'left',
-  padding: '0.7rem 0.9rem',
-  background: '#f9fafb',
-  border: '1px solid #d1d5db',
-  borderRadius: 6,
-  fontSize: '0.9375rem',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
+/** Tone for the live-state badge dot/text. */
+const STATE_TONE: Record<CallState, { color: string; bg: string; pulse: boolean }> = {
+  idle: { color: 'var(--text-tertiary)', bg: 'var(--neutral-100)', pulse: false },
+  dialling: { color: 'var(--blue-700)', bg: 'var(--blue-50)', pulse: true },
+  ringing: { color: 'var(--blue-700)', bg: 'var(--blue-50)', pulse: true },
+  connected: { color: 'var(--green-700)', bg: 'var(--green-50)', pulse: false },
+  ended: { color: 'var(--text-tertiary)', bg: 'var(--neutral-100)', pulse: false },
+  'awaiting-outcome': { color: 'var(--violet-700)', bg: 'var(--violet-50)', pulse: false },
 };
 
 export default function DiallerRun({ queue }: DiallerRunProps) {
@@ -201,75 +163,47 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
 
   if (total === 0) {
     return (
-      <div
-        style={{
-          marginTop: '2rem',
-          padding: '2rem',
-          textAlign: 'center',
-          color: '#666',
-          background: '#fafafa',
-          border: '1px solid #eee',
-          borderRadius: 6,
-        }}
-      >
-        <p style={{ margin: 0, fontSize: '1.05rem' }}>No calls in the queue.</p>
-        <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem' }}>
-          Nobody is due for a call right now, or no due contact has a phone number.
-        </p>
-      </div>
+      <Card bodyStyle={{ padding: 0 }}>
+        <EmptyState
+          icon="dialler"
+          title="No calls in the queue"
+          desc="Nobody is due for a call right now, or no due contact has a phone number."
+        />
+      </Card>
     );
   }
 
   if (done || !current) {
     return (
-      <div
-        style={{
-          marginTop: '2rem',
-          padding: '2rem',
-          textAlign: 'center',
-          color: '#166534',
-          background: '#f0fdf4',
-          border: '1px solid #bbf7d0',
-          borderRadius: 6,
-        }}
-      >
-        <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>
-          Queue complete.
-        </p>
-        <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem', color: '#15803d' }}>
-          You worked through all {total} {total === 1 ? 'call' : 'calls'}.
-        </p>
-      </div>
+      <Card bodyStyle={{ padding: 0 }}>
+        <EmptyState
+          icon="checkCircle"
+          title="Queue complete"
+          desc={`You worked through all ${total} ${total === 1 ? 'call' : 'calls'}.`}
+        />
+      </Card>
     );
   }
 
   // --- Active run ------------------------------------------------------------
 
   const showOutcomes = callState === 'awaiting-outcome';
+  const tone = STATE_TONE[callState];
 
   return (
-    <div>
+    <div className="col gap-6">
       {/* Progress */}
-      <div
-        style={{
-          marginTop: '1.5rem',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: '0.875rem',
-          color: '#6b7280',
-        }}
-      >
-        <span>
+      <div className="row gap-5 center">
+        <span className="sm muted" style={{ whiteSpace: 'nowrap' }}>
           Call {index + 1} of {total}
         </span>
-        <span aria-hidden style={{ flex: 1, margin: '0 1rem' }}>
+        <span aria-hidden className="grow">
           <span
             style={{
               display: 'block',
               height: 6,
-              borderRadius: 3,
-              background: '#e5e7eb',
+              borderRadius: 'var(--radius-full)',
+              background: 'var(--neutral-150)',
               overflow: 'hidden',
             }}
           >
@@ -278,8 +212,8 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
                 display: 'block',
                 height: '100%',
                 width: `${(index / total) * 100}%`,
-                background: '#111',
-                transition: 'width 0.2s',
+                background: 'var(--accent)',
+                transition: 'width var(--dur-base)',
               }}
             />
           </span>
@@ -287,124 +221,120 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
       </div>
 
       {/* Current contact */}
-      <div style={cardStyle}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            justifyContent: 'space-between',
-            gap: '1rem',
-          }}
-        >
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{current.name}</h2>
-            <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.9rem' }}>
-              {[current.jobTitle, current.company].filter(Boolean).join(' · ') || '—'}
-            </p>
+      <Card>
+        <div className="row gap-5 center between">
+          <div className="row gap-5 center" style={{ minWidth: 0 }}>
+            <Avatar initials={initialsFor(current.name)} size="lg" />
+            <div style={{ minWidth: 0 }}>
+              <div className="semib" style={{ fontSize: 'var(--fs-h3)' }}>
+                {current.name}
+              </div>
+              <div className="sm muted">
+                {[current.jobTitle, current.company].filter(Boolean).join(' · ') || '—'}
+              </div>
+            </div>
           </div>
-          <span
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.03em',
-              color: '#6b7280',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {STATUS_LABELS[current.status]}
-          </span>
+          <Pill spec={STATUS_PILLS[current.status]} />
         </div>
 
         <div
+          className="row gap-5 center between"
           style={{
-            marginTop: '1rem',
-            paddingTop: '1rem',
-            borderTop: '1px solid #f3f4f6',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '1rem',
+            marginTop: 'var(--space-6)',
+            paddingTop: 'var(--space-6)',
+            borderTop: '1px solid var(--border-subtle)',
           }}
         >
           <div>
             <a
               href={`tel:${current.dialNumber}`}
-              style={{ fontSize: '1.1rem', fontWeight: 600, color: '#111', textDecoration: 'none' }}
+              className="mono semib"
+              style={{ fontSize: 'var(--fs-h3)', color: 'var(--text-primary)', textDecoration: 'none' }}
             >
               {current.dialNumber}
             </a>
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.85rem', color: '#9ca3af' }}>
-              {CALL_STATE_LABELS[callState]}
-            </p>
+            <div className="row gap-3 center" style={{ marginTop: 'var(--space-3)' }}>
+              <span
+                className="pill"
+                style={{
+                  color: tone.color,
+                  background: tone.bg,
+                  height: 24,
+                  fontSize: 'var(--fs-caption)',
+                }}
+              >
+                <span
+                  className="pill__dot"
+                  style={{
+                    background: tone.color,
+                    ...(tone.pulse ? { animation: 'oh-fade-in 0.8s infinite alternate' } : {}),
+                  }}
+                />
+                {CALL_STATE_LABELS[callState]}
+              </span>
+            </div>
           </div>
 
           {callState === 'idle' ? (
-            <button type="button" onClick={startCall} style={primaryButtonStyle}>
+            <Button variant="primary" icon="phone" onClick={startCall}>
               Call
-            </button>
+            </Button>
           ) : isLive(callState) ? (
-            <button type="button" onClick={hangup} style={dangerButtonStyle}>
+            <Button variant="danger" icon="x" onClick={hangup}>
               Hang up
-            </button>
+            </Button>
           ) : null}
         </div>
 
         {callError ? (
-          <p style={{ margin: '0.75rem 0 0', color: '#b91c1c', fontSize: '0.85rem' }}>
-            {callError}
-          </p>
+          <div className="banner banner--danger" style={{ marginTop: 'var(--space-5)' }}>
+            <span className="banner__icon">
+              <Icon name="alertCircle" size={16} />
+            </span>
+            <span>{callError}</span>
+          </div>
         ) : null}
-      </div>
+      </Card>
 
       {/* Outcome buttons */}
       {showOutcomes ? (
-        <div style={cardStyle}>
-          <h3 style={{ margin: '0 0 0.9rem', fontSize: '0.95rem', color: '#374151' }}>
-            What happened?
-          </h3>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: '0.6rem',
-            }}
-          >
+        <Card title="What happened?">
+          <div className="outcome-grid">
             {outcomes.map((outcome) => (
               <button
                 key={outcome.key}
                 type="button"
+                className="outcome-btn"
                 disabled={recording !== null}
                 onClick={() => record(outcome.key)}
                 style={{
-                  ...outcomeButtonStyle,
                   opacity: recording !== null && recording !== outcome.key ? 0.5 : 1,
                   cursor: recording !== null ? 'wait' : 'pointer',
                 }}
               >
-                {recording === outcome.key ? 'Saving…' : outcome.label}
+                <span className="outcome-btn__label">
+                  {recording === outcome.key ? 'Saving…' : outcome.label}
+                </span>
               </button>
             ))}
           </div>
 
           {recordError ? (
-            <p style={{ margin: '0.75rem 0 0', color: '#b91c1c', fontSize: '0.85rem' }}>
-              {recordError}
-            </p>
+            <div className="banner banner--danger" style={{ marginTop: 'var(--space-5)' }}>
+              <span className="banner__icon">
+                <Icon name="alertCircle" size={16} />
+              </span>
+              <span>{recordError}</span>
+            </div>
           ) : null}
-        </div>
+        </Card>
       ) : null}
 
       {/* Skip / next */}
-      <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.75rem' }}>
-        <button
-          type="button"
-          onClick={advance}
-          disabled={recording !== null}
-          style={secondaryButtonStyle}
-        >
+      <div className="row gap-5">
+        <Button variant="secondary" onClick={advance} disabled={recording !== null}>
           {showOutcomes ? 'Skip without logging' : 'Skip contact'}
-        </button>
+        </Button>
       </div>
     </div>
   );
