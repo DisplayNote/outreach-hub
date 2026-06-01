@@ -4,10 +4,13 @@ import MicrosoftSignIn from './microsoft-sign-in';
 
 export const dynamic = 'force-dynamic';
 
-const BRAND_STATS: ReadonlyArray<readonly [string, string]> = [
-  ['45', 'emails / day'],
-  ['40', 'calls / day'],
-  ['1-click', 'logging'],
+// Capability highlights (not metrics): the login splash is pre-auth, so there
+// is no real data to show — keep these as feature copy rather than fabricated
+// per-day numbers.
+const BRAND_FEATURES: ReadonlyArray<readonly [string, string]> = [
+  ['Sequenced', 'email steps'],
+  ['Click-to-call', 'with voicemail detection'],
+  ['1-click', 'outcome logging'],
 ];
 
 export default function LoginPage() {
@@ -155,9 +158,9 @@ export default function LoginPage() {
             logging — all from one mailbox you already own.
           </p>
           <div className="row gap-7" style={{ marginTop: 'var(--space-9)' }}>
-            {BRAND_STATS.map(([num, label]) => (
+            {BRAND_FEATURES.map(([title, label]) => (
               <div key={label}>
-                <div style={{ fontSize: 24, fontWeight: 600 }}>{num}</div>
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{title}</div>
                 <div className="cap" style={{ color: 'rgba(255,255,255,0.7)' }}>
                   {label}
                 </div>
