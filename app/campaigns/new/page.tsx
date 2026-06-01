@@ -3,6 +3,7 @@ import CampaignForm from '@/components/campaign-form';
 import { createCampaign } from '@/lib/actions/campaigns';
 import type { CreateCampaignInput } from '@/lib/actions/campaigns';
 import { createClient } from '@/lib/supabase/server';
+import { Card } from '@/components/ui';
 
 // Auth state changes per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -16,13 +17,6 @@ function text(formData: FormData, key: string): string | null {
   const trimmed = raw.trim();
   return trimmed === '' ? null : trimmed;
 }
-
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
 
 export default async function NewCampaignPage() {
   const supabase = await createClient();
@@ -50,12 +44,16 @@ export default async function NewCampaignPage() {
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>New campaign</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Create a campaign to group your outreach contacts.
-      </p>
-      <CampaignForm action={action} submitLabel="Create campaign" cancelHref="/campaigns" />
-    </main>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">New campaign</div>
+          <div className="page-head__sub">Create a campaign to group your outreach contacts.</div>
+        </div>
+      </div>
+      <Card>
+        <CampaignForm action={action} submitLabel="Create campaign" cancelHref="/campaigns" />
+      </Card>
+    </div>
   );
 }
