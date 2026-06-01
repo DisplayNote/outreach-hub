@@ -37,6 +37,7 @@ export default function Sidebar({
                   key={it.href}
                   href={it.href}
                   className={`nav-item ${active ? 'is-active' : ''}`}
+                  aria-label={it.label}
                   title={it.label}
                 >
                   <span className="nav-item__icon">
