@@ -5,6 +5,7 @@ import { listContacts } from '@/lib/supabase/queries';
 import type { ContactWithCampaign } from '@/lib/supabase/queries';
 import { Avatar, Card, EmptyState, Pill } from '@/components/ui';
 import { STATUS_PILLS } from '@/lib/ui/status';
+import { contactInitials } from '@/lib/ui/initials';
 
 // Auth state + the contact list change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -20,16 +21,6 @@ function contactName(contact: ContactWithCampaign): string {
 }
 
 /** Up-to-two-letter initials for the avatar, derived from name/email. */
-function contactInitials(contact: ContactWithCampaign): string {
-  const first = contact.firstName?.trim()?.[0] ?? '';
-  const last = contact.lastName?.trim()?.[0] ?? '';
-  const initials = `${first}${last}`.trim();
-  if (initials) return initials.toUpperCase();
-  const email = contact.email?.trim();
-  if (email) return email.slice(0, 2).toUpperCase();
-  return '?';
-}
-
 /** Format an ISO `YYYY-MM-DD` follow-up date for display. */
 function formatDate(isoDate: string): string {
   // Parse as UTC midnight so the displayed day matches the stored `date`.

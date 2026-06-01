@@ -9,6 +9,7 @@ import StatusSelect from '@/app/contacts/[id]/status-select';
 import ClickToCall from '@/components/click-to-call';
 import { Avatar, Button, Card, EmptyState, Field, Icon, Pill } from '@/components/ui';
 import { STATUS_PILLS, STATUS_LABELS } from '@/lib/ui/status';
+import { contactInitials } from '@/lib/ui/initials';
 
 // Auth state + contact data change per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -44,16 +45,6 @@ function contactName(contact: Contact): string {
 }
 
 /** Up-to-two-letter initials for the avatar, derived from name/email. */
-function contactInitials(contact: Contact): string {
-  const first = contact.firstName?.trim()?.[0] ?? '';
-  const last = contact.lastName?.trim()?.[0] ?? '';
-  const initials = `${first}${last}`.trim();
-  if (initials) return initials.toUpperCase();
-  const email = contact.email?.trim();
-  if (email) return email.slice(0, 2).toUpperCase();
-  return '?';
-}
-
 /** Format an ISO `YYYY-MM-DD` date for display. */
 function formatDate(isoDate: string): string {
   const date = new Date(`${isoDate}T00:00:00Z`);

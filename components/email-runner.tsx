@@ -17,6 +17,7 @@ import {
   simulateInbound,
 } from '@/lib/actions/email';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Icon } from '@/components/ui';
+import { initials } from '@/lib/ui/initials';
 
 export interface QueueItem {
   contactId: string;
@@ -31,17 +32,6 @@ export interface EmailRunnerProps {
   emailMockEnabled: boolean;
   campaigns: ReadonlyArray<{ id: string; name: string }>;
   sequences: ReadonlyArray<{ id: string; name: string }>;
-}
-
-/** Up-to-two-letter initials from a contact's display name / email. */
-function initialsFor(item: QueueItem): string {
-  const source = item.name.trim() || item.email.trim();
-  if (source === '') return '?';
-  const parts = source.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
-  }
-  return source.slice(0, 2).toUpperCase();
 }
 
 export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequences }: EmailRunnerProps) {
@@ -213,7 +203,7 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
                     <td className="num tert">{i + 1}</td>
                     <td>
                       <div className="row gap-5 center">
-                        <Avatar initials={initialsFor(q)} size="sm" />
+                        <Avatar initials={initials(q.name, q.email)} size="sm" />
                         <div style={{ minWidth: 0 }}>
                           <div className="medb" style={{ whiteSpace: 'nowrap' }}>
                             {q.name}

@@ -4,6 +4,7 @@ import { getTodayContacts } from '@/lib/supabase/queries';
 import type { Contact, TouchpointChannel } from '@/lib/types/domain';
 import { Avatar, Badge, Card, EmptyState, Pill } from '@/components/ui';
 import { STATUS_PILLS } from '@/lib/ui/status';
+import { contactInitials } from '@/lib/ui/initials';
 
 // Auth state + due-today data change per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -27,16 +28,6 @@ function contactName(contact: Contact): string {
 }
 
 /** Up-to-two-letter initials for the avatar, derived from name/email. */
-function contactInitials(contact: Contact): string {
-  const first = contact.firstName?.trim()?.[0] ?? '';
-  const last = contact.lastName?.trim()?.[0] ?? '';
-  const initials = `${first}${last}`.trim();
-  if (initials) return initials.toUpperCase();
-  const email = contact.email?.trim();
-  if (email) return email.slice(0, 2).toUpperCase();
-  return '?';
-}
-
 /** `YYYY-MM-DD` today, in UTC, to match how `follow_up` (a SQL date) is compared. */
 function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);

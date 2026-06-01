@@ -28,8 +28,7 @@
 .app.is-collapsed .nav-item__label, .app.is-collapsed .nav-item__badge { display: none; }
 
 .sidebar__foot { padding: var(--space-4); border-top: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
-.sidebar-user { display: flex; align-items: center; gap: var(--space-5); padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); cursor: pointer; }
-.sidebar-user:hover { background: rgba(255,255,255,0.06); }
+.sidebar-user { display: flex; align-items: center; gap: var(--space-5); padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); }
 .sidebar-user__meta { min-width: 0; flex: 1; }
 .sidebar-user__name { color: #fff; font-size: var(--fs-sm); font-weight: var(--fw-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-user__mail { color: var(--neutral-400); font-size: var(--fs-micro); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

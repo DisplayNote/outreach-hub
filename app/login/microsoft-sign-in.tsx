@@ -42,6 +42,7 @@ export default function MicrosoftSignIn() {
         style={{ width: '100%', justifyContent: 'center' }}
         onClick={handleSignIn}
         disabled={pending}
+        aria-busy={pending || undefined}
       >
         {pending ? (
           <span className="btn__spinner" style={{ color: 'var(--text-secondary)' }} />

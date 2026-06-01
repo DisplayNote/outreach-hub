@@ -7,6 +7,7 @@ import type { CallControl, CallState } from '@/lib/dialler/types';
 import type { ContactStatus } from '@/lib/types/domain';
 import { Avatar, Button, Card, EmptyState, Icon, Pill } from '@/components/ui';
 import { STATUS_PILLS } from '@/lib/ui/status';
+import { initials } from '@/lib/ui/initials';
 
 /**
  * Client-side dialler run controller.
@@ -43,16 +44,6 @@ export interface DiallerRunProps {
 }
 
 // --- Display helpers ---------------------------------------------------------
-
-/** Up-to-two-letter initials from a queue item's display name. */
-function initialsFor(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
-  }
-  const single = parts[0] ?? '';
-  return (single.slice(0, 2) || '?').toUpperCase();
-}
 
 const CALL_STATE_LABELS: Record<CallState, string> = {
   idle: 'Ready to call',
@@ -224,7 +215,7 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
       <Card>
         <div className="row gap-5 center between">
           <div className="row gap-5 center" style={{ minWidth: 0 }}>
-            <Avatar initials={initialsFor(current.name)} size="lg" />
+            <Avatar initials={initials(current.name)} size="lg" />
             <div style={{ minWidth: 0 }}>
               <div className="semib" style={{ fontSize: 'var(--fs-h3)' }}>
                 {current.name}
