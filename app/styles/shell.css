@@ -33,7 +33,7 @@
 .sidebar-user__meta { min-width: 0; flex: 1; }
 .sidebar-user__name { color: #fff; font-size: var(--fs-sm); font-weight: var(--fw-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar-user__mail { color: var(--neutral-400); font-size: var(--fs-micro); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.app.is-collapsed .sidebar-user__meta, .app.is-collapsed .sidebar-user .nav-item__icon-r { display: none; }
+.app.is-collapsed .sidebar-user__meta { display: none; }
 .app.is-collapsed .sidebar-user { justify-content: center; padding-left: 0; padding-right: 0; }
 
 /* ---------- Topbar ---------- */
@@ -95,7 +95,7 @@
   .nav-item__label, .nav-item__badge { display: none; }
 
   /* Footer user collapses to avatar + sign-out icon. */
-  .sidebar-user__meta, .sidebar-user .nav-item__icon-r { display: none; }
+  .sidebar-user__meta { display: none; }
   .sidebar-user { justify-content: center; padding-left: 0; padding-right: 0; }
 
   /* Tighten the topbar gutters and drop the wide search affordance. */
