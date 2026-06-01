@@ -1,0 +1,222 @@
+/* ============================================================
+   Outreach Hub — Design Tokens
+   DisplayNote B2B sales-outreach platform
+   All tokens as CSS custom properties -> map 1:1 to implementation.
+   Light theme primary. Dark theme scaffolded under [data-theme="dark"].
+   ============================================================ */
+
+:root {
+  /* ---------- Neutral ramp (cool slate) ---------- */
+  --neutral-0:   #ffffff;
+  --neutral-25:  #fbfcfd;
+  --neutral-50:  #f6f8fa;
+  --neutral-100: #eef1f4;
+  --neutral-150: #e6eaee;
+  --neutral-200: #dce1e7;
+  --neutral-300: #c4ccd4;
+  --neutral-400: #9aa4af;
+  --neutral-500: #6b7682;
+  --neutral-600: #515b66;
+  --neutral-700: #3c454e;
+  --neutral-800: #272e35;
+  --neutral-900: #181d22;
+  --neutral-950: #0e1216;
+
+  /* ---------- Brand / accent (teal) ---------- */
+  --teal-50:  #effbf8;
+  --teal-100: #d2f3ec;
+  --teal-200: #a7e7da;
+  --teal-300: #6fd3c2;
+  --teal-400: #34b6a3;
+  --teal-500: #149b89;
+  --teal-600: #0d8174;   /* primary action (AA on white w/ white text on large) */
+  --teal-700: #0c6a60;   /* hover */
+  --teal-800: #0c554e;   /* active */
+  --teal-900: #0b463f;
+
+  /* ---------- Semantic status hues ---------- */
+  /* success / green */
+  --green-50:  #ecfdf5; --green-100: #d1fae5; --green-500: #10b981; --green-600: #059669; --green-700: #047857;
+  /* warning / amber */
+  --amber-50:  #fef6e7; --amber-100: #fdeccb; --amber-500: #f59e0b; --amber-600: #d97706; --amber-700: #b45309;
+  /* danger / red */
+  --red-50:    #fef2f2; --red-100: #fee2e2; --red-500: #ef4444; --red-600: #dc2626; --red-700: #b91c1c;
+  /* info / blue */
+  --blue-50:   #eff5ff; --blue-100: #dbe7fe; --blue-500: #3b82f6; --blue-600: #2563eb; --blue-700: #1d4ed8;
+  /* meeting / violet */
+  --violet-50: #f5f3ff; --violet-100: #ede9fe; --violet-500: #8b5cf6; --violet-600: #7c3aed; --violet-700: #6d28d9;
+  /* delivery / orange (bounce, bad-number) */
+  --orange-50: #fff5ed; --orange-100: #ffe7d1; --orange-500: #f97316; --orange-600: #ea580c; --orange-700: #c2410c;
+
+  /* ---------- Semantic surface / text aliases ---------- */
+  --bg-app:        var(--neutral-50);
+  --bg-surface:    var(--neutral-0);
+  --bg-subtle:     var(--neutral-50);
+  --bg-muted:      var(--neutral-100);
+  --bg-inset:      var(--neutral-100);
+  --bg-hover:      var(--neutral-100);
+  --bg-active:     var(--neutral-150);
+  --bg-sidebar:    var(--neutral-900);
+  --bg-overlay:    rgba(14, 18, 22, 0.45);
+
+  --border-subtle: var(--neutral-150);
+  --border:        var(--neutral-200);
+  --border-strong: var(--neutral-300);
+
+  --text-primary:   var(--neutral-900);
+  --text-secondary: var(--neutral-600);
+  --text-tertiary:  var(--neutral-500);
+  --text-disabled:  var(--neutral-400);
+  --text-inverse:   var(--neutral-0);
+  --text-link:      var(--teal-700);
+
+  --accent:         var(--teal-600);
+  --accent-hover:   var(--teal-700);
+  --accent-active:  var(--teal-800);
+  --accent-soft:    var(--teal-50);
+  --accent-soft-2:  var(--teal-100);
+  --accent-text:    var(--teal-700);
+
+  /* ---------- Typography ---------- */
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --fs-display: 30px;  --lh-display: 38px;
+  --fs-h1:      24px;  --lh-h1:      32px;
+  --fs-h2:      20px;  --lh-h2:      28px;
+  --fs-h3:      16px;  --lh-h3:      24px;
+  --fs-body:    14px;  --lh-body:    20px;
+  --fs-sm:      13px;  --lh-sm:      18px;
+  --fs-caption: 12px;  --lh-caption: 16px;
+  --fs-micro:   11px;  --lh-micro:   14px;
+
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.06em;
+
+  /* ---------- Spacing (4px base) ---------- */
+  --space-0: 0;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
+  --space-11: 48px;
+  --space-12: 64px;
+
+  /* ---------- Radius ---------- */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-full: 9999px;
+
+  /* ---------- Elevation ---------- */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 2px 4px rgba(16, 24, 40, 0.05), 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 4px 8px rgba(16, 24, 40, 0.06), 0 12px 28px rgba(16, 24, 40, 0.12);
+  --shadow-xl: 0 8px 16px rgba(16, 24, 40, 0.08), 0 24px 48px rgba(16, 24, 40, 0.18);
+  --ring-focus: 0 0 0 3px rgba(13, 129, 116, 0.32);
+  --ring-danger: 0 0 0 3px rgba(220, 38, 38, 0.28);
+
+  /* ---------- Layout metrics ---------- */
+  --sidebar-w: 248px;
+  --sidebar-w-collapsed: 64px;
+  --topbar-h: 56px;
+  --row-h: 40px;            /* comfortable density */
+  --row-h-compact: 32px;
+  --content-max: 1320px;
+
+  /* ---------- z-index scale ---------- */
+  --z-base: 0;
+  --z-sticky: 50;
+  --z-dropdown: 100;
+  --z-drawer: 200;
+  --z-modal: 300;
+  --z-toast: 400;
+  --z-command: 500;
+
+  /* ---------- Motion ---------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 280ms;
+}
+
+/* ===================== DARK THEME (scaffold) ===================== */
+[data-theme="dark"] {
+  --bg-app:        var(--neutral-950);
+  --bg-surface:    var(--neutral-900);
+  --bg-subtle:     #12171c;
+  --bg-muted:      var(--neutral-800);
+  --bg-inset:      #12171c;
+  --bg-hover:      var(--neutral-800);
+  --bg-active:     var(--neutral-700);
+  --bg-sidebar:    #0a0d10;
+
+  --border-subtle: #20272d;
+  --border:        #2a323a;
+  --border-strong: #3a444d;
+
+  --text-primary:   var(--neutral-50);
+  --text-secondary: var(--neutral-300);
+  --text-tertiary:  var(--neutral-400);
+  --text-disabled:  var(--neutral-600);
+  --text-link:      var(--teal-300);
+  --accent-text:    var(--teal-300);
+  --accent-soft:    rgba(20, 155, 137, 0.14);
+  --accent-soft-2:  rgba(20, 155, 137, 0.22);
+}
+
+/* ===================== RESET / BASE ===================== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv01", "ss01";
+}
+h1,h2,h3,h4,p { margin: 0; }
+button { font-family: inherit; }
+::selection { background: var(--accent-soft-2); }
+.tnum { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.mono { font-family: var(--font-mono); }
+
+/* shared focus utility */
+.focusable:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+/* scrollbar polish */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--neutral-300); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+*::-webkit-scrollbar-thumb:hover { background: var(--neutral-400); background-clip: content-box; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes oh-spin { to { transform: rotate(360deg); } }
+@keyframes oh-shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+@keyframes oh-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes oh-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes oh-pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(13,129,116,0.45); } 70% { box-shadow: 0 0 0 12px rgba(13,129,116,0); } 100% { box-shadow: 0 0 0 0 rgba(13,129,116,0); } }
+@keyframes oh-slide-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
