@@ -141,11 +141,13 @@ export default function DiallerRun({
   }, [tonePlayer]);
 
   useEffect(() => {
-    // Cleanup on unmount: stop any in-flight mock call timers and tones.
+    // Cleanup on unmount: stop any in-flight mock call timers, and dispose the
+    // tone player so its AudioContext is closed (not just paused) — browsers
+    // cap AudioContexts per page, so we must release it on every unmount.
     return () => {
       controlRef.current?.hangup();
       controlRef.current = null;
-      tonePlayer.stop();
+      tonePlayer.dispose();
     };
   }, [tonePlayer]);
 

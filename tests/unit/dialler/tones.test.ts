@@ -31,11 +31,13 @@ function makeFakeContext() {
   const oscillators: FakeOsc[] = [];
   const gains: FakeGain[] = [];
   const resume = vi.fn();
+  const close = vi.fn();
   const ctx = {
     state: 'running' as AudioContextState,
     currentTime: 0,
     destination: { id: 'dest' },
     resume,
+    close,
     createOscillator(): FakeOsc {
       const osc: FakeOsc = {
         type: '',
@@ -59,7 +61,7 @@ function makeFakeContext() {
       return gain;
     },
   };
-  return { ctx, oscillators, gains, resume };
+  return { ctx, oscillators, gains, resume, close };
 }
 
 describe('createTonePlayer', () => {
@@ -172,6 +174,37 @@ describe('createTonePlayer', () => {
       player.play('dialling');
       player.stop();
     }).not.toThrow();
+  });
+
+  it('closes the audio context on dispose() (releasing the audio thread)', () => {
+    const fake = makeFakeContext();
+    const player = createTonePlayer(true, () => fake.ctx as unknown as AudioContext);
+
+    player.play('dialling');
+    player.dispose();
+
+    expect(fake.close).toHaveBeenCalled();
+  });
+
+  it('recreates a fresh context if played again after dispose()', () => {
+    const makeContext = vi.fn(() => makeFakeContext().ctx as unknown as AudioContext);
+    const player = createTonePlayer(true, makeContext);
+
+    player.play('dialling');
+    expect(makeContext).toHaveBeenCalledTimes(1);
+    player.dispose();
+    player.play('dialling');
+
+    expect(makeContext).toHaveBeenCalledTimes(2);
+    player.dispose();
+  });
+
+  it('dispose() is an inert no-op when disabled', () => {
+    const makeContext = vi.fn(() => makeFakeContext().ctx as unknown as AudioContext);
+    const player = createTonePlayer(false, makeContext);
+
+    expect(() => player.dispose()).not.toThrow();
+    expect(makeContext).not.toHaveBeenCalled();
   });
 
   it('resumes a suspended context (autoplay policy)', () => {

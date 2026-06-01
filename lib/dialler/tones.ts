@@ -21,8 +21,15 @@ export type ToneName = 'dialling' | 'ringing' | 'answered' | 'hangup';
 export interface TonePlayer {
   /** Play `name`, stopping any currently-playing tone first. No-op when disabled. */
   play(name: ToneName): void;
-  /** Stop any currently-playing tone. Idempotent; no-op when disabled. */
+  /** Stop any currently-playing tone (non-destructive pause). Idempotent; no-op when disabled. */
   stop(): void;
+  /**
+   * Stop and tear down the underlying AudioContext, releasing the audio thread.
+   * Call from the consumer's unmount cleanup — browsers cap AudioContexts per
+   * page, so leaking one per dialler mount eventually fails to allocate. A
+   * subsequent `play()` lazily reopens a fresh context. No-op when disabled.
+   */
+  dispose(): void;
 }
 
 /** Lazily produces an AudioContext, or `null` if the API is unavailable. */
@@ -52,7 +59,7 @@ export function createTonePlayer(
   makeContext: AudioContextFactory = defaultAudioContextFactory,
 ): TonePlayer {
   if (!enabled) {
-    return { play: () => {}, stop: () => {} };
+    return { play: () => {}, stop: () => {}, dispose: () => {} };
   }
 
   let ctx: AudioContext | null = null;
@@ -106,6 +113,20 @@ export function createTonePlayer(
     osc2 = null;
     gain = null;
     active = null;
+  }
+
+  function dispose(): void {
+    stop();
+    if (ctx) {
+      try {
+        void ctx.close();
+      } catch {
+        // already closed / not supported — best-effort
+      }
+      // Drop the reference so a later play() lazily opens a fresh context
+      // (matters under React StrictMode's mount→unmount→mount in dev).
+      ctx = null;
+    }
   }
 
   function play(name: ToneName): void {
@@ -216,5 +237,5 @@ export function createTonePlayer(
     }
   }
 
-  return { play, stop };
+  return { play, stop, dispose };
 }
