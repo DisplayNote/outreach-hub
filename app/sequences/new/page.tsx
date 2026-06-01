@@ -2,56 +2,10 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { createSequence } from '@/lib/actions/sequences';
+import { Button, Card, Field } from '@/components/ui';
 
 // Auth state changes per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
-
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: '0.35rem',
-};
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.625rem',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-};
-
-const submitStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const cancelStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#fff',
-  color: '#374151',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  textDecoration: 'none',
-  display: 'inline-block',
-};
 
 export default async function NewSequencePage() {
   const supabase = await createClient();
@@ -75,29 +29,32 @@ export default async function NewSequencePage() {
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>New sequence</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Name a sequence, then add its ordered steps.
-      </p>
-
-      <form action={action} style={{ fontFamily: 'system-ui, sans-serif' }}>
-        <div style={{ marginBottom: '1.1rem' }}>
-          <label htmlFor="name" style={labelStyle}>
-            Name *
-          </label>
-          <input id="name" name="name" type="text" required autoFocus style={fieldStyle} />
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">New sequence</div>
+          <div className="page-head__sub">Name a sequence, then add its ordered steps.</div>
         </div>
+      </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-          <button type="submit" style={submitStyle}>
-            Create sequence
-          </button>
-          <Link href="/sequences" style={cancelStyle}>
-            Cancel
-          </Link>
-        </div>
-      </form>
-    </main>
+      <Card>
+        <form action={action}>
+          <div style={{ marginBottom: 'var(--space-6)' }}>
+            <Field label="Name" htmlFor="name" required>
+              <input id="name" name="name" type="text" required autoFocus className="input" />
+            </Field>
+          </div>
+
+          <div className="row gap-4" style={{ marginTop: 'var(--space-7)' }}>
+            <Button type="submit" variant="primary">
+              Create sequence
+            </Button>
+            <Link href="/sequences" className="btn btn--ghost">
+              Cancel
+            </Link>
+          </div>
+        </form>
+      </Card>
+    </div>
   );
 }

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { listSequences } from '@/lib/supabase/queries';
 import { deleteSequence } from '@/lib/actions/sequences';
+import { Button, Card, EmptyState } from '@/components/ui';
 
 // Auth state + the sequence list change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -16,52 +17,6 @@ async function deleteSequenceForm(formData: FormData): Promise<void> {
   const id = uuid.parse(formData.get('id'));
   await deleteSequence(id);
 }
-
-// --- Inline styles (Tailwind is not wired yet; mirror app/campaigns/page.tsx) -
-
-const cellStyle: React.CSSProperties = {
-  padding: '0.625rem 0.75rem',
-  borderBottom: '1px solid #eee',
-  textAlign: 'left',
-  verticalAlign: 'top',
-};
-
-const headStyle: React.CSSProperties = {
-  ...cellStyle,
-  borderBottom: '2px solid #ddd',
-  fontWeight: 600,
-  color: '#555',
-  fontSize: '0.8125rem',
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-};
-
-const newSequenceLinkStyle: React.CSSProperties = {
-  padding: '0.45rem 0.9rem',
-  background: '#111',
-  color: '#fff',
-  textDecoration: 'none',
-  borderRadius: 6,
-  fontSize: '0.9rem',
-  fontWeight: 500,
-  whiteSpace: 'nowrap',
-};
-
-const rowLinkStyle: React.CSSProperties = {
-  textDecoration: 'none',
-  color: '#111',
-  fontWeight: 500,
-};
-
-const deleteButtonStyle: React.CSSProperties = {
-  padding: '0.3rem 0.6rem',
-  background: '#fff',
-  color: '#b91c1c',
-  border: '1px solid #e5b4b4',
-  borderRadius: 4,
-  fontSize: '0.8125rem',
-  cursor: 'pointer',
-};
 
 // --- Page --------------------------------------------------------------------
 
@@ -78,90 +33,65 @@ export default async function SequencesPage() {
   const sequences = await listSequences();
 
   return (
-    <main
-      style={{
-        padding: '2rem',
-        fontFamily: 'system-ui, sans-serif',
-        maxWidth: 960,
-        margin: '0 auto',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: '1rem',
-        }}
-      >
+    <div className="content__inner">
+      <div className="page-head">
         <div>
-          <h1 style={{ marginBottom: '0.25rem' }}>Sequences</h1>
-          <p style={{ marginTop: 0, color: '#666' }}>
-            Reusable outreach cadences and their ordered steps.
-          </p>
+          <div className="page-head__title">Sequences</div>
+          <div className="page-head__sub">Reusable outreach cadences and their ordered steps.</div>
         </div>
-        <Link href="/sequences/new" style={newSequenceLinkStyle}>
-          New sequence
-        </Link>
+        <div className="page-actions">
+          <Link href="/sequences/new" className="btn btn--primary">
+            New sequence
+          </Link>
+        </div>
       </div>
 
-      {sequences.length === 0 ? (
-        <div
-          style={{
-            marginTop: '2rem',
-            padding: '2rem',
-            textAlign: 'center',
-            color: '#666',
-            background: '#fafafa',
-            border: '1px solid #eee',
-            borderRadius: 6,
-          }}
-        >
-          <p style={{ margin: 0, fontSize: '1.05rem' }}>No sequences yet.</p>
-          <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem' }}>
-            <Link href="/sequences/new">Create your first sequence</Link> to get started.
-          </p>
-        </div>
-      ) : (
-        <table
-          style={{
-            marginTop: '1.5rem',
-            width: '100%',
-            borderCollapse: 'collapse',
-            fontSize: '0.9375rem',
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={headStyle} scope="col">
-                Name
-              </th>
-              <th style={{ ...headStyle, textAlign: 'right', width: '1%' }} scope="col">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sequences.map((sequence) => (
-              <tr key={sequence.id}>
-                <td style={cellStyle}>
-                  <Link href={`/sequences/${sequence.id}`} style={rowLinkStyle}>
-                    {sequence.name}
-                  </Link>
-                </td>
-                <td style={{ ...cellStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <form action={deleteSequenceForm} style={{ display: 'inline' }}>
-                    <input type="hidden" name="id" value={sequence.id} />
-                    <button type="submit" style={deleteButtonStyle}>
-                      Delete
-                    </button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </main>
+      <Card title="All sequences" bodyStyle={{ padding: 0 }}>
+        {sequences.length === 0 ? (
+          <EmptyState
+            icon="sequence"
+            title="No sequences yet"
+            desc="Create your first sequence to get started."
+            action={
+              <Link href="/sequences/new" className="btn btn--primary">
+                New sequence
+              </Link>
+            }
+          />
+        ) : (
+          <div className="tbl-wrap" style={{ border: 'none', borderRadius: 0 }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col" style={{ textAlign: 'right', width: '1%' }}>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sequences.map((sequence) => (
+                  <tr key={sequence.id} className="row-link">
+                    <td>
+                      <Link href={`/sequences/${sequence.id}`} className="medb">
+                        {sequence.name}
+                      </Link>
+                    </td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <form action={deleteSequenceForm} style={{ display: 'inline' }}>
+                        <input type="hidden" name="id" value={sequence.id} />
+                        <Button type="submit" variant="danger" size="sm">
+                          Delete
+                        </Button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
