@@ -17,7 +17,7 @@ export default function Sidebar({
   const pathname = usePathname();
   return (
     <nav className="sidebar">
-      <div className="sidebar__brand">
+      <Link href="/" className="sidebar__brand" aria-label="Outreach Hub — dashboard">
         <div className="sidebar__logo">O</div>
         {!collapsed && (
           <div style={{ minWidth: 0 }}>
@@ -25,7 +25,7 @@ export default function Sidebar({
             <div className="sidebar__org">{org}</div>
           </div>
         )}
-      </div>
+      </Link>
       <div className="sidebar__scroll">
         {NAV_GROUPS.map((g) => (
           <div key={g.group}>

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { listSequences } from '@/lib/supabase/queries';
 import { deleteSequence } from '@/lib/actions/sequences';
-import { Button, Card, EmptyState } from '@/components/ui';
+import { Button, Card, EmptyState, Icon } from '@/components/ui';
 
 // Auth state + the sequence list change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -41,7 +41,8 @@ export default async function SequencesPage() {
         </div>
         <div className="page-actions">
           <Link href="/sequences/new" className="btn btn--primary btn--md">
-            New sequence
+            <Icon name="plus" size={16} />
+            <span>New sequence</span>
           </Link>
         </div>
       </div>
@@ -54,7 +55,8 @@ export default async function SequencesPage() {
             desc="Create your first sequence to get started."
             action={
               <Link href="/sequences/new" className="btn btn--primary btn--md">
-                New sequence
+                <Icon name="plus" size={16} />
+                <span>New sequence</span>
               </Link>
             }
           />

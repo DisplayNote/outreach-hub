@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { logCallOutcome, type CallOutcomeKey } from '@/lib/actions/dialler';
+import { logCallOutcome } from '@/lib/actions/dialler';
+import type { CallOutcomeKey } from '@/lib/dialler/types';
 import { getDiallerDriver, getDiallerOutcomes } from '@/lib/dialler';
 import type { CallControl, CallState } from '@/lib/dialler/types';
 import type { ContactStatus } from '@/lib/types/domain';
@@ -267,11 +268,11 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
           </div>
 
           {callState === 'idle' ? (
-            <Button variant="primary" icon="phone" onClick={startCall}>
+            <Button variant="primary" size="lg" icon="phone" onClick={startCall}>
               Call
             </Button>
           ) : isLive(callState) ? (
-            <Button variant="danger" icon="x" onClick={hangup}>
+            <Button variant="danger" size="lg" icon="phoneOff" onClick={hangup}>
               Hang up
             </Button>
           ) : null}
@@ -303,6 +304,11 @@ export default function DiallerRun({ queue }: DiallerRunProps) {
                   cursor: recording !== null ? 'wait' : 'pointer',
                 }}
               >
+                <span
+                  className="pill__dot"
+                  aria-hidden="true"
+                  style={{ width: 8, height: 8, background: STATUS_PILLS[outcome.statusEffect].dot }}
+                />
                 <span className="outcome-btn__label">
                   {recording === outcome.key ? 'Saving…' : outcome.label}
                 </span>

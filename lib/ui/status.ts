@@ -28,6 +28,30 @@ export const STATUS_PILLS: Record<ContactStatus, PillSpec> = {
  * (create/edit form, inline detail select) so a user never picks one label and
  * sees a different one elsewhere. Derived from {@link STATUS_PILLS}.
  */
+/**
+ * Presentational specs for suppression-reason pills (matches the design's
+ * `SUPPRESS_REASON` map). The `dot` field is unused (pills render with
+ * `withDot={false}`) but kept to satisfy {@link PillSpec}.
+ */
+export const SUPPRESS_REASON_PILLS: Record<string, PillSpec> = {
+  replied: { label: 'Replied', fg: 'var(--green-700)', bg: 'var(--green-50)', dot: 'var(--green-500)' },
+  bounced: { label: 'Bounced', fg: 'var(--orange-700)', bg: 'var(--orange-50)', dot: 'var(--orange-500)' },
+  manual: { label: 'Manual', fg: 'var(--neutral-600)', bg: 'var(--neutral-100)', dot: 'var(--neutral-400)' },
+  unsubscribed: { label: 'Unsubscribed', fg: 'var(--red-700)', bg: 'var(--red-50)', dot: 'var(--red-500)' },
+};
+
+/** A suppression reason's pill spec, falling back to a neutral pill for unknown values. */
+export function suppressReasonPill(reason: string): PillSpec {
+  return (
+    SUPPRESS_REASON_PILLS[reason] ?? {
+      label: reason,
+      fg: 'var(--neutral-600)',
+      bg: 'var(--neutral-100)',
+      dot: 'var(--neutral-400)',
+    }
+  );
+}
+
 export const STATUS_LABELS: Record<ContactStatus, string> = {
   none: STATUS_PILLS.none.label,
   amber: STATUS_PILLS.amber.label,

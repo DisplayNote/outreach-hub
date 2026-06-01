@@ -84,6 +84,15 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
             ))
           )}
         </div>
+        <div className="cmd__foot">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <kbd className="kbd">↑</kbd>
+            <kbd className="kbd">↓</kbd> navigate
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <kbd className="kbd">↵</kbd> select
+          </span>
+        </div>
       </div>
     </div>
   );

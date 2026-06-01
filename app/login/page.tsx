@@ -110,10 +110,11 @@ export default function LoginPage() {
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'flex-end',
+          justifyContent: 'space-between',
           padding: 'var(--space-12)',
         }}
       >
+        {/* dot grid */}
         <div
           style={{
             position: 'absolute',
@@ -123,44 +124,79 @@ export default function LoginPage() {
             backgroundSize: '28px 28px',
           }}
         />
+        {/* glows: top-right + bottom-left for depth */}
         <div
           style={{
             position: 'absolute',
-            top: '-10%',
-            right: '-10%',
-            width: 360,
-            height: 360,
+            top: '-12%',
+            right: '-8%',
+            width: 420,
+            height: 420,
             borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(255,255,255,0.16), transparent 70%)',
+            background: 'radial-gradient(circle, rgba(255,255,255,0.18), transparent 70%)',
           }}
         />
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '-18%',
+            left: '-12%',
+            width: 380,
+            height: 380,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(13,129,116,0.55), transparent 70%)',
+          }}
+        />
+
+        {/* top: wordmark — fills the previously empty top of the panel */}
+        <div
+          className="row gap-5 center"
+          style={{ position: 'relative', color: '#fff' }}
+        >
+          <div
+            className="sidebar__logo"
+            style={{ width: 32, height: 32, fontSize: 15, background: 'rgba(255,255,255,0.16)' }}
+          >
+            O
+          </div>
+          <div style={{ fontWeight: 600, letterSpacing: '-0.01em' }}>Outreach Hub</div>
+        </div>
+
+        {/* bottom: hero */}
         <div style={{ position: 'relative', color: '#fff' }}>
           <div
             style={{
-              fontSize: 28,
+              fontSize: 'var(--fs-display, 34px)',
               fontWeight: 600,
               letterSpacing: '-0.02em',
-              lineHeight: 1.25,
-              maxWidth: 420,
+              lineHeight: 1.2,
+              maxWidth: 460,
             }}
           >
             Run a calmer, faster day of outbound.
           </div>
           <p
             style={{
-              color: 'rgba(255,255,255,0.78)',
+              color: 'rgba(255,255,255,0.8)',
               marginTop: 'var(--space-6)',
-              maxWidth: 400,
+              maxWidth: 420,
               lineHeight: 1.55,
             }}
           >
             Sequenced email, click-to-call with auto voicemail detection, and one-click outcome
             logging — all from one mailbox you already own.
           </p>
-          <div className="row gap-7" style={{ marginTop: 'var(--space-9)' }}>
+          <div
+            className="row gap-7"
+            style={{
+              marginTop: 'var(--space-9)',
+              paddingTop: 'var(--space-7)',
+              borderTop: '1px solid rgba(255,255,255,0.18)',
+            }}
+          >
             {BRAND_FEATURES.map(([title, label]) => (
               <div key={label}>
-                <div style={{ fontSize: 18, fontWeight: 600 }}>{title}</div>
+                <div style={{ fontSize: 22, fontWeight: 600 }}>{title}</div>
                 <div className="cap" style={{ color: 'rgba(255,255,255,0.7)' }}>
                   {label}
                 </div>

@@ -1,5 +1,4 @@
 'use client';
-import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { titleForPath } from './nav-config';
 import Icon from '@/components/ui/icon';
@@ -17,27 +16,6 @@ export default function Topbar({
   onOpenCommand: () => void;
 }) {
   const pathname = usePathname();
-  // Lazy initializer reads the data-theme the no-FOUC script applied before
-  // hydration, so the toggle icon matches the active theme without a
-  // setState-in-effect round-trip.
-  const [isDark, setIsDark] = useState(
-    () => typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark',
-  );
-
-  const toggleTheme = () => {
-    const next = isDark ? 'light' : 'dark';
-    if (next === 'dark') {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-      document.documentElement.removeAttribute('data-theme');
-    }
-    try {
-      localStorage.setItem('theme', next);
-    } catch {
-      // localStorage may be unavailable (private mode); toggle still applies.
-    }
-    setIsDark(next === 'dark');
-  };
 
   return (
     <header className="topbar">
@@ -56,15 +34,6 @@ export default function Topbar({
         <Icon name="search" size={15} />
         <span>Search or jump to…</span>
         <kbd className="kbd">⌘K</kbd>
-      </button>
-      <button
-        type="button"
-        className="topbar__icon-btn"
-        onClick={toggleTheme}
-        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      >
-        <Icon name={isDark ? 'sun' : 'moon'} size={18} />
       </button>
       <div className="sending-as" title={`Sending as ${user.mailbox}`}>
         <span className="sending-as__dot" />

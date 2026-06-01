@@ -12,7 +12,8 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     group: 'Outreach',
     items: [
-      { href: '/today', label: 'Today', icon: 'dashboard' },
+      { href: '/', label: 'Dashboard', icon: 'dashboard' },
+      { href: '/today', label: 'Today', icon: 'calendar' },
       { href: '/queue', label: 'Email Queue', icon: 'queue' },
       { href: '/dialler', label: 'Dialler', icon: 'dialler' },
       { href: '/pipeline', label: 'Pipeline', icon: 'pipeline' },
@@ -41,6 +42,7 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
 
 /** Pathname prefix → topbar title. Longest-prefix match wins. */
 export const ROUTE_TITLES: ReadonlyArray<readonly [string, string]> = [
+  ['/', 'Dashboard'],
   ['/today', 'Today'],
   ['/queue', 'Email Queue'],
   ['/dialler', 'Dialler'],

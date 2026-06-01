@@ -27,12 +27,11 @@ import {
 import type { CallOutcomeKey } from '@/lib/dialler/types';
 import type { Contact, Touchpoint } from '@/lib/types/domain';
 
-// The CallOutcomeKey type is re-exported so existing importers (e.g.
-// components/dialler-run.tsx) keep their import path. The runtime catalogue
-// (CALL_OUTCOME_KEYS) is NOT re-exported here: a 'use server' file may only
-// export async functions, and re-exporting the array tripped Next's
-// invalid-use-server-value guard. Import the value from '@/lib/dialler' instead.
-export type { CallOutcomeKey };
+// NOTE: a 'use server' module may ONLY export async functions. Do not add
+// `export type { ... }` / value re-exports here — Turbopack does not erase a
+// type-only re-export inside a 'use server' file and emits a runtime reference
+// to the (non-existent) binding, crashing the route with a ReferenceError.
+// Importers get CallOutcomeKey straight from '@/lib/dialler/types'.
 
 // --- Raw row shape (snake_case, exactly as returned by PostgREST) -------------
 

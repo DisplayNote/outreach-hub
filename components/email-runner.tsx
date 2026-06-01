@@ -103,7 +103,7 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
         <Button variant="primary" icon="zap" onClick={runNow} disabled={busy !== null} loading={busy === 'run'}>
           {busy === 'run' ? 'Running…' : 'Run sender now'}
         </Button>
-        <Button variant="secondary" icon="inbox" onClick={scanNow} disabled={busy !== null} loading={busy === 'scan'}>
+        <Button variant="secondary" icon="refresh" onClick={scanNow} disabled={busy !== null} loading={busy === 'scan'}>
           {busy === 'scan' ? 'Scanning…' : 'Scan inbox now'}
         </Button>
       </Card>

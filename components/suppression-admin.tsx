@@ -3,7 +3,8 @@
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addSuppression, removeSuppression } from '@/lib/actions/email';
-import { Button, Card, EmptyState, Field, Icon } from '@/components/ui';
+import { Button, Card, EmptyState, Field, Icon, Pill } from '@/components/ui';
+import { suppressReasonPill } from '@/lib/ui/status';
 
 export interface SuppressionRow {
   id: string;
@@ -97,18 +98,19 @@ export default function SuppressionAdmin({ rows }: { rows: readonly SuppressionR
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td className="mono sm">{r.email}</td>
-                    <td className="sm muted">{r.reason}</td>
-                    <td className="num">
+                    <td>
+                      <Pill spec={suppressReasonPill(r.reason)} withDot={false} />
+                    </td>
+                    <td style={{ width: 60, textAlign: 'right' }}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        icon="x"
+                        icon="trash"
                         disabled={busy}
                         aria-label={`Remove ${r.email}`}
+                        title="Remove"
                         onClick={() => run(() => removeSuppression(r.id))}
-                      >
-                        Remove
-                      </Button>
+                      />
                     </td>
                   </tr>
                 ))}

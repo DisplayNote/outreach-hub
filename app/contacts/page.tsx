@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { listContacts } from '@/lib/supabase/queries';
 import type { ContactWithCampaign } from '@/lib/supabase/queries';
-import { Avatar, Card, EmptyState, Pill } from '@/components/ui';
+import { Avatar, Card, EmptyState, Icon, Pill } from '@/components/ui';
 import { STATUS_PILLS } from '@/lib/ui/status';
 import { contactInitials } from '@/lib/ui/initials';
 
@@ -56,7 +56,8 @@ export default async function ContactsPage() {
         </div>
         <div className="page-actions">
           <Link href="/contacts/new" className="btn btn--primary btn--md">
-            New contact
+            <Icon name="userPlus" size={16} />
+            <span>New contact</span>
           </Link>
         </div>
       </div>
@@ -69,7 +70,8 @@ export default async function ContactsPage() {
             desc="Add your first contact to get started."
             action={
               <Link href="/contacts/new" className="btn btn--primary btn--md">
-                New contact
+                <Icon name="userPlus" size={16} />
+                <span>New contact</span>
               </Link>
             }
           />

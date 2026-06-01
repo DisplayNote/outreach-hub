@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { listTemplates } from '@/lib/supabase/queries';
 import { deleteTemplate } from '@/lib/actions/templates';
 import type { Template } from '@/lib/types/domain';
-import { Button, Card, EmptyState } from '@/components/ui';
+import { Button, Card, EmptyState, Icon } from '@/components/ui';
 
 // Auth state + the template list change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -64,7 +64,8 @@ export default async function TemplatesPage() {
         </div>
         <div className="page-actions">
           <Link href="/templates/new" className="btn btn--primary btn--md">
-            New template
+            <Icon name="plus" size={16} />
+            <span>New template</span>
           </Link>
         </div>
       </div>
@@ -77,7 +78,8 @@ export default async function TemplatesPage() {
             desc="Create your first template to get started."
             action={
               <Link href="/templates/new" className="btn btn--primary btn--md">
-                New template
+                <Icon name="plus" size={16} />
+                <span>New template</span>
               </Link>
             }
           />

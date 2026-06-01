@@ -6,6 +6,7 @@ import { pickDialNumber } from '@/lib/dialler/normalise';
 import type { CallControl, CallOutcome, CallState, DiallerDriver } from '@/lib/dialler/types';
 import { logCallOutcome } from '@/lib/actions/dialler';
 import { Button, Card, Icon } from '@/components/ui';
+import { STATUS_PILLS } from '@/lib/ui/status';
 
 /**
  * Click-to-call panel for a single contact.
@@ -232,7 +233,7 @@ export default function ClickToCall({
           {state === 'idle' ? (
             <>
               <div>
-                <Button variant="primary" icon="phone" onClick={startCall}>
+                <Button variant="primary" size="lg" icon="phone" onClick={startCall}>
                   Call {contactName}
                 </Button>
               </div>
@@ -264,7 +265,7 @@ export default function ClickToCall({
                 ) : null}
               </div>
               <div>
-                <Button variant="danger" icon="x" onClick={hangup}>
+                <Button variant="danger" size="lg" icon="phoneOff" onClick={hangup}>
                   Hang up
                 </Button>
               </div>
@@ -288,6 +289,11 @@ export default function ClickToCall({
                     disabled={logging !== null}
                     style={logging !== null ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                   >
+                    <span
+                      className="pill__dot"
+                      aria-hidden="true"
+                      style={{ width: 8, height: 8, background: STATUS_PILLS[outcome.statusEffect].dot }}
+                    />
                     <span className="outcome-btn__label">
                       {logging === outcome.key ? 'Saving…' : outcome.label}
                     </span>

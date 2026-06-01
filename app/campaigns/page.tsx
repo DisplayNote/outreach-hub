@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { listCampaigns } from '@/lib/supabase/queries';
-import { Card, EmptyState } from '@/components/ui';
+import { Card, EmptyState, Icon } from '@/components/ui';
 
 // Auth state + the campaign list change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -28,7 +28,8 @@ export default async function CampaignsPage() {
         </div>
         <div className="page-actions">
           <Link href="/campaigns/new" className="btn btn--primary btn--md">
-            New campaign
+            <Icon name="plus" size={16} />
+            <span>New campaign</span>
           </Link>
         </div>
       </div>
@@ -41,7 +42,8 @@ export default async function CampaignsPage() {
             desc="Create your first campaign to get started."
             action={
               <Link href="/campaigns/new" className="btn btn--primary btn--md">
-                New campaign
+                <Icon name="plus" size={16} />
+                <span>New campaign</span>
               </Link>
             }
           />

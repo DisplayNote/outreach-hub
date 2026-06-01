@@ -13,7 +13,8 @@
  * short delay; a bridged call waits for the rep.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { logCallOutcome, type CallOutcomeKey } from '@/lib/actions/dialler';
+import { logCallOutcome } from '@/lib/actions/dialler';
+import type { CallOutcomeKey } from '@/lib/dialler/types';
 import { getDiallerOutcomes } from '@/lib/dialler';
 import { startAmdRun, placeAmdCall, hangupAttempt, cancelAttempt, setRunStatus } from '@/lib/actions/dialler-amd';
 import { useAmdRun } from '@/lib/dialler/amd/realtime';

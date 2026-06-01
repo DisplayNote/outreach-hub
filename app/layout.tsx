@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
 import AppShell from '@/components/shell/app-shell';
-import ThemeInit from './theme-init';
 import './globals.css';
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' });
@@ -15,10 +14,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable}`} suppressHydrationWarning>
-      <head>
-        <ThemeInit />
-      </head>
+    <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
       <body>
         <AppShell>{children}</AppShell>
       </body>
