@@ -68,7 +68,8 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
             </div>
           ) : (
             filtered.map((it, i) => (
-              <div
+              <button
+                type="button"
                 key={it.href}
                 className={`cmd__item ${i === active ? 'is-active' : ''}`}
                 onMouseEnter={() => setActive(i)}
@@ -76,7 +77,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
               >
                 <span className="cmd__item-icon"><Icon name={it.icon} size={17} /></span>
                 <span style={{ flex: 1 }}>{it.label}</span>
-              </div>
+              </button>
             ))
           )}
         </div>

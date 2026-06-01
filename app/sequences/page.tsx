@@ -40,7 +40,7 @@ export default async function SequencesPage() {
           <div className="page-head__sub">Reusable outreach cadences and their ordered steps.</div>
         </div>
         <div className="page-actions">
-          <Link href="/sequences/new" className="btn btn--primary">
+          <Link href="/sequences/new" className="btn btn--primary btn--md">
             New sequence
           </Link>
         </div>
@@ -53,7 +53,7 @@ export default async function SequencesPage() {
             title="No sequences yet"
             desc="Create your first sequence to get started."
             action={
-              <Link href="/sequences/new" className="btn btn--primary">
+              <Link href="/sequences/new" className="btn btn--primary btn--md">
                 New sequence
               </Link>
             }

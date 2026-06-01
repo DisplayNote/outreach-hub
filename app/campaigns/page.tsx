@@ -27,7 +27,7 @@ export default async function CampaignsPage() {
           <div className="page-head__sub">Your organisation&rsquo;s outreach campaigns.</div>
         </div>
         <div className="page-actions">
-          <Link href="/campaigns/new" className="btn btn--primary">
+          <Link href="/campaigns/new" className="btn btn--primary btn--md">
             New campaign
           </Link>
         </div>
@@ -40,7 +40,7 @@ export default async function CampaignsPage() {
             title="No campaigns yet"
             desc="Create your first campaign to get started."
             action={
-              <Link href="/campaigns/new" className="btn btn--primary">
+              <Link href="/campaigns/new" className="btn btn--primary btn--md">
                 New campaign
               </Link>
             }

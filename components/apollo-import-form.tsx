@@ -180,7 +180,7 @@ export default function ApolloImportForm({ campaigns }: ApolloImportFormProps) {
         <Button type="submit" variant="primary" icon="userPlus" disabled={pending} loading={pending}>
           {pending ? 'Importing…' : 'Import contacts'}
         </Button>
-        <Link href="/contacts" className="btn btn--ghost">
+        <Link href="/contacts" className="btn btn--ghost btn--md">
           {summary ? 'Done' : 'Cancel'}
         </Link>
       </div>

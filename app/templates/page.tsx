@@ -63,7 +63,7 @@ export default async function TemplatesPage() {
           </div>
         </div>
         <div className="page-actions">
-          <Link href="/templates/new" className="btn btn--primary">
+          <Link href="/templates/new" className="btn btn--primary btn--md">
             New template
           </Link>
         </div>
@@ -76,7 +76,7 @@ export default async function TemplatesPage() {
             title="No templates yet"
             desc="Create your first template to get started."
             action={
-              <Link href="/templates/new" className="btn btn--primary">
+              <Link href="/templates/new" className="btn btn--primary btn--md">
                 New template
               </Link>
             }

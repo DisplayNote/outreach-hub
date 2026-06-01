@@ -65,7 +65,7 @@ export default async function ContactsPage() {
           <div className="page-head__sub">Everyone in your organisation&rsquo;s outreach.</div>
         </div>
         <div className="page-actions">
-          <Link href="/contacts/new" className="btn btn--primary">
+          <Link href="/contacts/new" className="btn btn--primary btn--md">
             New contact
           </Link>
         </div>
@@ -78,7 +78,7 @@ export default async function ContactsPage() {
             title="No contacts yet"
             desc="Add your first contact to get started."
             action={
-              <Link href="/contacts/new" className="btn btn--primary">
+              <Link href="/contacts/new" className="btn btn--primary btn--md">
                 New contact
               </Link>
             }

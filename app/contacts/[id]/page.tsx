@@ -165,7 +165,7 @@ export default async function ContactDetailPage({
         </div>
         <div className="page-actions row gap-4 center" style={{ flexWrap: 'wrap' }}>
           <StatusSelect contactId={contact.id} current={contact.status} options={STATUS_OPTIONS} />
-          <Link href={`/contacts/${contact.id}/edit`} className="btn btn--secondary">
+          <Link href={`/contacts/${contact.id}/edit`} className="btn btn--secondary btn--md">
             <span>Edit</span>
           </Link>
         </div>

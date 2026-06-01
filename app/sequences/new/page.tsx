@@ -49,7 +49,7 @@ export default async function NewSequencePage() {
             <Button type="submit" variant="primary">
               Create sequence
             </Button>
-            <Link href="/sequences" className="btn btn--ghost">
+            <Link href="/sequences" className="btn btn--ghost btn--md">
               Cancel
             </Link>
           </div>

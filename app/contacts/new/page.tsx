@@ -68,7 +68,7 @@ export default async function NewContactPage() {
             title="No campaigns yet"
             desc="Every contact belongs to a campaign. Create a campaign first, then add contacts to it."
             action={
-              <Link href="/campaigns/new" className="btn btn--primary">
+              <Link href="/campaigns/new" className="btn btn--primary btn--md">
                 Create a campaign
               </Link>
             }

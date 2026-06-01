@@ -68,7 +68,7 @@
 .cmd__input { flex: 1; border: none; outline: none; font-size: var(--fs-h3); color: var(--text-primary); background: none; font-family: var(--font-sans); }
 .cmd__input::placeholder { color: var(--text-disabled); }
 .cmd__list { max-height: 340px; overflow-y: auto; padding: var(--space-4); }
-.cmd__item { display: flex; align-items: center; gap: var(--space-5); padding: var(--space-5); border-radius: var(--radius-md); cursor: pointer; color: var(--text-primary); }
+.cmd__item { display: flex; align-items: center; gap: var(--space-5); padding: var(--space-5); border-radius: var(--radius-md); cursor: pointer; color: var(--text-primary); width: 100%; border: none; background: none; font: inherit; text-align: left; }
 .cmd__item.is-active { background: var(--accent-soft); }
 .cmd__item-icon { color: var(--text-tertiary); }
 .cmd__item.is-active .cmd__item-icon { color: var(--accent-text); }

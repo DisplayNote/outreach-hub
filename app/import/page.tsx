@@ -37,7 +37,7 @@ export default async function ImportPage() {
             title="No campaigns yet"
             desc="Imported contacts are added to a campaign. Create a campaign first, then come back to import your Apollo CSV into it."
             action={
-              <Link href="/campaigns/new" className="btn btn--primary">
+              <Link href="/campaigns/new" className="btn btn--primary btn--md">
                 Create a campaign
               </Link>
             }

@@ -75,7 +75,7 @@ export default function CampaignForm({
         <Button type="submit" variant="primary" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}
         </Button>
-        <Link href={cancelHref} className="btn btn--ghost">
+        <Link href={cancelHref} className="btn btn--ghost btn--md">
           Cancel
         </Link>
       </div>

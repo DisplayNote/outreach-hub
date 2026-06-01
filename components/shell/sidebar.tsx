@@ -7,9 +7,11 @@ import type { ShellUser } from './app-shell-client';
 
 export default function Sidebar({
   user,
+  org,
   collapsed,
 }: {
   user: ShellUser;
+  org: string;
   collapsed: boolean;
 }) {
   const pathname = usePathname();
@@ -20,7 +22,7 @@ export default function Sidebar({
         {!collapsed && (
           <div style={{ minWidth: 0 }}>
             <div className="sidebar__name">Outreach Hub</div>
-            <div className="sidebar__org">DisplayNote</div>
+            <div className="sidebar__org">{org}</div>
           </div>
         )}
       </div>
