@@ -1,32 +1,11 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getPipelineSummary, listCampaigns } from '@/lib/supabase/queries';
-import type { ContactStatus } from '@/lib/types/domain';
+import { Card, EmptyState, Pill, StatCard } from '@/components/ui';
+import { STATUS_PILLS } from '@/lib/ui/status';
 
 // Auth state + live counts change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
-
-/** Human-friendly labels for each pipeline status, in schema order. */
-const STATUS_LABELS: Record<ContactStatus, string> = {
-  none: 'No status',
-  amber: 'Amber',
-  red: 'Red',
-  green: 'Green',
-  meeting: 'Meeting',
-  notinterested: 'Not interested',
-  bounced: 'Bounced',
-};
-
-/** A small swatch colour per status so the funnel reads at a glance. */
-const STATUS_COLORS: Record<ContactStatus, string> = {
-  none: '#9ca3af',
-  amber: '#f59e0b',
-  red: '#ef4444',
-  green: '#22c55e',
-  meeting: '#3b82f6',
-  notinterested: '#6b7280',
-  bounced: '#78716c',
-};
 
 export default async function PipelinePage() {
   const supabase = await createClient();
@@ -43,117 +22,89 @@ export default async function PipelinePage() {
   const total = summary.reduce((sum, bucket) => sum + bucket.count, 0);
 
   return (
-    <main
-      style={{
-        padding: '2rem',
-        fontFamily: 'system-ui, sans-serif',
-        maxWidth: 720,
-        margin: '0 auto',
-      }}
-    >
-      <h1 style={{ marginBottom: '0.25rem' }}>Pipeline</h1>
-      <p style={{ color: '#666', marginTop: 0 }}>
-        Read-only funnel of contacts by status for your organisation.
-      </p>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Pipeline</div>
+          <div className="page-head__sub">
+            Read-only funnel of contacts by status for your organisation.
+          </div>
+        </div>
+      </div>
 
-      {total === 0 ? (
-        <section
-          style={{
-            marginTop: '2rem',
-            padding: '2rem',
-            textAlign: 'center',
-            border: '1px dashed #ccc',
-            borderRadius: 8,
-            color: '#666',
-          }}
-        >
-          <p style={{ margin: 0 }}>No contacts yet.</p>
-          <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem' }}>
-            Once contacts are imported, their pipeline breakdown will appear here.
-          </p>
-        </section>
-      ) : (
-        <>
-          <p style={{ marginTop: '1.5rem', fontWeight: 600 }}>
-            {total} contact{total === 1 ? '' : 's'} total
-          </p>
+      <div className="stat-grid" style={{ marginBottom: 'var(--space-7)' }}>
+        <StatCard
+          icon="contacts"
+          label="Total contacts"
+          value={total.toLocaleString()}
+          sub={total === 1 ? 'contact' : 'contacts'}
+        />
+        <StatCard icon="campaign" label="Campaigns" value={campaigns.length.toLocaleString()} />
+      </div>
 
-          <ul
-            style={{
-              listStyle: 'none',
-              padding: 0,
-              margin: '0.5rem 0 0',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.5rem',
-            }}
-          >
-            {summary.map(({ status, count }) => (
-              <li
-                key={status}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.6rem 0.9rem',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 6,
-                }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: '50%',
-                    background: STATUS_COLORS[status],
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ flex: 1 }}>{STATUS_LABELS[status]}</span>
-                <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{count}</span>
-              </li>
-            ))}
-          </ul>
-
-          <section style={{ marginTop: '2.5rem' }}>
-            <h2 style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Campaigns</h2>
-            {campaigns.length === 0 ? (
-              <p style={{ color: '#666', margin: 0 }}>No campaigns yet.</p>
-            ) : (
-              <ul
-                style={{
-                  listStyle: 'none',
-                  padding: 0,
-                  margin: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.4rem',
-                }}
-              >
-                {campaigns.map((campaign) => (
-                  <li
-                    key={campaign.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      gap: '0.75rem',
-                      padding: '0.5rem 0.9rem',
-                      border: '1px solid #e5e7eb',
-                      borderRadius: 6,
-                    }}
-                  >
-                    <span>{campaign.name}</span>
-                    {campaign.sequence ? (
-                      <span style={{ color: '#666', fontSize: '0.9rem' }}>{campaign.sequence}</span>
-                    ) : null}
-                  </li>
+      <Card title="Funnel" bodyStyle={{ padding: 0 }}>
+        {total === 0 ? (
+          <EmptyState
+            icon="pipeline"
+            title="No contacts yet"
+            desc="Once contacts are imported, their pipeline breakdown will appear here."
+          />
+        ) : (
+          <div className="tbl-wrap" style={{ border: 'none', borderRadius: 0 }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th scope="col">Status</th>
+                  <th scope="col" className="num">
+                    Contacts
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.map(({ status, count }) => (
+                  <tr key={status}>
+                    <td>
+                      <Pill spec={STATUS_PILLS[status]} />
+                    </td>
+                    <td className="num">{count.toLocaleString()}</td>
+                  </tr>
                 ))}
-              </ul>
-            )}
-          </section>
-        </>
-      )}
-    </main>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <div style={{ marginTop: 'var(--space-7)' }}>
+        <Card title="Campaigns" bodyStyle={{ padding: 0 }}>
+          {campaigns.length === 0 ? (
+            <EmptyState
+              icon="campaign"
+              title="No campaigns yet"
+              desc="Campaigns will appear here once they are created."
+            />
+          ) : (
+            <div className="tbl-wrap" style={{ border: 'none', borderRadius: 0 }}>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Sequence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.map((campaign) => (
+                    <tr key={campaign.id}>
+                      <td className="medb">{campaign.name}</td>
+                      <td className="sm muted">{campaign.sequence ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
   );
 }
