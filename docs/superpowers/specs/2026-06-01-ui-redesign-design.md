@@ -48,8 +48,13 @@ data will not be copied. Its CSS will be.
 
 ### Non-goals
 
-- No changes to `lib/`, server actions, route handlers, data queries, or any
-  business logic. **This is markup + CSS only.**
+- No changes to server actions, route handlers, mutations, or any business
+  logic. **This is presentation-only.** Small, read-only additions under
+  `lib/` that exist purely to drive UI chrome are permitted — specifically a
+  presentation module (`lib/ui/status.ts`, the status pill/label maps) and a
+  read-only query helper (`getOrgName` in `lib/supabase/queries.ts`, used by
+  the app shell to show the real org name). No existing `lib/` logic is
+  modified.
 - No new product features beyond presentation.
 - No fake/non-functional UI. Anything in the prototype that lacks a real
   backend is omitted (see §5).
@@ -144,8 +149,12 @@ planning); they are not dropped.
 
 ## 5. Functionality preservation (hard requirement)
 
-- No edits to `lib/`, `app/**/actions.ts`, `app/api/**`, `app/auth/**`, or any
-  query/business logic. Presentation layer only.
+- No edits to `app/**/actions.ts`, `app/api/**`, `app/auth/**`, or any
+  mutation/business logic. Presentation layer only, with the one exception
+  noted in §2: read-only `lib/` additions for UI chrome (`lib/ui/status.ts`
+  and the `getOrgName` read query) are allowed. The app shell calls
+  `getOrgName` once per authenticated request to render the real org name — a
+  single RLS-scoped, indexed, read-only lookup with no side effects.
 - Every interactive element keeps its **current accessible name / visible
   text** so the e2e suite stays green. Known test-coupled strings that MUST be
   preserved:
