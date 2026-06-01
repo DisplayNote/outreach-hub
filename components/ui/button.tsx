@@ -20,13 +20,18 @@ export default function Button({
   iconRight,
   loading = false,
   className = '',
+  disabled,
   children,
   ...rest
 }: ButtonProps) {
   const onlyIcon = icon && !children;
+  // A loading button is busy: disable it (so it can't be activated by mouse or
+  // keyboard) and expose the busy state to assistive tech.
   return (
     <button
       className={`btn btn--${variant} btn--${size} ${onlyIcon ? 'btn--icon' : ''} ${loading ? 'is-loading' : ''} ${className}`.trim()}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...rest}
     >
       {loading && <span className="btn__spinner" />}
