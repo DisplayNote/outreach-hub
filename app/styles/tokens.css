@@ -78,8 +78,8 @@
   --accent-text:    var(--teal-700);
 
   /* ---------- Typography ---------- */
-  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-sans: var(--font-geist), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 
   --fs-display: 30px;  --lh-display: 38px;
   --fs-h1:      24px;  --lh-h1:      32px;
