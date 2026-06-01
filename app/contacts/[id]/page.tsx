@@ -7,6 +7,8 @@ import { CONTACT_STATUSES, TOUCHPOINT_CHANNELS } from '@/lib/types/domain';
 import { logTouchpointForm } from '@/app/contacts/[id]/actions';
 import StatusSelect from '@/app/contacts/[id]/status-select';
 import ClickToCall from '@/components/click-to-call';
+import { Avatar, Button, Card, EmptyState, Field, Icon, Pill } from '@/components/ui';
+import { STATUS_PILLS } from '@/lib/ui/status';
 
 // Auth state + contact data change per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -30,6 +32,14 @@ const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
   other: 'Other',
 };
 
+/** Icon name for each touchpoint channel, used by the history timeline dots. */
+const CHANNEL_ICONS: Record<TouchpointChannel, string> = {
+  email: 'mail',
+  phone: 'phone',
+  linkedin: 'info',
+  other: 'dot',
+};
+
 const STATUS_OPTIONS = CONTACT_STATUSES.map((value) => ({
   value,
   label: STATUS_LABELS[value],
@@ -41,6 +51,17 @@ function contactName(contact: Contact): string {
   if (name) return name;
   if (contact.email) return contact.email;
   return 'Unnamed contact';
+}
+
+/** Up-to-two-letter initials for the avatar, derived from name/email. */
+function contactInitials(contact: Contact): string {
+  const first = contact.firstName?.trim()?.[0] ?? '';
+  const last = contact.lastName?.trim()?.[0] ?? '';
+  const initials = `${first}${last}`.trim();
+  if (initials) return initials.toUpperCase();
+  const email = contact.email?.trim();
+  if (email) return email.slice(0, 2).toUpperCase();
+  return '?';
 }
 
 /** Format an ISO `YYYY-MM-DD` date for display. */
@@ -67,66 +88,6 @@ function formatTimestamp(iso: string): string {
     minute: '2-digit',
   });
 }
-
-// --- Inline styles (Tailwind is not wired yet; mirror app/today/page.tsx) ----
-
-const cardStyle: React.CSSProperties = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 6,
-  padding: '1.25rem 1.5rem',
-  background: 'white',
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  margin: '0 0 0.75rem',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  color: '#555',
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-};
-
-const detailCellStyle: React.CSSProperties = {
-  padding: '0.5rem 0.75rem',
-  borderBottom: '1px solid #f0f0f0',
-  textAlign: 'left',
-  verticalAlign: 'top',
-  fontSize: '0.9375rem',
-};
-
-const detailLabelStyle: React.CSSProperties = {
-  ...detailCellStyle,
-  color: '#888',
-  width: '12rem',
-  fontWeight: 500,
-};
-
-const fieldLabelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8125rem',
-  color: '#555',
-  marginBottom: '0.25rem',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.6rem',
-  fontSize: '0.9375rem',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  background: 'white',
-  boxSizing: 'border-box',
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  padding: '0.55rem 1rem',
-  fontSize: '0.9375rem',
-  cursor: 'pointer',
-  background: '#2f2f2f',
-  color: 'white',
-  border: 0,
-  borderRadius: 4,
-};
 
 // --- Detail rows -------------------------------------------------------------
 
@@ -189,123 +150,90 @@ export default async function ContactDetailPage({
   const detailFields = buildDetailFields(contact);
 
   return (
-    <main
-      style={{
-        padding: '2rem',
-        fontFamily: 'system-ui, sans-serif',
-        maxWidth: 960,
-        margin: '0 auto',
-      }}
-    >
-      <p style={{ margin: '0 0 0.75rem', fontSize: '0.875rem' }}>
-        <Link href="/today" style={{ color: '#2563eb', textDecoration: 'none' }}>
-          ← Back to Today
-        </Link>
-      </p>
-
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: '1rem',
-          marginBottom: '1.5rem',
-        }}
-      >
+    <div className="content__inner">
+      <div className="page-head">
         <div>
-          <h1 style={{ margin: '0 0 0.25rem' }}>{contactName(contact)}</h1>
-          <p style={{ margin: 0, color: '#666' }}>
-            {contact.jobTitle ? `${contact.jobTitle}` : null}
-            {contact.jobTitle && contact.company ? ' · ' : null}
-            {contact.company ?? null}
-            {!contact.jobTitle && !contact.company ? 'No company on file' : null}
-          </p>
+          <Link href="/today" className="sm muted row gap-3 center" style={{ marginBottom: 'var(--space-4)' }}>
+            <Icon name="chevronsLeft" size={14} />
+            Back to Today
+          </Link>
+          <div className="row gap-5 center">
+            <Avatar initials={contactInitials(contact)} size="lg" />
+            <div style={{ minWidth: 0 }}>
+              <div className="row gap-4 center">
+                <span className="page-head__title">{contactName(contact)}</span>
+                <Pill spec={STATUS_PILLS[contact.status]} />
+              </div>
+              <div className="page-head__sub">
+                {contact.jobTitle ? `${contact.jobTitle}` : null}
+                {contact.jobTitle && contact.company ? ' · ' : null}
+                {contact.company ?? null}
+                {!contact.jobTitle && !contact.company ? 'No company on file' : null}
+              </div>
+            </div>
+          </div>
         </div>
-        <Link
-          href={`/contacts/${contact.id}/edit`}
-          style={{
-            padding: '0.5rem 0.9rem',
-            fontSize: '0.9375rem',
-            textDecoration: 'none',
-            color: '#374151',
-            background: '#f3f4f6',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Edit
-        </Link>
-      </header>
-
-      <section
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          marginBottom: '1.5rem',
-          flexWrap: 'wrap',
-        }}
-      >
-        <span style={{ fontSize: '0.8125rem', color: '#555', fontWeight: 600 }}>STATUS</span>
-        <StatusSelect contactId={contact.id} current={contact.status} options={STATUS_OPTIONS} />
-        <span style={{ color: '#888', fontSize: '0.875rem' }}>
-          Currently: {STATUS_LABELS[contact.status]}
-        </span>
-      </section>
+        <div className="page-actions row gap-4 center" style={{ flexWrap: 'wrap' }}>
+          <StatusSelect contactId={contact.id} current={contact.status} options={STATUS_OPTIONS} />
+          <Link href={`/contacts/${contact.id}/edit`} className="btn btn--secondary">
+            <span>Edit</span>
+          </Link>
+        </div>
+      </div>
 
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)',
-          gap: '1.5rem',
+          gap: 'var(--space-6)',
           alignItems: 'start',
         }}
       >
         {/* Details */}
-        <section style={cardStyle}>
-          <h2 style={sectionTitleStyle}>Details</h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <tbody>
-              {detailFields.map((field) => (
-                <tr key={field.label}>
-                  <th scope="row" style={detailLabelStyle}>
-                    {field.label}
-                  </th>
-                  <td style={detailCellStyle}>
-                    {field.value === null ? (
-                      <span style={{ color: '#aaa' }}>—</span>
-                    ) : field.href ? (
-                      <a
-                        href={field.href}
-                        style={{ color: '#2563eb', textDecoration: 'none' }}
-                        {...(field.href.startsWith('http')
-                          ? { target: '_blank', rel: 'noopener noreferrer' }
-                          : {})}
-                      >
-                        {field.value}
-                      </a>
-                    ) : (
-                      field.value
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="col gap-6">
+          <Card title="Details" bodyStyle={{ padding: 0 }}>
+            <div className="tbl-wrap" style={{ border: 'none', borderRadius: 0 }}>
+              <table className="tbl">
+                <tbody>
+                  {detailFields.map((field) => (
+                    <tr key={field.label}>
+                      <th scope="row" className="sm muted" style={{ width: '12rem', fontWeight: 'var(--fw-medium)' }}>
+                        {field.label}
+                      </th>
+                      <td className="sm">
+                        {field.value === null ? (
+                          <span className="tert">—</span>
+                        ) : field.href ? (
+                          <a
+                            href={field.href}
+                            {...(field.href.startsWith('http')
+                              ? { target: '_blank', rel: 'noopener noreferrer' }
+                              : {})}
+                          >
+                            {field.value}
+                          </a>
+                        ) : (
+                          field.value
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
 
           {contact.notes ? (
-            <div style={{ marginTop: '1rem' }}>
-              <h2 style={sectionTitleStyle}>Notes</h2>
-              <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.9375rem' }}>
+            <Card title="Notes">
+              <p className="sm" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
                 {contact.notes}
               </p>
-            </div>
+            </Card>
           ) : null}
-        </section>
+        </div>
 
         {/* Log touchpoint + history */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div className="col gap-6">
           <ClickToCall
             contactId={contact.id}
             contactName={contactName(contact)}
@@ -314,94 +242,70 @@ export default async function ContactDetailPage({
             defaultCountryCode={defaultCountryCode}
           />
 
-          <section style={cardStyle}>
-            <h2 style={sectionTitleStyle}>Log touchpoint</h2>
-            <form action={logTouchpointForm} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <Card title="Log touchpoint">
+            <form action={logTouchpointForm} className="col gap-5">
               <input type="hidden" name="id" value={contact.id} />
-              <div>
-                <label htmlFor="touchpoint-channel" style={fieldLabelStyle}>
-                  Channel
-                </label>
-                <select
-                  id="touchpoint-channel"
-                  name="channel"
-                  defaultValue="email"
-                  style={inputStyle}
-                >
-                  {TOUCHPOINT_CHANNELS.map((channel) => (
-                    <option key={channel} value={channel}>
-                      {CHANNEL_LABELS[channel]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="touchpoint-note" style={fieldLabelStyle}>
-                  Note <span style={{ color: '#aaa' }}>(optional)</span>
-                </label>
+              <Field label="Channel" htmlFor="touchpoint-channel">
+                <div className="select-wrap">
+                  <select id="touchpoint-channel" name="channel" defaultValue="email" className="input">
+                    {TOUCHPOINT_CHANNELS.map((channel) => (
+                      <option key={channel} value={channel}>
+                        {CHANNEL_LABELS[channel]}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="select-chevron">
+                    <Icon name="chevronDown" size={15} />
+                  </span>
+                </div>
+              </Field>
+              <Field label="Note (optional)" htmlFor="touchpoint-note">
                 <textarea
                   id="touchpoint-note"
                   name="note"
                   rows={3}
-                  style={{ ...inputStyle, resize: 'vertical' }}
+                  className="input"
                   placeholder="What happened?"
                 />
+              </Field>
+              <div>
+                <Button type="submit" variant="primary">
+                  Log touchpoint
+                </Button>
               </div>
-              <button type="submit" style={primaryButtonStyle}>
-                Log touchpoint
-              </button>
             </form>
-          </section>
+          </Card>
 
-          <section style={cardStyle}>
-            <h2 style={sectionTitleStyle}>History</h2>
+          <Card title="History">
             {touchpoints.length === 0 ? (
-              <p style={{ margin: 0, color: '#888', fontSize: '0.9375rem' }}>
-                No touchpoints logged yet.
-              </p>
+              <EmptyState icon="inbox" title="No touchpoints yet" desc="Logged touchpoints will appear here." />
             ) : (
-              <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              <div className="timeline">
                 {touchpoints.map((tp) => (
-                  <li
-                    key={tp.id}
-                    style={{
-                      padding: '0.6rem 0',
-                      borderBottom: '1px solid #f0f0f0',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: '0.75rem',
-                      }}
-                    >
-                      <span style={{ fontWeight: 500, fontSize: '0.9375rem' }}>
-                        {CHANNEL_LABELS[tp.channel]}
-                      </span>
-                      <span style={{ color: '#888', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
-                        {formatTimestamp(tp.occurredAt)}
-                      </span>
+                  <div key={tp.id} className="tl-item">
+                    <div className="tl-dot">
+                      <Icon name={CHANNEL_ICONS[tp.channel]} size={13} />
                     </div>
-                    {tp.note ? (
-                      <p
-                        style={{
-                          margin: '0.25rem 0 0',
-                          fontSize: '0.9375rem',
-                          whiteSpace: 'pre-wrap',
-                          color: '#374151',
-                        }}
-                      >
-                        {tp.note}
-                      </p>
-                    ) : null}
-                  </li>
+                    <div className="tl-card">
+                      <div className="row between center" style={{ marginBottom: tp.note ? 6 : 0 }}>
+                        <span className="sm semib">{CHANNEL_LABELS[tp.channel]}</span>
+                        <span className="tl-when" style={{ whiteSpace: 'nowrap' }}>
+                          {formatTimestamp(tp.occurredAt)}
+                        </span>
+                      </div>
+                      {tp.note ? (
+                        <div className="sm muted" style={{ whiteSpace: 'pre-wrap' }}>
+                          {tp.note}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 ))}
-              </ol>
+              </div>
             )}
-          </section>
+          </Card>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
