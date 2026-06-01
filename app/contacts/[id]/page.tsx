@@ -181,14 +181,7 @@ export default async function ContactDetailPage({
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)',
-          gap: 'var(--space-6)',
-          alignItems: 'start',
-        }}
-      >
+      <div className="detail-grid">
         {/* Details */}
         <div className="col gap-6">
           <Card title="Details" bodyStyle={{ padding: 0 }}>

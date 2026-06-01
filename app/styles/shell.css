@@ -73,3 +73,35 @@
 .cmd__item-icon { color: var(--text-tertiary); }
 .cmd__item.is-active .cmd__item-icon { color: var(--accent-text); }
 .cmd__foot { display: flex; align-items: center; gap: var(--space-6); padding: var(--space-5) var(--space-7); border-top: 1px solid var(--border-subtle); background: var(--bg-subtle); font-size: var(--fs-caption); color: var(--text-tertiary); }
+
+/* ============================================================
+   Responsive (≤900px): collapse sidebar to a narrow icon rail
+   regardless of the JS toggle, so the shell stays usable on
+   small screens without any markup changes.
+   ============================================================ */
+@media (max-width: 900px) {
+  .app { grid-template-columns: var(--sidebar-w-collapsed) 1fr; }
+
+  /* Hide brand text + group labels, keep the logo. */
+  .sidebar__name, .sidebar__org { display: none; }
+  .sidebar__brand { justify-content: center; padding-left: 0; padding-right: 0; }
+  .nav-group-label { text-align: center; padding-left: 0; padding-right: 0; overflow: hidden; }
+
+  /* Icon-only nav items. */
+  .nav-item { justify-content: center; padding: 0; }
+  .nav-item__label, .nav-item__badge { display: none; }
+
+  /* Footer user collapses to avatar + sign-out icon. */
+  .sidebar-user__meta, .sidebar-user .nav-item__icon-r { display: none; }
+  .sidebar-user { justify-content: center; padding-left: 0; padding-right: 0; }
+
+  /* Tighten the topbar gutters and drop the wide search affordance. */
+  .topbar { padding: 0 var(--space-5); gap: var(--space-4); }
+  .topbar__search { display: none; }
+}
+
+/* On very narrow viewports also fold away the "sending as" chip text. */
+@media (max-width: 560px) {
+  .sending-as span { display: none; }
+  .sending-as { padding: 0 var(--space-4); }
+}

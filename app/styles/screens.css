@@ -138,8 +138,29 @@
 .stat-card__value { font-size: var(--fs-h1); font-weight: var(--fw-semibold); color: var(--text-primary); line-height: 1; }
 .stat-card__sub { font-size: var(--fs-sm); color: var(--text-secondary); }
 
+/* Two-column detail layout (contact detail, etc.) */
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
 /* Login split-panel responsive collapse (from prototype inline <style>) */
 @media (max-width: 880px) {
   .login-split { grid-template-columns: 1fr !important; }
   .login-brand { display: none !important; }
+}
+
+/* ---------- Responsive: stack two-column screens (≤900px) ---------- */
+@media (max-width: 900px) {
+  /* Contact detail and other two-column screens collapse to a single column. */
+  .detail-grid { grid-template-columns: 1fr; }
+  /* Pipeline board and KPI grids reflow to a single column on small screens. */
+  .pipeline-board { grid-template-columns: 1fr; }
+  .stat-grid { grid-template-columns: 1fr; }
+  /* Three-up outcome buttons drop to two-up so labels stay legible. */
+  .outcome-grid { grid-template-columns: repeat(2, 1fr); }
+  /* Tighten content gutters on narrow viewports. */
+  .content__inner { padding: var(--space-7) var(--space-6); }
 }
