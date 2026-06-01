@@ -1,4 +1,5 @@
 import type { EmailDriver } from '@/lib/email/driver';
+import { devInboundSince } from '@/lib/email/dev-inbox';
 import type {
   InboundMessage,
   OutboundMessage,
@@ -7,6 +8,49 @@ import type {
 } from '@/lib/email/types';
 
 let counter = 0;
+
+/** Build a reply-shaped inbound from a contact (pure; shared by the driver + the
+ * dev simulate action). `from` is the contact address so the scanner correlates
+ * by sender; inReplyTo/conversationId enable thread correlation too. */
+export function buildSimulatedReply(opts: {
+  from: string;
+  inReplyTo?: string;
+  conversationId?: string;
+  subject?: string;
+  receivedAt?: string;
+}): InboundMessage {
+  counter += 1;
+  return {
+    messageId: `mock-in-${counter}-${Date.now()}`,
+    from: opts.from,
+    to: ['me@local'],
+    subject: opts.subject ?? 'Re: your message',
+    receivedAt: opts.receivedAt ?? new Date().toISOString(),
+    ...(opts.inReplyTo !== undefined ? { inReplyTo: opts.inReplyTo } : {}),
+    ...(opts.conversationId !== undefined ? { conversationId: opts.conversationId } : {}),
+  };
+}
+
+/** Build an NDR-shaped inbound for a failed recipient (pure), mirroring a real
+ * bounce: `from` is the system mailer and the failed recipient is carried in
+ * `failedRecipient` (what the scanner correlates a bounce on); the subject
+ * triggers NDR classification. The real Graph driver recovers `failedRecipient`
+ * from the delivery-status report (best-effort, see parseFailedRecipient). */
+export function buildSimulatedBounce(opts: { recipient: string; subject?: string; receivedAt?: string }): InboundMessage {
+  counter += 1;
+  // Mirror a real NDR: it comes FROM the system mailer with the failed recipient
+  // carried in `failedRecipient` (the scanner correlates a bounce on that, never
+  // on the bounce sender). The GraphDriver recovers the same field from a real
+  // delivery-status report.
+  return {
+    messageId: `mock-ndr-${counter}-${Date.now()}`,
+    from: 'mailer-daemon@local',
+    failedRecipient: opts.recipient,
+    to: ['me@local'],
+    subject: opts.subject ?? 'Undeliverable: message not delivered',
+    receivedAt: opts.receivedAt ?? new Date().toISOString(),
+  };
+}
 
 export class MockDriver implements EmailDriver {
   readonly name = 'mock';
@@ -30,7 +74,11 @@ export class MockDriver implements EmailDriver {
 
   async fetchReplies(opts: { since: string; mailbox?: string }): Promise<InboundMessage[]> {
     const sinceMs = Date.parse(opts.since);
-    return this.inbound.filter((m) => Date.parse(m.receivedAt) >= sinceMs);
+    const instance = this.inbound.filter((m) => Date.parse(m.receivedAt) >= sinceMs);
+    // Merge the process-global dev inbox so a "Simulate reply/bounce" pushed in a
+    // previous request is visible to this scan (the instance arrays don't persist
+    // across requests). Empty in unit tests, so they're unaffected.
+    return [...instance, ...devInboundSince(opts.since)];
   }
 
   async subscribeReplies(opts: {
@@ -44,6 +92,37 @@ export class MockDriver implements EmailDriver {
       notificationUrl: opts.notificationUrl,
       expiresAt: new Date(Date.now() + expiresInMs).toISOString(),
     };
+  }
+
+  /**
+   * Dev/test simulator: enqueue an inbound reply from a contact so a later
+   * `fetchReplies` (and the scanner) sees it. `from` is the contact's address so
+   * the scanner correlates by sender; `inReplyTo`/`conversationId` let it
+   * correlate to a prior sent event too (PHASE_5_SPEC §9).
+   */
+  simulateReply(opts: {
+    from: string;
+    inReplyTo?: string;
+    conversationId?: string;
+    subject?: string;
+    receivedAt?: string;
+  }): InboundMessage {
+    const message = buildSimulatedReply(opts);
+    this.inbound.push(message);
+    return message;
+  }
+
+  /**
+   * Dev/test simulator: enqueue a bounce/NDR for a failed recipient. Mirrors a
+   * real NDR — from the system mailer with the failed recipient in
+   * `failedRecipient` (what the scanner correlates a bounce on). The GraphDriver
+   * recovers the same field from a real delivery-status report best-effort (see
+   * parseFailedRecipient there).
+   */
+  simulateBounce(opts: { recipient: string; subject?: string; receivedAt?: string }): InboundMessage {
+    const message = buildSimulatedBounce(opts);
+    this.inbound.push(message);
+    return message;
   }
 
   reset(): void {

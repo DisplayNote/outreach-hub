@@ -53,7 +53,10 @@ export interface Campaign {
   id: string;
   orgId: string;
   name: string;
+  /** Free-text legacy/display sequence name (no longer load-bearing). */
   sequence: string | null;
+  /** public.campaigns.sequence_id — FK to the sequence the runner walks (Phase 5); null if unlinked. */
+  sequenceId: string | null;
   legacyId: number | null;
   createdAt: string;
   updatedAt: string;
@@ -83,6 +86,8 @@ export interface Contact {
   status: ContactStatus;
   sequenceDay: number | null;
   followUp: string | null;
+  /** public.contacts.last_emailed_at — last successful send (Phase 5); null if never. */
+  lastEmailedAt: string | null;
   notes: string | null;
   legacyId: number | null;
   /**
@@ -189,8 +194,20 @@ export interface OrgSettings {
   rhythmRed?: number;
   rhythmNone?: number;
   signature?: string;
+  /** The mailbox the email runner sends from (a real address, unlike `signature`). */
+  senderEmail?: string;
   defaultCountryCode?: string;
   seqSkipWeekends?: boolean;
+  /**
+   * Internal (not user-facing): per-mailbox inbox-scan high-water marks. Keyed by
+   * the mailbox identity being scanned (manual = the signed-in user's mailbox;
+   * cron = the org's configured senderEmail/cron mailbox), so one mailbox's scan
+   * can never advance another mailbox's position and skip its replies/bounces.
+   * Each entry is { at: newest message's ISO timestamp, ids: message-ids seen AT
+   * that exact timestamp (the boundary tie-breaker) }. Replaces the former flat
+   * lastInboxScanAt / lastInboxScanIds keys.
+   */
+  inboxScanCursors?: Record<string, { at: string; ids: string[] }>;
   [key: string]: unknown;
 }
 

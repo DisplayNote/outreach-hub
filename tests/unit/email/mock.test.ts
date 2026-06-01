@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDriver } from '@/lib/email/mock';
 import { getEmailDriver } from '@/lib/email/index';
+import { classifyInbound } from '@/lib/email/classify';
 
 describe('MockDriver', () => {
   let driver: MockDriver;
@@ -70,5 +71,44 @@ describe('MockDriver', () => {
       if (original === undefined) delete process.env.EMAIL_DRIVER;
       else process.env.EMAIL_DRIVER = original;
     }
+  });
+
+  it('factory fails closed in production when EMAIL_DRIVER is unset (no silent mock)', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('EMAIL_DRIVER', '');
+    delete process.env.EMAIL_DRIVER; // stubEnv('') sets ''; ensure truly unset
+    try {
+      expect(() => getEmailDriver()).toThrow(/EMAIL_DRIVER is not set/);
+      // explicit mock is still honoured in production
+      vi.stubEnv('EMAIL_DRIVER', 'mock');
+      expect(getEmailDriver().name).toBe('mock');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  describe('reply/bounce simulator', () => {
+    it('simulateReply enqueues a reply-shaped inbound (correlatable + classified reply)', async () => {
+      const msg = driver.simulateReply({ from: 'mike@example.com', inReplyTo: 'sent-1' });
+      expect(classifyInbound(msg)).toBe('reply');
+      const fetched = await driver.fetchReplies({ since: '2000-01-01T00:00:00.000Z' });
+      expect(fetched).toContainEqual(
+        expect.objectContaining({ messageId: msg.messageId, from: 'mike@example.com' }),
+      );
+    });
+
+    it('simulateBounce enqueues an NDR classified as a bounce, correlatable by the failed recipient', () => {
+      const msg = driver.simulateBounce({ recipient: 'bad@example.com' });
+      expect(classifyInbound(msg)).toBe('bounce');
+      // From the system mailer; the failed recipient is what the scanner correlates on.
+      expect(msg.from).toBe('mailer-daemon@local');
+      expect(msg.failedRecipient).toBe('bad@example.com');
+    });
+
+    it('gives each simulated message a unique id', () => {
+      const a = driver.simulateReply({ from: 'x@y.com' });
+      const b = driver.simulateReply({ from: 'x@y.com' });
+      expect(a.messageId).not.toBe(b.messageId);
+    });
   });
 });

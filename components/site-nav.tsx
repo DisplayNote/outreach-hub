@@ -25,11 +25,13 @@ const linksStyle: React.CSSProperties = {
 const NAV_LINKS: ReadonlyArray<{ href: string; label: string }> = [
   { href: '/today', label: 'Today' },
   { href: '/pipeline', label: 'Pipeline' },
+  { href: '/queue', label: 'Email Queue' },
   { href: '/dialler', label: 'Dialler' },
   { href: '/contacts', label: 'Contacts' },
   { href: '/campaigns', label: 'Campaigns' },
   { href: '/sequences', label: 'Sequences' },
   { href: '/templates', label: 'Templates' },
+  { href: '/suppressions', label: 'Suppressions' },
   { href: '/activity', label: 'Activity' },
   { href: '/reports', label: 'Reports' },
   { href: '/import', label: 'Import' },

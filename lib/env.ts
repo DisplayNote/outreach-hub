@@ -29,6 +29,17 @@ const serverEnvSchema = publicEnvSchema
     BRIDGE_SIP_USERNAME: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
     AMD_MODE: z.enum(['premium', 'detect', 'detect_beep']).default('premium'),
     NO_ANSWER_TIMEOUT_MS: z.coerce.number().int().positive().default(22000),
+    // Phase 5 — shared secret gating the scheduled email runner/scanner routes
+    // (Vercel Cron). Optional: unset in dev (manual trigger only).
+    CRON_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    // The single org the cron sender/scanner serves (the org whose mailbox the
+    // configured email driver/token points at). One global driver = one mailbox,
+    // so cron must NOT fan out across orgs; set this per deployment.
+    CRON_ORG_ID: z.preprocess(emptyStringAsUndefined, z.string().uuid().optional()),
+    // The mailbox the cron sender sends FROM, when the org hasn't set
+    // settings.senderEmail. A supported deploy-time config path so the scheduled
+    // sender doesn't silently no-op waiting for someone to hand-patch the JSONB.
+    CRON_SENDER_EMAIL: z.preprocess(emptyStringAsUndefined, z.string().email().optional()),
   })
   // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
   // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So
@@ -132,6 +143,29 @@ export function isDiallerMockEnabled(env: EnvRecord = process.env): boolean {
   return (
     env.NODE_ENV !== 'production' &&
     env.DIALLER_MOCK_ENABLED === 'true' &&
+    isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
+  );
+}
+
+/**
+ * Dev-only gate for the mock email path (PHASE_5_SPEC §9): the "simulate
+ * reply/bounce" affordance is inert unless we're non-prod, on the `mock`
+ * driver, and pointed at the local stack. Unlike the auth/dialler gates this
+ * keys off EMAIL_DRIVER (not a separate flag), since a real Graph driver must
+ * never be simulated against.
+ *
+ * Scoped to `mock` only (NOT `mailpit`): the simulator enqueues onto the
+ * process-global dev inbox, and only MockDriver.fetchReplies drains that queue.
+ * MailpitDriver.fetchReplies reads Mailpit's real REST API, so under mailpit
+ * the simulate buttons would report success while scans never see the message —
+ * an honest gate refuses them there (use a real round-trip via Mailpit instead).
+ * An UNSET EMAIL_DRIVER counts as `mock` to mirror the driver factory's default
+ * (getServerEnv defaults it to `mock`), so the simulator works in a bare local setup.
+ */
+export function isEmailMockEnabled(env: EnvRecord = process.env): boolean {
+  return (
+    env.NODE_ENV !== 'production' &&
+    (env.EMAIL_DRIVER ?? 'mock') === 'mock' &&
     isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
   );
 }

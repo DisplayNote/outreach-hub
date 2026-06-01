@@ -34,6 +34,13 @@ export interface InboundMessage {
   inReplyTo?: string;
   references?: string[];
   conversationId?: string;
+  /**
+   * For a bounce/NDR: the original failed recipient (the prospect), recovered
+   * from the delivery-status report. An NDR's `from` is the system mailer, so
+   * this is what the scanner correlates/suppresses on. Absent when it couldn't
+   * be recovered (the bounce is then ignored, never mis-correlated).
+   */
+  failedRecipient?: string;
 }
 
 export interface Subscription {
@@ -42,6 +49,51 @@ export interface Subscription {
   notificationUrl: string;
   /** ISO timestamp the subscription stops being valid. */
   expiresAt: string;
+}
+
+// --- Phase 5 domain: email events + suppressions ----------------------------
+
+/** public.email_events.type — a sent message, or an inbound reply/bounce. */
+export type EmailEventType = 'sent' | 'reply' | 'bounce';
+
+/** public.suppressions.reason — why an address is on the do-not-send list. */
+export type SuppressionReason = 'replied' | 'bounced' | 'manual' | 'unsubscribed';
+
+/**
+ * public.email_events row (camelCase). Append-only per-message log: a `sent`
+ * record per outbound, a `reply`/`bounce` per correlated inbound. `messageId`
+ * is the provider id and the send-dedup key; `sequenceDay` is the step's
+ * day_offset for a send (null for inbound).
+ */
+export interface EmailEvent {
+  id: string;
+  orgId: string;
+  contactId: string;
+  campaignId: string | null;
+  type: EmailEventType;
+  provider: string;
+  /** The address actually emailed on a `sent` event (normalised); null for inbound.
+   * Lets a bounce correlate by the address sent to even if the contact's email
+   * was corrected afterwards. */
+  recipient: string | null;
+  messageId: string | null;
+  conversationId: string | null;
+  inReplyTo: string | null;
+  subject: string | null;
+  sequenceDay: number | null;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+  createdAt: string;
+}
+
+/** public.suppressions row (camelCase) — one do-not-send address per org. */
+export interface Suppression {
+  id: string;
+  orgId: string;
+  email: string;
+  reason: SuppressionReason;
+  contactId: string | null;
+  createdAt: string;
 }
 
 export class EmailDriverError extends Error {
