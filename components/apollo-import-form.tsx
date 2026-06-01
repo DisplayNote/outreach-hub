@@ -77,8 +77,9 @@ export default function ApolloImportForm({ campaigns }: ApolloImportFormProps) {
     <form onSubmit={onSubmit}>
       <div style={{ marginBottom: 'var(--space-6)' }}>
         <Field
-          label="Target campaign *"
+          label="Target campaign"
           htmlFor="campaignId"
+          required
           hint="New contacts are added to this campaign."
         >
           <div className="select-wrap">

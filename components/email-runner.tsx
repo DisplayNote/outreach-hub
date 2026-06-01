@@ -109,7 +109,7 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
       </Card>
 
       {message ? (
-        <div className="banner banner--success">
+        <div className="banner banner--success" role="status">
           <span className="banner__icon">
             <Icon name="checkCircle" size={16} />
           </span>
@@ -117,7 +117,7 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
         </div>
       ) : null}
       {error ? (
-        <div className="banner banner--warning">
+        <div className="banner banner--warning" role="alert">
           <span className="banner__icon">
             <Icon name="alertCircle" size={16} />
           </span>

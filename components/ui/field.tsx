@@ -21,7 +21,11 @@ export default function Field({
       {label && (
         <label className="field-label" htmlFor={htmlFor}>
           {label}
-          {required && <span className="field-req">*</span>}
+          {required && (
+            <span className="field-req" aria-hidden="true">
+              *
+            </span>
+          )}
         </label>
       )}
       {children}

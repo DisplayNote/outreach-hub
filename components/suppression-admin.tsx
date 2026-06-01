@@ -68,7 +68,7 @@ export default function SuppressionAdmin({ rows }: { rows: readonly SuppressionR
       </Card>
 
       {error ? (
-        <div className="banner banner--warning">
+        <div className="banner banner--warning" role="alert">
           <span className="banner__icon">
             <Icon name="alertCircle" size={16} />
           </span>
