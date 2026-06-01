@@ -10,12 +10,15 @@ export default async function AppShell({ children }: { children: ReactNode }) {
 
   if (!user) return <>{children}</>;
 
+  // email is normally present (Entra ID), but some auth providers may omit it;
+  // fall back to a stable identifier so the shell never renders blank chrome.
   const email = user.email ?? '';
+  const mailbox = email || user.id;
   const initials = (email.slice(0, 2) || 'OH').toUpperCase();
 
   return (
     <AppShellClient
-      user={{ email, name: email.split('@')[0] || 'User', initials, mailbox: email }}
+      user={{ email, name: email.split('@')[0] || 'User', initials, mailbox }}
     >
       {children}
     </AppShellClient>

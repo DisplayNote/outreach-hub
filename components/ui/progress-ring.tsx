@@ -11,7 +11,7 @@ export default function ProgressRing({
   caption?: string;
   color?: string;
 }) {
-  const pct = max > 0 ? Math.min(1, value / max) : 0;
+  const pct = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
   const r = 52;
   const c = 2 * Math.PI * r;
   return (

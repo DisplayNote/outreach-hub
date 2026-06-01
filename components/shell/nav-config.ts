@@ -65,5 +65,5 @@ export function titleForPath(pathname: string): string {
       bestTitle = title;
     }
   }
-  return bestTitle;
+  return bestTitle || 'Outreach Hub';
 }

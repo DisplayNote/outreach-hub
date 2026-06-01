@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import type { Campaign, Contact, ContactStatus } from '@/lib/types/domain';
+import type { Campaign, Contact } from '@/lib/types/domain';
 import { CONTACT_STATUSES } from '@/lib/types/domain';
 import { Button, Field, Icon } from '@/components/ui';
+import { STATUS_LABELS } from '@/lib/ui/status';
 
 /**
  * Shared create/edit form for a contact. Renders one control per editable
@@ -19,17 +20,6 @@ import { Button, Field, Icon } from '@/components/ui';
  * Styling uses the shared design system (Field + .input/.select classes,
  * Button primitive) — see app/contacts/page.tsx for established conventions.
  */
-
-/** Human-readable label for each contact status, in schema order. */
-const STATUS_LABELS: Record<ContactStatus, string> = {
-  none: 'No status',
-  amber: 'Amber',
-  red: 'Red',
-  green: 'Green',
-  meeting: 'Meeting',
-  notinterested: 'Not interested',
-  bounced: 'Bounced',
-};
 
 export interface ContactFormProps {
   /** Server Action that receives the form's FormData and redirects on success. */

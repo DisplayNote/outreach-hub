@@ -2,28 +2,18 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getContact, getContactTouchpoints, getOrgSettings } from '@/lib/supabase/queries';
-import type { Contact, ContactStatus, Touchpoint, TouchpointChannel } from '@/lib/types/domain';
+import type { Contact, Touchpoint, TouchpointChannel } from '@/lib/types/domain';
 import { CONTACT_STATUSES, TOUCHPOINT_CHANNELS } from '@/lib/types/domain';
 import { logTouchpointForm } from '@/app/contacts/[id]/actions';
 import StatusSelect from '@/app/contacts/[id]/status-select';
 import ClickToCall from '@/components/click-to-call';
 import { Avatar, Button, Card, EmptyState, Field, Icon, Pill } from '@/components/ui';
-import { STATUS_PILLS } from '@/lib/ui/status';
+import { STATUS_PILLS, STATUS_LABELS } from '@/lib/ui/status';
 
 // Auth state + contact data change per request; never prerender.
 export const dynamic = 'force-dynamic';
 
 // --- Display helpers ---------------------------------------------------------
-
-const STATUS_LABELS: Record<ContactStatus, string> = {
-  none: 'No status',
-  amber: 'Amber',
-  red: 'Red',
-  green: 'Green',
-  meeting: 'Meeting',
-  notinterested: 'Not interested',
-  bounced: 'Bounced',
-};
 
 const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
   email: 'Email',
