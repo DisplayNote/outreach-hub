@@ -31,6 +31,9 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      // Minimal focus trap: keep focus on the input (arrow keys drive list
+      // navigation), so Tab can't move focus behind the modal overlay.
+      else if (e.key === 'Tab') { e.preventDefault(); inputRef.current?.focus(); }
       else if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, Math.max(0, filtered.length - 1))); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
       else if (e.key === 'Enter') {
