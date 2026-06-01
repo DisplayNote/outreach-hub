@@ -18,10 +18,18 @@ interface FakeOsc {
   start: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
+  onended: (() => void) | null;
+}
+
+interface FakeGain {
+  gain: { value: number; setValueAtTime: ReturnType<typeof vi.fn>; linearRampToValueAtTime: ReturnType<typeof vi.fn> };
+  connect: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
 }
 
 function makeFakeContext() {
   const oscillators: FakeOsc[] = [];
+  const gains: FakeGain[] = [];
   const resume = vi.fn();
   const ctx = {
     state: 'running' as AudioContextState,
@@ -36,19 +44,22 @@ function makeFakeContext() {
         start: vi.fn(),
         stop: vi.fn(),
         disconnect: vi.fn(),
+        onended: null,
       };
       oscillators.push(osc);
       return osc;
     },
-    createGain() {
-      return {
+    createGain(): FakeGain {
+      const gain: FakeGain = {
         gain: { value: 0, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
         connect: vi.fn(),
         disconnect: vi.fn(),
       };
+      gains.push(gain);
+      return gain;
     },
   };
-  return { ctx, oscillators, resume };
+  return { ctx, oscillators, gains, resume };
 }
 
 describe('createTonePlayer', () => {
@@ -108,6 +119,51 @@ describe('createTonePlayer', () => {
     player.stop();
 
     expect(osc.stop).toHaveBeenCalled();
+  });
+
+  it('reuses a single shared gain node across ringing bursts', () => {
+    const fake = makeFakeContext();
+    const player = createTonePlayer(true, () => fake.ctx as unknown as AudioContext);
+
+    player.play('ringing');
+    // First burst should produce the two ring oscillators (400Hz + 450Hz)...
+    expect(fake.oscillators).toHaveLength(2);
+    // ...but only the one shared gain created in play() — no per-burst gain leak.
+    expect(fake.gains).toHaveLength(1);
+
+    // A second burst (3s interval) reuses the same gain, only adding oscillators.
+    vi.advanceTimersByTime(3000);
+    expect(fake.gains).toHaveLength(1);
+    expect(fake.oscillators.length).toBeGreaterThanOrEqual(4);
+
+    player.stop();
+  });
+
+  it('tracks ringing oscillators so stop() tears them down and disconnects the gain', () => {
+    const fake = makeFakeContext();
+    const player = createTonePlayer(true, () => fake.ctx as unknown as AudioContext);
+
+    player.play('ringing');
+    const [o1, o2] = fake.oscillators;
+    player.stop();
+
+    // The active burst oscillators are stopped, and the shared gain disconnected.
+    expect(o1!.stop).toHaveBeenCalled();
+    expect(o2!.stop).toHaveBeenCalled();
+    expect(fake.gains[0]!.disconnect).toHaveBeenCalled();
+  });
+
+  it('disconnects ringing oscillators when they end naturally', () => {
+    const fake = makeFakeContext();
+    const player = createTonePlayer(true, () => fake.ctx as unknown as AudioContext);
+
+    player.play('ringing');
+    const osc = fake.oscillators[0]!;
+    expect(osc.onended).toBeTypeOf('function');
+    osc.onended?.();
+    expect(osc.disconnect).toHaveBeenCalled();
+
+    player.stop();
   });
 
   it('does not throw when no AudioContext is available', () => {

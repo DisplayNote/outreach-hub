@@ -130,8 +130,13 @@ export function createTonePlayer(
       }, 400);
     } else if (name === 'ringing') {
       // UK ringback: 400Hz + 450Hz, two 0.4s rings 0.2s apart, then 2s silence.
+      // Each burst needs fresh oscillators (a stopped OscillatorNode can't
+      // restart), but they share the single `gain` created above for the
+      // envelope — and are tracked in `osc`/`osc2` so `stop()` tears down the
+      // in-flight burst, and disconnected on `onended` so the graph doesn't
+      // accumulate dead nodes across the (potentially long) ringing period.
       const startBurst = (): void => {
-        if (active !== 'ringing' || !ctx) return;
+        if (active !== 'ringing' || !ctx || !gain) return;
         try {
           const o1 = ctx.createOscillator();
           o1.type = 'sine';
@@ -139,26 +144,39 @@ export function createTonePlayer(
           const o2 = ctx.createOscillator();
           o2.type = 'sine';
           o2.frequency.value = 450;
-          const g = ctx.createGain();
-          g.gain.value = 0;
-          o1.connect(g);
-          o2.connect(g);
-          g.connect(ctx.destination);
+          o1.connect(gain);
+          o2.connect(gain);
           const now = ctx.currentTime;
           // First ring (0.4s).
-          g.gain.setValueAtTime(0, now);
-          g.gain.linearRampToValueAtTime(0.08, now + 0.02);
-          g.gain.setValueAtTime(0.08, now + 0.38);
-          g.gain.linearRampToValueAtTime(0, now + 0.4);
+          gain.gain.setValueAtTime(0, now);
+          gain.gain.linearRampToValueAtTime(0.08, now + 0.02);
+          gain.gain.setValueAtTime(0.08, now + 0.38);
+          gain.gain.linearRampToValueAtTime(0, now + 0.4);
           // Silence (0.2s), then second ring (0.4s).
-          g.gain.setValueAtTime(0, now + 0.6);
-          g.gain.linearRampToValueAtTime(0.08, now + 0.62);
-          g.gain.setValueAtTime(0.08, now + 0.98);
-          g.gain.linearRampToValueAtTime(0, now + 1.0);
+          gain.gain.setValueAtTime(0, now + 0.6);
+          gain.gain.linearRampToValueAtTime(0.08, now + 0.62);
+          gain.gain.setValueAtTime(0.08, now + 0.98);
+          gain.gain.linearRampToValueAtTime(0, now + 1.0);
           o1.start(now);
           o2.start(now);
           o1.stop(now + 1.0);
           o2.stop(now + 1.0);
+          o1.onended = () => {
+            try {
+              o1.disconnect();
+            } catch {
+              // already disconnected
+            }
+          };
+          o2.onended = () => {
+            try {
+              o2.disconnect();
+            } catch {
+              // already disconnected
+            }
+          };
+          osc = o1;
+          osc2 = o2;
         } catch {
           // transient Web Audio error — skip this burst
         }
