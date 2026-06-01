@@ -137,3 +137,9 @@
 .stat-card__head { display: flex; align-items: center; gap: var(--space-3); font-size: var(--fs-caption); font-weight: var(--fw-medium); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
 .stat-card__value { font-size: var(--fs-h1); font-weight: var(--fw-semibold); color: var(--text-primary); line-height: 1; }
 .stat-card__sub { font-size: var(--fs-sm); color: var(--text-secondary); }
+
+/* Login split-panel responsive collapse (from prototype inline <style>) */
+@media (max-width: 880px) {
+  .login-split { grid-template-columns: 1fr !important; }
+  .login-brand { display: none !important; }
+}
