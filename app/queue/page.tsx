@@ -6,6 +6,7 @@ import { getEmailDriver } from '@/lib/email/index';
 import { supabaseEmailStore } from '@/lib/email/store';
 import { renderTemplate } from '@/lib/email/render';
 import { isEmailMockEnabled } from '@/lib/env';
+import { Icon } from '@/components/ui';
 import EmailRunner, { type QueueItem } from '@/components/email-runner';
 
 // Auth + the due queue change per request; never prerender.
@@ -46,28 +47,33 @@ export default async function QueuePage() {
     subject: renderTemplate(d.template ?? { subject: null, body: null }, d.contact, settings).subject,
   }));
 
+  const dueCount = queue.length;
+  const dueLabel =
+    dueCount === 0
+      ? 'Nobody is due to be emailed today'
+      : `${dueCount} ${dueCount === 1 ? 'contact' : 'contacts'} due today`;
+
   return (
-    <main style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif', maxWidth: 820, margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Email Queue</h1>
-      <p style={{ marginTop: 0, color: '#666' }}>
-        Contacts due to be emailed today. The runner sends the right sequence step, logs it, and
-        schedules the next follow-up.
-      </p>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Email Queue</div>
+          <div className="page-head__sub">
+            {dueLabel}. The runner sends the right sequence step, logs it, and schedules the next
+            follow-up.
+          </div>
+        </div>
+      </div>
+
       {isEmailMockEnabled() ? (
-        <p
-          style={{
-            display: 'inline-block',
-            margin: '0.5rem 0 0',
-            padding: '0.2rem 0.6rem',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            color: '#92400e',
-            background: '#fef3c7',
-            borderRadius: 4,
-          }}
-        >
-          Mock email — no real mail sent ({driver.name})
-        </p>
+        <div className="banner banner--warning" style={{ marginBottom: 'var(--space-6)' }}>
+          <span className="banner__icon">
+            <Icon name="alert" size={16} />
+          </span>
+          <span>
+            <b>Mock email</b> — no real mail sent ({driver.name}).
+          </span>
+        </div>
       ) : null}
 
       <EmailRunner
@@ -76,6 +82,6 @@ export default async function QueuePage() {
         campaigns={campaigns.map((c) => ({ id: c.id, name: c.name }))}
         sequences={sequences.map((s) => ({ id: s.id, name: s.name }))}
       />
-    </main>
+    </div>
   );
 }
