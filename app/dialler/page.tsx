@@ -1,8 +1,14 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { getOrgSettings, getTodayContacts, listCampaigns } from '@/lib/supabase/queries';
+import {
+  getOrgSettings,
+  getTodayContacts,
+  getUserSettings,
+  listCampaigns,
+} from '@/lib/supabase/queries';
 import { pickDialNumber } from '@/lib/dialler/normalise';
+import { resolveDiallerPrefs } from '@/lib/dialler/prefs';
 import type { Contact } from '@/lib/types/domain';
 import { Button, Card, Field, Icon } from '@/components/ui';
 import DiallerRun, { type DiallerQueueItem } from '@/components/dialler-run';
@@ -48,13 +54,15 @@ export default async function DiallerPage({ searchParams }: DiallerPageProps) {
   const rawCampaign = Array.isArray(params.campaign) ? params.campaign[0] : params.campaign;
   const campaignFilter = rawCampaign && rawCampaign !== '' ? rawCampaign : null;
 
-  const [dueContacts, campaigns, settings] = await Promise.all([
+  const [dueContacts, campaigns, settings, userSettings] = await Promise.all([
     getTodayContacts(),
     listCampaigns(),
     getOrgSettings(),
+    getUserSettings(),
   ]);
 
   const defaultCountryCode = settings.defaultCountryCode ?? '+44';
+  const diallerPrefs = resolveDiallerPrefs(userSettings);
 
   // Narrow by campaign (if requested), then keep only contacts we can dial.
   const queue: DiallerQueueItem[] = dueContacts
@@ -110,7 +118,12 @@ export default async function DiallerPage({ searchParams }: DiallerPageProps) {
       </Card>
 
       <div style={{ marginTop: 'var(--space-6)' }}>
-        <DiallerRun queue={queue} />
+        <DiallerRun
+          queue={queue}
+          autoDial={diallerPrefs.autoDial}
+          interCallDelaySec={diallerPrefs.interCallDelaySec}
+          synthTones={diallerPrefs.synthTones}
+        />
       </div>
     </div>
   );
