@@ -24,7 +24,10 @@ export default function Button({
   children,
   ...rest
 }: ButtonProps) {
-  const onlyIcon = icon && !children;
+  // Treat 0 and '' as real children; only null/undefined/false count as absent
+  // (a truthiness test would drop a valid 0 node and miscompute onlyIcon).
+  const hasChildren = children !== null && children !== undefined && children !== false;
+  const onlyIcon = icon && !hasChildren;
   // A loading button is busy: disable it (so it can't be activated by mouse or
   // keyboard) and expose the busy state to assistive tech.
   return (
@@ -36,7 +39,7 @@ export default function Button({
     >
       {loading && <span className="btn__spinner" />}
       {icon && <Icon name={icon} size={size === 'sm' ? 14 : 16} />}
-      {children && <span>{children}</span>}
+      {hasChildren && <span>{children}</span>}
       {iconRight && <Icon name={iconRight} size={size === 'sm' ? 14 : 16} />}
     </button>
   );
