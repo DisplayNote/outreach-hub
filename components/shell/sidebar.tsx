@@ -53,7 +53,9 @@ export default function Sidebar({
       <div className="sidebar__foot">
         <form action="/auth/signout" method="post">
           <div className="sidebar-user" style={{ width: '100%' }}>
-            <span className="avatar avatar--md">{user.initials}</span>
+            <span className="avatar avatar--md" aria-hidden="true">
+              {user.initials}
+            </span>
             {!collapsed && (
               <div className="sidebar-user__meta">
                 <div className="sidebar-user__name">{user.name}</div>
