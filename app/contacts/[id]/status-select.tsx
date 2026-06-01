@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import type { ContactStatus } from '@/lib/types/domain';
 import { setContactStatusForm } from '@/app/contacts/[id]/actions';
+import { Button, Icon } from '@/components/ui';
 
 interface StatusOption {
   value: ContactStatus;
@@ -29,40 +30,29 @@ export default function StatusSelect({
   return (
     <form ref={formRef} action={setContactStatusForm}>
       <input type="hidden" name="id" value={contactId} />
-      <select
-        name="status"
-        defaultValue={current}
-        onChange={() => formRef.current?.requestSubmit()}
-        aria-label="Contact status"
-        style={{
-          padding: '0.4rem 0.6rem',
-          fontSize: '0.9375rem',
-          border: '1px solid #d1d5db',
-          borderRadius: 4,
-          background: 'white',
-        }}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <div className="select-wrap">
+        <select
+          className="input"
+          name="status"
+          defaultValue={current}
+          onChange={() => formRef.current?.requestSubmit()}
+          aria-label="Contact status"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <span className="select-chevron">
+          <Icon name="chevronDown" size={15} />
+        </span>
+      </div>
       <noscript>
         {' '}
-        <button
-          type="submit"
-          style={{
-            padding: '0.4rem 0.6rem',
-            fontSize: '0.875rem',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
-            background: '#f3f4f6',
-            cursor: 'pointer',
-          }}
-        >
+        <Button type="submit" variant="secondary" size="sm">
           Update
-        </button>
+        </Button>
       </noscript>
     </form>
   );

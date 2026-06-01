@@ -1,17 +1,12 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ApolloImportForm from '@/components/apollo-import-form';
 import { createClient } from '@/lib/supabase/server';
 import { listCampaigns } from '@/lib/supabase/queries';
+import { Card, EmptyState } from '@/components/ui';
 
 // Auth state + campaign list change per request; never prerender.
 export const dynamic = 'force-dynamic';
-
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
 
 export default async function ImportPage() {
   const supabase = await createClient();
@@ -29,54 +24,43 @@ export default async function ImportPage() {
   // first rather than rendering an import form that can never submit.
   if (campaigns.length === 0) {
     return (
-      <main style={mainStyle}>
-        <h1 style={{ marginBottom: '0.25rem' }}>Import contacts</h1>
-        <div
-          style={{
-            marginTop: '1.5rem',
-            padding: '2rem',
-            textAlign: 'center',
-            color: '#666',
-            background: '#fafafa',
-            border: '1px solid #eee',
-            borderRadius: 6,
-          }}
-        >
-          <p style={{ margin: 0, fontSize: '1.05rem' }}>No campaigns yet.</p>
-          <p style={{ margin: '0.5rem 0 1.25rem', fontSize: '0.9rem' }}>
-            Imported contacts are added to a campaign. Create a campaign first,
-            then come back to import your Apollo CSV into it.
-          </p>
-          <a
-            href="/campaigns/new"
-            style={{
-              padding: '0.55rem 1.25rem',
-              background: '#111',
-              color: '#fff',
-              border: '1px solid #111',
-              borderRadius: 4,
-              fontSize: '0.9375rem',
-              fontWeight: 600,
-              textDecoration: 'none',
-              display: 'inline-block',
-            }}
-          >
-            Create a campaign
-          </a>
+      <div className="content__inner">
+        <div className="page-head">
+          <div>
+            <div className="page-head__title">Import contacts</div>
+            <div className="page-head__sub">Import an Apollo (or generic) CSV export into one of your campaigns.</div>
+          </div>
         </div>
-      </main>
+        <Card>
+          <EmptyState
+            icon="campaign"
+            title="No campaigns yet"
+            desc="Imported contacts are added to a campaign. Create a campaign first, then come back to import your Apollo CSV into it."
+            action={
+              <Link href="/campaigns/new" className="btn btn--primary btn--md">
+                Create a campaign
+              </Link>
+            }
+          />
+        </Card>
+      </div>
     );
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Import contacts</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Import an Apollo (or generic) CSV export into one of your campaigns.
-        Recognised columns map to contact fields; everything else is preserved
-        as metadata.
-      </p>
-      <ApolloImportForm campaigns={campaigns} />
-    </main>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Import contacts</div>
+          <div className="page-head__sub">
+            Import an Apollo (or generic) CSV export into one of your campaigns. Recognised columns
+            map to contact fields; everything else is preserved as metadata.
+          </div>
+        </div>
+      </div>
+      <Card>
+        <ApolloImportForm campaigns={campaigns} />
+      </Card>
+    </div>
   );
 }

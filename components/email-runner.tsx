@@ -16,6 +16,8 @@ import {
   enrolInSequence,
   simulateInbound,
 } from '@/lib/actions/email';
+import { Avatar, Badge, Button, Card, EmptyState, Field, Icon } from '@/components/ui';
+import { initials } from '@/lib/ui/initials';
 
 export interface QueueItem {
   contactId: string;
@@ -31,33 +33,6 @@ export interface EmailRunnerProps {
   campaigns: ReadonlyArray<{ id: string; name: string }>;
   sequences: ReadonlyArray<{ id: string; name: string }>;
 }
-
-const card: React.CSSProperties = {
-  marginTop: '1.5rem',
-  padding: '1.25rem',
-  border: '1px solid #e5e7eb',
-  borderRadius: 8,
-  background: '#fff',
-};
-const primaryBtn: React.CSSProperties = {
-  padding: '0.55rem 1.2rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 6,
-  fontSize: '0.9rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-const secondaryBtn: React.CSSProperties = {
-  padding: '0.4rem 0.8rem',
-  background: '#fff',
-  color: '#374151',
-  border: '1px solid #d1d5db',
-  borderRadius: 6,
-  fontSize: '0.85rem',
-  cursor: 'pointer',
-};
 
 export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequences }: EmailRunnerProps) {
   const router = useRouter();
@@ -119,32 +94,45 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
     });
 
   return (
-    <div>
-      {/* Actions */}
-      <div style={{ ...card, display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
-        <label style={{ fontSize: '0.85rem', color: '#374151', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+      {/* Run / scan controls */}
+      <Card bodyStyle={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-5)', alignItems: 'center' }}>
+        <label className="row gap-3 center sm" style={{ cursor: 'pointer' }}>
           <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} /> Dry run
         </label>
-        <button type="button" onClick={runNow} disabled={busy !== null} style={primaryBtn}>
+        <Button variant="primary" icon="zap" onClick={runNow} disabled={busy !== null} loading={busy === 'run'}>
           {busy === 'run' ? 'Running…' : 'Run sender now'}
-        </button>
-        <button type="button" onClick={scanNow} disabled={busy !== null} style={secondaryBtn}>
+        </Button>
+        <Button variant="secondary" icon="inbox" onClick={scanNow} disabled={busy !== null} loading={busy === 'scan'}>
           {busy === 'scan' ? 'Scanning…' : 'Scan inbox now'}
-        </button>
-      </div>
+        </Button>
+      </Card>
 
-      {message ? <p style={{ marginTop: '0.75rem', color: '#166534', fontSize: '0.9rem' }}>{message}</p> : null}
-      {error ? <p style={{ marginTop: '0.75rem', color: '#b91c1c', fontSize: '0.9rem' }}>{error}</p> : null}
+      {message ? (
+        <div className="banner banner--success" role="status">
+          <span className="banner__icon">
+            <Icon name="checkCircle" size={16} />
+          </span>
+          <span>{message}</span>
+        </div>
+      ) : null}
+      {error ? (
+        <div className="banner banner--warning" role="alert">
+          <span className="banner__icon">
+            <Icon name="alertCircle" size={16} />
+          </span>
+          <span>{error}</span>
+        </div>
+      ) : null}
 
       {/* Sequence setup */}
-      <div style={card}>
-        <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem' }}>Sequence setup</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
+      <Card title="Sequence setup">
+        <div className="row gap-5 center" style={{ flexWrap: 'wrap' }}>
           <select
             aria-label="Campaign"
+            className="input"
             value={campaignId}
             onChange={(e) => setCampaignId(e.target.value)}
-            style={secondaryBtn}
           >
             {campaigns.map((c) => (
               <option key={c.id} value={c.id}>
@@ -154,9 +142,9 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
           </select>
           <select
             aria-label="Sequence"
+            className="input"
             value={sequenceId}
             onChange={(e) => setSequenceId(e.target.value)}
-            style={secondaryBtn}
           >
             {sequences.map((s) => (
               <option key={s.id} value={s.id}>
@@ -164,79 +152,148 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
               </option>
             ))}
           </select>
-          <button type="button" onClick={link} disabled={busy !== null || !campaignId || !sequenceId} style={secondaryBtn}>
+          <Button
+            variant="secondary"
+            icon="sequence"
+            onClick={link}
+            disabled={busy !== null || !campaignId || !sequenceId}
+            loading={busy === 'link'}
+          >
             Link
-          </button>
-          <button type="button" onClick={enrol} disabled={busy !== null || !campaignId} style={secondaryBtn}>
+          </Button>
+          <Button
+            variant="secondary"
+            icon="userPlus"
+            onClick={enrol}
+            disabled={busy !== null || !campaignId}
+            loading={busy === 'enrol'}
+          >
             Enrol campaign contacts
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Due queue */}
-      <div style={card}>
-        <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem' }}>Due today ({queue.length})</h2>
+      <Card title={`Due today (${queue.length})`} bodyStyle={{ padding: 0 }}>
         {queue.length === 0 ? (
-          <p style={{ color: '#6b7280', fontSize: '0.9rem', margin: 0 }}>
-            Nobody is due. Link a campaign to a sequence and enrol its contacts to populate the queue.
-          </p>
+          <EmptyState
+            icon="inbox"
+            title="Nobody is due"
+            desc="Link a campaign to a sequence and enrol its contacts to populate the queue."
+          />
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            {queue.map((q) => (
-              <li
-                key={q.contactId}
-                style={{ padding: '0.6rem 0', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', gap: '1rem' }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600 }}>{q.name}</div>
-                  <div style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                    {q.email} · day {q.sequenceDay} · “{q.subject}”
-                  </div>
-                </div>
-                {/* Simulation lives in the standalone form below — NOT per-row.
-                    A due (e.g. day-0) contact has no prior send, so a simulated
-                    reply/bounce here would be ignored by the scanner's
-                    send-before-inbound guard and then lost when the cursor
-                    advances. Simulate AFTER running the sender instead. */}
-              </li>
-            ))}
-          </ul>
+          <div className="tbl-wrap" style={{ border: 'none', borderRadius: 0 }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th scope="col" style={{ width: 40 }}>
+                    #
+                  </th>
+                  <th scope="col">Contact</th>
+                  <th scope="col">Rendered subject</th>
+                  <th scope="col">Step</th>
+                  <th scope="col" className="num">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {queue.map((q, i) => (
+                  <tr key={q.contactId}>
+                    <td className="num tert">{i + 1}</td>
+                    <td>
+                      <div className="row gap-5 center">
+                        <Avatar initials={initials(q.name, q.email)} size="sm" />
+                        <div style={{ minWidth: 0 }}>
+                          <div className="medb" style={{ whiteSpace: 'nowrap' }}>
+                            {q.name}
+                          </div>
+                          <div
+                            className="cap tert"
+                            style={{
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              maxWidth: 200,
+                            }}
+                          >
+                            {q.email}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div
+                        className="sm"
+                        style={{
+                          maxWidth: 320,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {q.subject}
+                      </div>
+                    </td>
+                    <td className="sm muted" style={{ whiteSpace: 'nowrap' }}>
+                      Day {q.sequenceDay}
+                    </td>
+                    <td className="num">
+                      <Badge tone="success">Ready</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </Card>
 
       {/* Dev-only standalone simulator — works after a contact has advanced out
           of the due queue (and so models a reply/bounce arriving AFTER the send,
           which the scanner's send-before-inbound correlation guard requires). */}
       {emailMockEnabled ? (
-        <div style={card}>
-          <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem' }}>Simulate inbound (dev)</h2>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', alignItems: 'center' }}>
-            <input
-              type="email"
-              aria-label="Contact email to simulate inbound from"
-              placeholder="contact@example.com"
-              value={simEmail}
-              onChange={(e) => setSimEmail(e.target.value)}
-              style={{ ...secondaryBtn, minWidth: 240, cursor: 'text' }}
-            />
-            <button
-              type="button"
+        <Card>
+          {/* Heading lives in the same body block as the controls so the e2e's
+              `locator('div', { hasText: 'Simulate inbound (dev)' }).last()`
+              still resolves to a node that contains the Sim reply/bounce
+              buttons. Rendered as an <h2>, not a nested <div>. */}
+          <h2 className="card__title row gap-3 center" style={{ marginTop: 0, marginBottom: 'var(--space-5)' }}>
+            <Icon name="flask" size={15} />
+            Simulate inbound (dev)
+          </h2>
+          <div className="row gap-5" style={{ flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ minWidth: 260 }}>
+              <Field label="Contact email to simulate inbound from" htmlFor="sim-email">
+                <input
+                  id="sim-email"
+                  type="email"
+                  className="input"
+                  aria-label="Contact email to simulate inbound from"
+                  placeholder="contact@example.com"
+                  value={simEmail}
+                  onChange={(e) => setSimEmail(e.target.value)}
+                />
+              </Field>
+            </div>
+            <Button
+              variant="secondary"
+              icon="reply"
               onClick={() => simulate(simEmail.trim(), 'reply')}
               disabled={busy !== null || simEmail.trim() === ''}
-              style={secondaryBtn}
             >
               Sim reply
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
+              icon="alert"
               onClick={() => simulate(simEmail.trim(), 'bounce')}
               disabled={busy !== null || simEmail.trim() === ''}
-              style={secondaryBtn}
             >
               Sim bounce
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       ) : null}
     </div>
   );

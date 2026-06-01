@@ -4,6 +4,7 @@ import { updateCampaign } from '@/lib/actions/campaigns';
 import type { UpdateCampaignInput } from '@/lib/actions/campaigns';
 import { createClient } from '@/lib/supabase/server';
 import { listCampaigns } from '@/lib/supabase/queries';
+import { Card } from '@/components/ui';
 
 // Auth state + campaign data change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -17,13 +18,6 @@ function text(formData: FormData, key: string): string | null {
   const trimmed = raw.trim();
   return trimmed === '' ? null : trimmed;
 }
-
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
 
 export default async function EditCampaignPage({
   params,
@@ -66,17 +60,21 @@ export default async function EditCampaignPage({
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Edit campaign</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Update this campaign&rsquo;s details.
-      </p>
-      <CampaignForm
-        action={action}
-        campaign={campaign}
-        submitLabel="Save changes"
-        cancelHref="/campaigns"
-      />
-    </main>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Edit campaign</div>
+          <div className="page-head__sub">Update this campaign&rsquo;s details.</div>
+        </div>
+      </div>
+      <Card>
+        <CampaignForm
+          action={action}
+          campaign={campaign}
+          submitLabel="Save changes"
+          cancelHref="/campaigns"
+        />
+      </Card>
+    </div>
   );
 }

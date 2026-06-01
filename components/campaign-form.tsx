@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import type { Campaign } from '@/lib/types/domain';
+import { Button, Field } from '@/components/ui';
 
 /**
  * Shared create/edit form for a campaign. Renders the two editable columns
@@ -13,53 +15,9 @@ import type { Campaign } from '@/lib/types/domain';
  * so a double-click can't fire the action twice. Field names map 1:1 to the
  * camelCase keys the page-level action expects.
  *
- * Styling mirrors the inline-style approach used elsewhere (Tailwind is not
- * wired yet — see app/today/page.tsx and components/contact-form.tsx).
+ * Styling uses the shared design system (Field + .input classes, Button
+ * primitive) — see components/contact-form.tsx for established conventions.
  */
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: '0.35rem',
-};
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.625rem',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-};
-
-const fieldGroupStyle: React.CSSProperties = {
-  marginBottom: '1.1rem',
-};
-
-const submitStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const cancelStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#fff',
-  color: '#374151',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  textDecoration: 'none',
-  display: 'inline-block',
-};
 
 export interface CampaignFormProps {
   /** Server Action that receives the form's FormData and redirects on success. */
@@ -87,45 +45,39 @@ export default function CampaignForm({
   const [pending, setPending] = useState(false);
 
   return (
-    <form
-      action={action}
-      onSubmit={() => setPending(true)}
-      style={{ fontFamily: 'system-ui, sans-serif' }}
-    >
-      <div style={fieldGroupStyle}>
-        <label htmlFor="name" style={labelStyle}>
-          Name *
-        </label>
-        <input
-          id="name"
-          name="name"
-          type="text"
-          required
-          defaultValue={value(campaign?.name)}
-          style={fieldStyle}
-        />
+    <form action={action} onSubmit={() => setPending(true)}>
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field label="Name" htmlFor="name" required>
+          <input
+            id="name"
+            name="name"
+            type="text"
+            required
+            defaultValue={value(campaign?.name)}
+            className="input"
+          />
+        </Field>
       </div>
 
-      <div style={fieldGroupStyle}>
-        <label htmlFor="sequence" style={labelStyle}>
-          Sequence
-        </label>
-        <input
-          id="sequence"
-          name="sequence"
-          type="text"
-          defaultValue={value(campaign?.sequence)}
-          style={fieldStyle}
-        />
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field label="Sequence" htmlFor="sequence">
+          <input
+            id="sequence"
+            name="sequence"
+            type="text"
+            defaultValue={value(campaign?.sequence)}
+            className="input"
+          />
+        </Field>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-        <button type="submit" disabled={pending} style={submitStyle}>
+      <div className="row gap-4" style={{ marginTop: 'var(--space-7)' }}>
+        <Button type="submit" variant="primary" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}
-        </button>
-        <a href={cancelHref} style={cancelStyle}>
+        </Button>
+        <Link href={cancelHref} className="btn btn--ghost btn--md">
           Cancel
-        </a>
+        </Link>
       </div>
     </form>
   );

@@ -18,6 +18,7 @@ import { getDiallerOutcomes } from '@/lib/dialler';
 import { startAmdRun, placeAmdCall, hangupAttempt, cancelAttempt, setRunStatus } from '@/lib/actions/dialler-amd';
 import { useAmdRun } from '@/lib/dialler/amd/realtime';
 import type { CallAttempt, CallAttemptState } from '@/lib/dialler/amd/types';
+import { Button, Card, EmptyState } from '@/components/ui';
 import type { DiallerQueueItem } from '@/components/dialler-run';
 
 export interface AmdRunProps {
@@ -64,45 +65,6 @@ function liveLabel(a: CallAttempt | undefined): string {
       }
   }
 }
-
-const card: React.CSSProperties = {
-  marginTop: '1.5rem',
-  padding: '1.5rem',
-  border: '1px solid #e5e7eb',
-  borderRadius: 8,
-  background: '#fff',
-};
-const primaryBtn: React.CSSProperties = {
-  padding: '0.6rem 1.4rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 6,
-  fontSize: '0.95rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-const secondaryBtn: React.CSSProperties = {
-  padding: '0.5rem 1rem',
-  background: '#fff',
-  color: '#374151',
-  border: '1px solid #d1d5db',
-  borderRadius: 6,
-  fontSize: '0.9rem',
-  cursor: 'pointer',
-};
-const outcomeBtn: React.CSSProperties = {
-  display: 'block',
-  width: '100%',
-  textAlign: 'left',
-  padding: '0.7rem 0.9rem',
-  background: '#f9fafb',
-  border: '1px solid #d1d5db',
-  borderRadius: 6,
-  fontSize: '0.9375rem',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-};
 
 export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
   const outcomes = useMemo(() => getDiallerOutcomes(), []);
@@ -304,102 +266,125 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
 
   if (total === 0) {
     return (
-      <div style={{ ...card, textAlign: 'center', color: '#666' }}>
-        <p style={{ margin: 0 }}>No contacts available for an AMD run.</p>
-      </div>
+      <Card>
+        <EmptyState
+          icon="voicemail"
+          title="No contacts available for an AMD run."
+          desc="Contacts due today with a dialable number appear here, ready for a server-orchestrated run."
+        />
+      </Card>
     );
   }
 
   if (runId === null) {
     return (
-      <div style={card}>
-        <p style={{ margin: '0 0 1rem', color: '#374151' }}>
+      <Card>
+        <p className="muted" style={{ margin: '0 0 var(--space-6)' }}>
           {total} {total === 1 ? 'contact' : 'contacts'} ready. The dialler will detect voicemails
           automatically and connect you only when a human answers.
         </p>
-        <button type="button" onClick={start} style={primaryBtn}>
+        <Button type="button" variant="primary" icon="voicemail" onClick={start}>
           Start AMD Run
-        </button>
-        {error ? <p style={{ color: '#b91c1c', fontSize: '0.85rem' }}>{error}</p> : null}
-      </div>
+        </Button>
+        {error ? (
+          <p className="sm" style={{ color: 'var(--red-700)', marginTop: 'var(--space-5)' }}>
+            {error}
+          </p>
+        ) : null}
+      </Card>
     );
   }
 
   if (done) {
     return (
-      <div style={{ ...card, textAlign: 'center', color: '#166534', background: '#f0fdf4', borderColor: '#bbf7d0' }}>
-        <p style={{ margin: 0, fontWeight: 600 }}>AMD run complete.</p>
-        <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem' }}>
-          {tally.humans} connected · {tally.voicemails} voicemails · {tally.noAnswers} no-answer
-        </p>
-      </div>
+      <Card>
+        <div style={{ textAlign: 'center' }}>
+          <p className="semib" style={{ margin: 0, color: 'var(--green-700)' }}>
+            AMD run complete.
+          </p>
+          <p className="sm muted" style={{ margin: 'var(--space-5) 0 0' }}>
+            {tally.humans} connected · {tally.voicemails} voicemails · {tally.noAnswers} no-answer
+          </p>
+        </div>
+      </Card>
     );
   }
 
   const showOutcomes = awaitOutcome;
 
   return (
-    <div>
-      <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#6b7280' }}>
-        <span>Contact {index + 1} of {total}</span>
+    <div className="col gap-6">
+      <div
+        className="row sm muted"
+        style={{ justifyContent: 'space-between' }}
+      >
+        <span>
+          Contact {index + 1} of {total}
+        </span>
         <span>
           {tally.humans} connected · {tally.voicemails} VM · {tally.noAnswers} no-answer
         </span>
       </div>
 
-      <div style={card}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '1rem' }}>
+      <Card>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-6)' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{current?.name}</h2>
-            <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.9rem' }}>
+            <h2 className="semib" style={{ margin: 0, fontSize: 'var(--fs-h3)' }}>
+              {current?.name}
+            </h2>
+            <p className="sm muted" style={{ margin: 'var(--space-3) 0 0' }}>
               {[current?.jobTitle, current?.company].filter(Boolean).join(' · ') || '—'}
             </p>
           </div>
-          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+          <span className="sm semib" style={{ whiteSpace: 'nowrap' }}>
             {liveLabel(currentAttempt)}
           </span>
         </div>
-        <p style={{ margin: '0.75rem 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{current?.dialNumber}</p>
+        <p className="mono semib" style={{ margin: 'var(--space-5) 0 0', fontSize: 'var(--fs-body)' }}>
+          {current?.dialNumber}
+        </p>
 
-        <div style={{ marginTop: '1rem', display: 'flex', gap: '0.6rem' }}>
+        <div className="row gap-5" style={{ marginTop: 'var(--space-6)' }}>
           {/* Only when a provider call exists to hang up. Pre-correlation
               (callControlId null) there's nothing to hang up — Skip cancels it. */}
           {currentAttempt && isLive(currentAttempt.state) && currentAttempt.callControlId ? (
-            <button type="button" onClick={hangup} style={{ ...primaryBtn, background: '#b91c1c', borderColor: '#b91c1c' }}>
+            <Button type="button" variant="danger" onClick={hangup}>
               Hang up
-            </button>
+            </Button>
           ) : null}
-          <button type="button" onClick={skip} style={secondaryBtn} disabled={recording !== null || skipping}>
+          <Button type="button" variant="secondary" onClick={skip} disabled={recording !== null || skipping}>
             Skip
-          </button>
-          <button type="button" onClick={togglePause} style={secondaryBtn}>
+          </Button>
+          <Button type="button" variant="secondary" onClick={togglePause}>
             {paused ? 'Resume run' : 'Pause run'}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {showOutcomes ? (
-        <div style={card}>
-          <h3 style={{ margin: '0 0 0.9rem', fontSize: '0.95rem', color: '#374151' }}>
-            You&apos;re connected — what happened?
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.6rem' }}>
+        <Card title="You’re connected — what happened?">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-5)' }}>
             {outcomes.map((o) => (
-              <button
+              <Button
                 key={o.key}
                 type="button"
+                variant="secondary"
                 disabled={recording !== null || skipping}
                 onClick={() => record(o.key)}
-                style={{ ...outcomeBtn, cursor: recording !== null ? 'wait' : 'pointer' }}
+                style={{ justifyContent: 'flex-start' }}
               >
                 {recording === o.key ? 'Saving…' : o.label}
-              </button>
+              </Button>
             ))}
           </div>
-        </div>
+        </Card>
       ) : null}
 
-      {error ? <p style={{ marginTop: '1rem', color: '#b91c1c', fontSize: '0.85rem' }}>{error}</p> : null}
+      {error ? (
+        <p className="sm" style={{ color: 'var(--red-700)' }}>
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

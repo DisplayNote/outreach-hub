@@ -4,6 +4,7 @@ import { updateTemplate } from '@/lib/actions/templates';
 import type { UpdateTemplateInput } from '@/lib/actions/templates';
 import { createClient } from '@/lib/supabase/server';
 import { getTemplate } from '@/lib/supabase/queries';
+import { Card } from '@/components/ui';
 
 // Auth state + template data change per request; never prerender.
 export const dynamic = 'force-dynamic';
@@ -17,13 +18,6 @@ function text(formData: FormData, key: string): string | null {
   const trimmed = raw.trim();
   return trimmed === '' ? null : trimmed;
 }
-
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
 
 export default async function EditTemplatePage({
   params,
@@ -64,17 +58,21 @@ export default async function EditTemplatePage({
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Edit template</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Update this template&rsquo;s content.
-      </p>
-      <TemplateForm
-        action={action}
-        template={template}
-        submitLabel="Save changes"
-        cancelHref="/templates"
-      />
-    </main>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Edit template</div>
+          <div className="page-head__sub">Update this template&rsquo;s content.</div>
+        </div>
+      </div>
+      <Card>
+        <TemplateForm
+          action={action}
+          template={template}
+          submitLabel="Save changes"
+          cancelHref="/templates"
+        />
+      </Card>
+    </div>
   );
 }

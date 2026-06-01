@@ -11,6 +11,7 @@ import {
 } from '@/lib/actions/sequences';
 import type { TouchpointChannel } from '@/lib/types/domain';
 import { TOUCHPOINT_CHANNELS } from '@/lib/types/domain';
+import { Badge, Button, Card, CountBadge, EmptyState, Field, Icon } from '@/components/ui';
 
 // Auth state + sequence/step data change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -23,79 +24,6 @@ const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
   phone: 'Phone',
   linkedin: 'LinkedIn',
   other: 'Other',
-};
-
-// --- Inline styles (Tailwind is not wired yet; mirror app/contacts/page.tsx) --
-
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 960,
-  margin: '0 auto',
-};
-
-const cellStyle: React.CSSProperties = {
-  padding: '0.625rem 0.75rem',
-  borderBottom: '1px solid #eee',
-  textAlign: 'left',
-  verticalAlign: 'top',
-};
-
-const headStyle: React.CSSProperties = {
-  ...cellStyle,
-  borderBottom: '2px solid #ddd',
-  fontWeight: 600,
-  color: '#555',
-  fontSize: '0.8125rem',
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: '0.35rem',
-};
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.625rem',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-};
-
-const submitStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const deleteButtonStyle: React.CSSProperties = {
-  padding: '0.3rem 0.6rem',
-  background: '#fff',
-  color: '#b91c1c',
-  border: '1px solid #e5b4b4',
-  borderRadius: 4,
-  fontSize: '0.8125rem',
-  cursor: 'pointer',
-};
-
-const sectionStyle: React.CSSProperties = {
-  marginTop: '2.5rem',
-  padding: '1.5rem',
-  background: '#fafafa',
-  border: '1px solid #eee',
-  borderRadius: 6,
 };
 
 // --- Page --------------------------------------------------------------------
@@ -166,145 +94,109 @@ export default async function SequenceEditorPage({
   }
 
   return (
-    <main style={mainStyle}>
-      <p style={{ marginTop: 0, marginBottom: '0.75rem', fontSize: '0.875rem' }}>
-        <Link href="/sequences" style={{ color: '#374151' }}>
-          ← Sequences
-        </Link>
-      </p>
-
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: '1rem',
-        }}
-      >
-        <h1 style={{ marginTop: 0, marginBottom: '0.25rem' }}>{sequence.name}</h1>
-        <form action={deleteSequenceAction} style={{ flexShrink: 0 }}>
-          <button type="submit" style={deleteButtonStyle}>
-            Delete sequence
-          </button>
-        </form>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <p style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--fs-sm)' }}>
+            <Link href="/sequences" className="muted">
+              ← Sequences
+            </Link>
+          </p>
+          <div className="page-head__title">{sequence.name}</div>
+          <div className="page-head__sub">Reusable outreach cadence and its ordered steps.</div>
+        </div>
+        <div className="page-actions">
+          <form action={deleteSequenceAction}>
+            <Button type="submit" variant="danger">
+              Delete sequence
+            </Button>
+          </form>
+        </div>
       </div>
 
       {/* Rename --------------------------------------------------------------- */}
-      <form
-        action={renameAction}
-        style={{ display: 'flex', alignItems: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}
-      >
-        <div style={{ flex: 1, maxWidth: 420 }}>
-          <label htmlFor="name" style={labelStyle}>
-            Name *
-          </label>
-          <input
-            id="name"
-            name="name"
-            type="text"
-            required
-            defaultValue={sequence.name}
-            style={fieldStyle}
-          />
-        </div>
-        <button type="submit" style={submitStyle}>
-          Rename
-        </button>
-      </form>
+      <Card title="Sequence name">
+        <form action={renameAction} className="row gap-4" style={{ alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, maxWidth: 420 }}>
+            <Field label="Name" htmlFor="name" required>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                defaultValue={sequence.name}
+                className="input"
+              />
+            </Field>
+          </div>
+          <Button type="submit" variant="secondary">
+            Rename
+          </Button>
+        </form>
+      </Card>
 
       {/* Steps ---------------------------------------------------------------- */}
-      <h2 style={{ marginTop: '2.5rem', marginBottom: '0.25rem', fontSize: '1.15rem' }}>Steps</h2>
-      <p style={{ marginTop: 0, color: '#666', fontSize: '0.9rem' }}>
-        Ordered touchpoints, each scheduled a number of days from the sequence start.
-      </p>
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <Card title="Steps" bodyStyle={{ padding: 0 }}>
+          <div style={{ padding: 'var(--space-5) var(--space-6) 0' }}>
+            <p className="sm muted" style={{ margin: 0 }}>
+              Ordered touchpoints, each scheduled a number of days from the sequence start.
+            </p>
+          </div>
 
-      {sequence.steps.length === 0 ? (
-        <div
-          style={{
-            marginTop: '1rem',
-            padding: '1.5rem',
-            textAlign: 'center',
-            color: '#666',
-            background: '#fafafa',
-            border: '1px solid #eee',
-            borderRadius: 6,
-          }}
-        >
-          <p style={{ margin: 0, fontSize: '0.95rem' }}>No steps yet.</p>
-          <p style={{ margin: '0.4rem 0 0', fontSize: '0.875rem' }}>
-            Add the first step below.
-          </p>
-        </div>
-      ) : (
-        <table
-          style={{
-            marginTop: '1rem',
-            width: '100%',
-            borderCollapse: 'collapse',
-            fontSize: '0.9375rem',
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={{ ...headStyle, width: '1%' }} scope="col">
-                #
-              </th>
-              <th style={headStyle} scope="col">
-                Day offset
-              </th>
-              <th style={headStyle} scope="col">
-                Channel
-              </th>
-              <th style={headStyle} scope="col">
-                Template
-              </th>
-              <th style={{ ...headStyle, textAlign: 'right', width: '1%' }} scope="col">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+        {sequence.steps.length === 0 ? (
+          <EmptyState
+            icon="sequence"
+            title="No steps yet"
+            desc="Add the first step below."
+          />
+        ) : (
+          <div style={{ padding: 'var(--space-6)' }} className="col gap-4">
             {sequence.steps.map((step) => (
-              <tr key={step.id}>
-                <td style={cellStyle}>{step.stepOrder}</td>
-                <td style={cellStyle}>
-                  Day {step.dayOffset}
-                </td>
-                <td style={cellStyle}>{CHANNEL_LABELS[step.channel]}</td>
-                <td style={cellStyle}>
-                  {step.templateId
-                    ? (templateNameById.get(step.templateId) ?? 'Unknown template')
-                    : '—'}
-                </td>
-                <td style={{ ...cellStyle, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <form action={deleteStepAction} style={{ display: 'inline' }}>
-                    <input type="hidden" name="stepId" value={step.id} />
-                    <button type="submit" style={deleteButtonStyle}>
-                      Delete
-                    </button>
-                  </form>
-                </td>
-              </tr>
+              <div
+                key={step.id}
+                className="card row gap-5 center between"
+                style={{ padding: 'var(--space-5) var(--space-6)' }}
+              >
+                <div className="row gap-5 center" style={{ minWidth: 0 }}>
+                  <CountBadge tone="neutral">{step.stepOrder}</CountBadge>
+                  <div className="col gap-2" style={{ minWidth: 0 }}>
+                    <div className="row gap-4 center wrap">
+                      <span className="semib sm">{CHANNEL_LABELS[step.channel]}</span>
+                      <Badge tone="neutral">Day {step.dayOffset}</Badge>
+                      {step.templateId && (
+                        <Badge tone="accent">
+                          {templateNameById.get(step.templateId) ?? 'Unknown template'}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <form action={deleteStepAction}>
+                  <input type="hidden" name="stepId" value={step.id} />
+                  <Button type="submit" variant="danger" size="sm">
+                    Delete
+                  </Button>
+                </form>
+              </div>
             ))}
-          </tbody>
-        </table>
-      )}
+          </div>
+        )}
+        </Card>
+      </div>
 
       {/* Add step ------------------------------------------------------------- */}
-      <section style={sectionStyle}>
-        <h2 style={{ marginTop: 0, marginBottom: '1rem', fontSize: '1.05rem' }}>Add a step</h2>
-        <form action={addStepAction}>
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <Card title="Add a step">
+          <form action={addStepAction}>
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-              gap: '0 1.25rem',
+              gap: 'var(--space-6)',
             }}
           >
-            <div style={{ marginBottom: '1.1rem' }}>
-              <label htmlFor="dayOffset" style={labelStyle}>
-                Day offset *
-              </label>
+            <Field label="Day offset" htmlFor="dayOffset" required>
               <input
                 id="dayOffset"
                 name="dayOffset"
@@ -313,45 +205,56 @@ export default async function SequenceEditorPage({
                 step={1}
                 required
                 defaultValue={0}
-                style={fieldStyle}
+                className="input"
               />
-            </div>
+            </Field>
 
-            <div style={{ marginBottom: '1.1rem' }}>
-              <label htmlFor="channel" style={labelStyle}>
-                Channel *
-              </label>
-              <select id="channel" name="channel" required defaultValue="email" style={fieldStyle}>
-                {TOUCHPOINT_CHANNELS.map((channel) => (
-                  <option key={channel} value={channel}>
-                    {CHANNEL_LABELS[channel]}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Field label="Channel" htmlFor="channel" required>
+              <div className="select-wrap">
+                <select
+                  id="channel"
+                  name="channel"
+                  required
+                  defaultValue="email"
+                  className="input"
+                >
+                  {TOUCHPOINT_CHANNELS.map((channel) => (
+                    <option key={channel} value={channel}>
+                      {CHANNEL_LABELS[channel]}
+                    </option>
+                  ))}
+                </select>
+                <span className="select-chevron">
+                  <Icon name="chevronDown" size={15} />
+                </span>
+              </div>
+            </Field>
 
-            <div style={{ marginBottom: '1.1rem' }}>
-              <label htmlFor="templateId" style={labelStyle}>
-                Template
-              </label>
-              <select id="templateId" name="templateId" defaultValue="" style={fieldStyle}>
-                <option value="">No template</option>
-                {templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Field label="Template" htmlFor="templateId">
+              <div className="select-wrap">
+                <select id="templateId" name="templateId" defaultValue="" className="input">
+                  <option value="">No template</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="select-chevron">
+                  <Icon name="chevronDown" size={15} />
+                </span>
+              </div>
+            </Field>
           </div>
 
-          <div style={{ marginTop: '0.5rem' }}>
-            <button type="submit" style={submitStyle}>
+          <div className="row" style={{ marginTop: 'var(--space-6)' }}>
+            <Button type="submit" variant="primary">
               Add step
-            </button>
+            </Button>
           </div>
-        </form>
-      </section>
-    </main>
+          </form>
+        </Card>
+      </div>
+    </div>
   );
 }

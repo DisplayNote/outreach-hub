@@ -38,13 +38,6 @@ function boolField(formData: FormData, key: string): boolean {
   return formData.get(key) !== null;
 }
 
-const mainStyle: React.CSSProperties = {
-  padding: '2rem',
-  fontFamily: 'system-ui, sans-serif',
-  maxWidth: 720,
-  margin: '0 auto',
-};
-
 export default async function SettingsPage() {
   const supabase = await createClient();
   const {
@@ -92,12 +85,14 @@ export default async function SettingsPage() {
   }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={{ marginBottom: '0.25rem' }}>Settings</h1>
-      <p style={{ marginTop: 0, marginBottom: '1.5rem', color: '#666' }}>
-        Org-wide goals, follow-up rhythm, and defaults.
-      </p>
+    <div className="content__inner" style={{ maxWidth: 760 }}>
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Settings</div>
+          <div className="page-head__sub">Org-wide goals, follow-up rhythm, and defaults.</div>
+        </div>
+      </div>
       <SettingsForm action={action} settings={settings} />
-    </main>
+    </div>
   );
 }

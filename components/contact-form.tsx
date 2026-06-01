@@ -1,8 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
-import type { Campaign, Contact, ContactStatus } from '@/lib/types/domain';
+import type { Campaign, Contact } from '@/lib/types/domain';
 import { CONTACT_STATUSES } from '@/lib/types/domain';
+import { Button, Field, Icon } from '@/components/ui';
+import { STATUS_LABELS } from '@/lib/ui/status';
 
 /**
  * Shared create/edit form for a contact. Renders one control per editable
@@ -14,70 +17,9 @@ import { CONTACT_STATUSES } from '@/lib/types/domain';
  * so a double-click can't fire the action twice. Field names map 1:1 to the
  * camelCase keys the page-level action expects.
  *
- * Styling mirrors the inline-style approach used elsewhere (Tailwind is not
- * wired yet — see app/today/page.tsx).
+ * Styling uses the shared design system (Field + .input/.select classes,
+ * Button primitive) — see app/contacts/page.tsx for established conventions.
  */
-
-/** Human-readable label for each contact status, in schema order. */
-const STATUS_LABELS: Record<ContactStatus, string> = {
-  none: 'No status',
-  amber: 'Amber',
-  red: 'Red',
-  green: 'Green',
-  meeting: 'Meeting',
-  notinterested: 'Not interested',
-  bounced: 'Bounced',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: '0.35rem',
-};
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.625rem',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-};
-
-const fieldGroupStyle: React.CSSProperties = {
-  marginBottom: '1.1rem',
-};
-
-const gridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-  gap: '0 1.25rem',
-};
-
-const submitStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const cancelStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#fff',
-  color: '#374151',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  textDecoration: 'none',
-  display: 'inline-block',
-};
 
 export interface ContactFormProps {
   /** Server Action that receives the form's FormData and redirects on success. */
@@ -108,186 +50,161 @@ export default function ContactForm({
   const [pending, setPending] = useState(false);
 
   return (
-    <form
-      action={action}
-      onSubmit={() => setPending(true)}
-      style={{ fontFamily: 'system-ui, sans-serif' }}
-    >
-      <div style={fieldGroupStyle}>
-        <label htmlFor="campaignId" style={labelStyle}>
-          Campaign *
-        </label>
-        <select
-          id="campaignId"
-          name="campaignId"
-          required
-          defaultValue={contact?.campaignId ?? ''}
-          style={fieldStyle}
-        >
-          <option value="" disabled>
-            Select a campaign…
-          </option>
-          {campaigns.map((campaign) => (
-            <option key={campaign.id} value={campaign.id}>
-              {campaign.name}
-            </option>
-          ))}
-        </select>
+    <form action={action} onSubmit={() => setPending(true)}>
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field label="Campaign" htmlFor="campaignId" required>
+          <div className="select-wrap">
+            <select
+              id="campaignId"
+              name="campaignId"
+              required
+              defaultValue={contact?.campaignId ?? ''}
+              className="input"
+            >
+              <option value="" disabled>
+                Select a campaign…
+              </option>
+              {campaigns.map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>
+                  {campaign.name}
+                </option>
+              ))}
+            </select>
+            <span className="select-chevron">
+              <Icon name="chevronDown" size={15} />
+            </span>
+          </div>
+        </Field>
       </div>
 
-      <div style={gridStyle}>
-        <div style={fieldGroupStyle}>
-          <label htmlFor="firstName" style={labelStyle}>
-            First name
-          </label>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 'var(--space-6)',
+        }}
+      >
+        <Field label="First name" htmlFor="firstName">
           <input
             id="firstName"
             name="firstName"
             type="text"
             defaultValue={value(contact?.firstName)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="lastName" style={labelStyle}>
-            Last name
-          </label>
+        <Field label="Last name" htmlFor="lastName">
           <input
             id="lastName"
             name="lastName"
             type="text"
             defaultValue={value(contact?.lastName)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="email" style={labelStyle}>
-            Email
-          </label>
+        <Field label="Email" htmlFor="email">
           <input
             id="email"
             name="email"
             type="email"
             defaultValue={value(contact?.email)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="company" style={labelStyle}>
-            Company
-          </label>
+        <Field label="Company" htmlFor="company">
           <input
             id="company"
             name="company"
             type="text"
             defaultValue={value(contact?.company)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="phone" style={labelStyle}>
-            Phone
-          </label>
+        <Field label="Phone" htmlFor="phone">
           <input
             id="phone"
             name="phone"
             type="tel"
             defaultValue={value(contact?.phone)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="mobile" style={labelStyle}>
-            Mobile
-          </label>
+        <Field label="Mobile" htmlFor="mobile">
           <input
             id="mobile"
             name="mobile"
             type="tel"
             defaultValue={value(contact?.mobile)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="jobTitle" style={labelStyle}>
-            Job title
-          </label>
+        <Field label="Job title" htmlFor="jobTitle">
           <input
             id="jobTitle"
             name="jobTitle"
             type="text"
             defaultValue={value(contact?.jobTitle)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="seniority" style={labelStyle}>
-            Seniority
-          </label>
+        <Field label="Seniority" htmlFor="seniority">
           <input
             id="seniority"
             name="seniority"
             type="text"
             defaultValue={value(contact?.seniority)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="country" style={labelStyle}>
-            Country
-          </label>
+        <Field label="Country" htmlFor="country">
           <input
             id="country"
             name="country"
             type="text"
             defaultValue={value(contact?.country)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="linkedin" style={labelStyle}>
-            LinkedIn
-          </label>
+        <Field label="LinkedIn" htmlFor="linkedin">
           <input
             id="linkedin"
             name="linkedin"
             type="text"
             defaultValue={value(contact?.linkedin)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="status" style={labelStyle}>
-            Status
-          </label>
-          <select
-            id="status"
-            name="status"
-            defaultValue={contact?.status ?? 'none'}
-            style={fieldStyle}
-          >
-            {CONTACT_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Field label="Status" htmlFor="status">
+          <div className="select-wrap">
+            <select
+              id="status"
+              name="status"
+              defaultValue={contact?.status ?? 'none'}
+              className="input"
+            >
+              {CONTACT_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
+            <span className="select-chevron">
+              <Icon name="chevronDown" size={15} />
+            </span>
+          </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="sequenceDay" style={labelStyle}>
-            Sequence day
-          </label>
+        <Field label="Sequence day" htmlFor="sequenceDay">
           <input
             id="sequenceDay"
             name="sequenceDay"
@@ -295,44 +212,40 @@ export default function ContactForm({
             min={0}
             step={1}
             defaultValue={value(contact?.sequenceDay)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
 
-        <div style={fieldGroupStyle}>
-          <label htmlFor="followUp" style={labelStyle}>
-            Follow-up date
-          </label>
+        <Field label="Follow-up date" htmlFor="followUp">
           <input
             id="followUp"
             name="followUp"
             type="date"
             defaultValue={value(contact?.followUp)}
-            style={fieldStyle}
+            className="input"
           />
-        </div>
+        </Field>
       </div>
 
-      <div style={fieldGroupStyle}>
-        <label htmlFor="notes" style={labelStyle}>
-          Notes
-        </label>
-        <textarea
-          id="notes"
-          name="notes"
-          rows={4}
-          defaultValue={value(contact?.notes)}
-          style={{ ...fieldStyle, resize: 'vertical' }}
-        />
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <Field label="Notes" htmlFor="notes">
+          <textarea
+            id="notes"
+            name="notes"
+            rows={4}
+            defaultValue={value(contact?.notes)}
+            className="input"
+          />
+        </Field>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-        <button type="submit" disabled={pending} style={submitStyle}>
+      <div className="row gap-4" style={{ marginTop: 'var(--space-7)' }}>
+        <Button type="submit" variant="primary" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}
-        </button>
-        <a href={cancelHref} style={cancelStyle}>
+        </Button>
+        <Link href={cancelHref} className="btn btn--ghost btn--md">
           Cancel
-        </a>
+        </Link>
       </div>
     </form>
   );

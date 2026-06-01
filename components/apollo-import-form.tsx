@@ -5,6 +5,7 @@ import { useState } from 'react';
 import type { Campaign } from '@/lib/types/domain';
 import { importApolloCsv } from '@/lib/actions/import-apollo';
 import type { ImportApolloSummary } from '@/lib/actions/import-apollo';
+import { Button, Field, Icon } from '@/components/ui';
 
 /**
  * Client form for the Apollo / generic CSV import flow.
@@ -15,49 +16,7 @@ import type { ImportApolloSummary } from '@/lib/actions/import-apollo';
  * truth). On submit it calls the `importApolloCsv` Server Action directly with
  * the typed `{ campaignId, csvText }` input and renders the returned
  * `{ inserted, updated, skipped }` summary.
- *
- * Styling mirrors the inline-style approach used elsewhere (Tailwind is not
- * wired yet — see app/today/page.tsx and components/contact-form.tsx).
  */
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: '0.35rem',
-};
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '0.5rem 0.625rem',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-};
-
-const fieldGroupStyle: React.CSSProperties = {
-  marginBottom: '1.1rem',
-};
-
-const submitStyle: React.CSSProperties = {
-  padding: '0.55rem 1.25rem',
-  background: '#111',
-  color: '#fff',
-  border: '1px solid #111',
-  borderRadius: 4,
-  fontSize: '0.9375rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const hintStyle: React.CSSProperties = {
-  margin: '0.35rem 0 0',
-  fontSize: '0.8125rem',
-  color: '#888',
-};
 
 export interface ApolloImportFormProps {
   /** Campaigns available as the import target (RLS-scoped to the org). */
@@ -115,143 +74,114 @@ export default function ApolloImportForm({ campaigns }: ApolloImportFormProps) {
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ fontFamily: 'system-ui, sans-serif' }}>
-      <div style={fieldGroupStyle}>
-        <label htmlFor="campaignId" style={labelStyle}>
-          Target campaign *
-        </label>
-        <select
-          id="campaignId"
-          name="campaignId"
+    <form onSubmit={onSubmit}>
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field
+          label="Target campaign"
+          htmlFor="campaignId"
           required
-          value={campaignId}
-          onChange={(e) => setCampaignId(e.target.value)}
-          style={fieldStyle}
+          hint="New contacts are added to this campaign."
         >
-          <option value="" disabled>
-            Select a campaign…
-          </option>
-          {campaigns.map((campaign) => (
-            <option key={campaign.id} value={campaign.id}>
-              {campaign.name}
-            </option>
-          ))}
-        </select>
-        <p style={hintStyle}>New contacts are added to this campaign.</p>
+          <div className="select-wrap">
+            <select
+              id="campaignId"
+              name="campaignId"
+              required
+              className="input"
+              value={campaignId}
+              onChange={(e) => setCampaignId(e.target.value)}
+            >
+              <option value="" disabled>
+                Select a campaign…
+              </option>
+              {campaigns.map((campaign) => (
+                <option key={campaign.id} value={campaign.id}>
+                  {campaign.name}
+                </option>
+              ))}
+            </select>
+            <span className="select-chevron">
+              <Icon name="chevronDown" size={15} />
+            </span>
+          </div>
+        </Field>
       </div>
 
-      <div style={fieldGroupStyle}>
-        <label htmlFor="csvFile" style={labelStyle}>
-          Upload a .csv file
-        </label>
-        <input
-          id="csvFile"
-          name="csvFile"
-          type="file"
-          accept=".csv,text/csv"
-          onChange={onFileChange}
-          style={fieldStyle}
-        />
-        {fileName ? (
-          <p style={hintStyle}>
-            Loaded <strong>{fileName}</strong> into the box below — review or edit
-            it before importing.
-          </p>
-        ) : (
-          <p style={hintStyle}>The file is read in your browser and shown below.</p>
-        )}
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field
+          label="Upload a .csv file"
+          htmlFor="csvFile"
+          hint={
+            fileName
+              ? `Loaded ${fileName} into the box below — review or edit it before importing.`
+              : 'The file is read in your browser and shown below.'
+          }
+        >
+          <input
+            id="csvFile"
+            name="csvFile"
+            type="file"
+            accept=".csv,text/csv"
+            className="input"
+            onChange={onFileChange}
+          />
+        </Field>
       </div>
 
-      <div style={fieldGroupStyle}>
-        <label htmlFor="csvText" style={labelStyle}>
-          …or paste CSV text
-        </label>
-        <textarea
-          id="csvText"
-          name="csvText"
-          rows={12}
-          value={csvText}
-          onChange={(e) => {
-            setCsvText(e.target.value);
-            setError(null);
-            setSummary(null);
-          }}
-          placeholder="First Name,Last Name,Email,Company,Title,…"
-          style={{
-            ...fieldStyle,
-            resize: 'vertical',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-            fontSize: '0.8125rem',
-          }}
-        />
-        <p style={hintStyle}>
-          The first row must be the header. Rows without an email are skipped;
-          existing contacts (matched on email within this org) are updated.
-        </p>
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <Field
+          label="…or paste CSV text"
+          htmlFor="csvText"
+          hint="The first row must be the header. Rows without an email are skipped; existing contacts (matched on email within this org) are updated."
+        >
+          <textarea
+            id="csvText"
+            name="csvText"
+            rows={12}
+            className="input"
+            value={csvText}
+            onChange={(e) => {
+              setCsvText(e.target.value);
+              setError(null);
+              setSummary(null);
+            }}
+            placeholder="First Name,Last Name,Email,Company,Title,…"
+            style={{
+              resize: 'vertical',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--fs-sm)',
+            }}
+          />
+        </Field>
       </div>
 
       {error ? (
-        <div
-          role="alert"
-          style={{
-            marginBottom: '1.1rem',
-            padding: '0.75rem 1rem',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 4,
-            color: '#b91c1c',
-            fontSize: '0.9rem',
-          }}
-        >
-          {error}
+        <div role="alert" className="banner banner--warning" style={{ marginBottom: 'var(--space-6)' }}>
+          <span className="banner__icon">
+            <Icon name="alertCircle" size={16} />
+          </span>
+          <span>{error}</span>
         </div>
       ) : null}
 
       {summary ? (
-        <div
-          role="status"
-          style={{
-            marginBottom: '1.1rem',
-            padding: '1rem 1.25rem',
-            background: '#f0fdf4',
-            border: '1px solid #bbf7d0',
-            borderRadius: 6,
-            color: '#166534',
-            fontSize: '0.9375rem',
-          }}
-        >
-          <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Import complete.</p>
-          <ul style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: 1.7 }}>
-            <li>
-              <strong>{summary.inserted}</strong> inserted
-            </li>
-            <li>
-              <strong>{summary.updated}</strong> updated
-            </li>
-            <li>
-              <strong>{summary.skipped}</strong> skipped (no email)
-            </li>
-          </ul>
+        <div role="status" className="banner banner--success" style={{ marginBottom: 'var(--space-6)' }}>
+          <span className="banner__icon">
+            <Icon name="checkCircle" size={16} />
+          </span>
+          <span>
+            Import complete. <strong>{summary.inserted}</strong> inserted,{' '}
+            <strong>{summary.updated}</strong> updated, <strong>{summary.skipped}</strong> skipped
+            (no email).
+          </span>
         </div>
       ) : null}
 
-      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-        <button type="submit" disabled={pending} style={submitStyle}>
+      <div className="row gap-4" style={{ marginTop: 'var(--space-5)' }}>
+        <Button type="submit" variant="primary" icon="userPlus" disabled={pending} loading={pending}>
           {pending ? 'Importing…' : 'Import contacts'}
-        </button>
-        <Link
-          href="/contacts"
-          style={{
-            padding: '0.55rem 1.25rem',
-            background: '#fff',
-            color: '#374151',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
-            fontSize: '0.9375rem',
-            textDecoration: 'none',
-            display: 'inline-block',
-          }}
-        >
+        </Button>
+        <Link href="/contacts" className="btn btn--ghost btn--md">
           {summary ? 'Done' : 'Cancel'}
         </Link>
       </div>

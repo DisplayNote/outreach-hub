@@ -5,6 +5,7 @@ import { getDiallerDriver, getDiallerOutcomes } from '@/lib/dialler';
 import { pickDialNumber } from '@/lib/dialler/normalise';
 import type { CallControl, CallOutcome, CallState, DiallerDriver } from '@/lib/dialler/types';
 import { logCallOutcome } from '@/lib/actions/dialler';
+import { Button, Card, Icon } from '@/components/ui';
 
 /**
  * Click-to-call panel for a single contact.
@@ -22,8 +23,8 @@ import { logCallOutcome } from '@/lib/actions/dialler';
  * state. The only server work is the `logCallOutcome` action; status/touchpoint
  * validation lives in that action's zod schema, not here.
  *
- * Styling mirrors the inline-style approach used across the app (Tailwind is
- * not wired yet — see app/today/page.tsx and app/contacts/[id]/page.tsx).
+ * Styling uses the shared design-system primitives (`@/components/ui`) and the
+ * vendored stylesheet utility classes.
  */
 
 interface ClickToCallProps {
@@ -50,61 +51,12 @@ const STATE_LABELS: Record<CallState, string> = {
 
 /** Dot colour per live state, for a quick visual cue. */
 const STATE_COLORS: Record<CallState, string> = {
-  idle: '#9ca3af',
-  dialling: '#f59e0b',
-  ringing: '#f59e0b',
-  connected: '#16a34a',
-  ended: '#6b7280',
-  'awaiting-outcome': '#6b7280',
-};
-
-const cardStyle: React.CSSProperties = {
-  border: '1px solid #e5e7eb',
-  borderRadius: 6,
-  padding: '1.25rem 1.5rem',
-  background: 'white',
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  margin: '0 0 0.75rem',
-  fontSize: '0.8125rem',
-  fontWeight: 600,
-  color: '#555',
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-};
-
-const callButtonStyle: React.CSSProperties = {
-  padding: '0.55rem 1.1rem',
-  fontSize: '0.9375rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  background: '#16a34a',
-  color: 'white',
-  border: 0,
-  borderRadius: 4,
-};
-
-const hangupButtonStyle: React.CSSProperties = {
-  padding: '0.55rem 1.1rem',
-  fontSize: '0.9375rem',
-  fontWeight: 600,
-  cursor: 'pointer',
-  background: '#dc2626',
-  color: 'white',
-  border: 0,
-  borderRadius: 4,
-};
-
-const outcomeButtonStyle: React.CSSProperties = {
-  padding: '0.5rem 0.75rem',
-  fontSize: '0.875rem',
-  textAlign: 'left',
-  cursor: 'pointer',
-  background: '#f9fafb',
-  color: '#374151',
-  border: '1px solid #d1d5db',
-  borderRadius: 4,
+  idle: 'var(--text-tertiary)',
+  dialling: 'var(--amber-500)',
+  ringing: 'var(--amber-500)',
+  connected: 'var(--green-600)',
+  ended: 'var(--text-tertiary)',
+  'awaiting-outcome': 'var(--text-tertiary)',
 };
 
 /** Format elapsed milliseconds as M:SS. */
@@ -258,18 +210,20 @@ export default function ClickToCall({
   const isAwaitingOutcome = state === 'awaiting-outcome';
 
   return (
-    <section style={cardStyle}>
-      <h2 style={sectionTitleStyle}>Call</h2>
-
+    <Card title="Call">
       {dialNumber === null ? (
-        <p style={{ margin: 0, color: '#888', fontSize: '0.9375rem' }}>
+        <p className="sm muted" style={{ margin: 0 }}>
           No phone or mobile number on file for {contactName}.
         </p>
       ) : (
-        <>
-          <p style={{ margin: '0 0 0.75rem', fontSize: '0.9375rem', color: '#374151' }}>
-            <span style={{ color: '#888' }}>Dialling </span>
-            <a href={`tel:${dialNumber}`} style={{ color: '#2563eb', textDecoration: 'none' }}>
+        <div className="col gap-5">
+          <p className="sm" style={{ margin: 0 }}>
+            <span className="tert">Dialling </span>
+            <a
+              href={`tel:${dialNumber}`}
+              className="mono"
+              style={{ color: 'var(--accent-text)', textDecoration: 'none' }}
+            >
               {dialNumber}
             </a>
           </p>
@@ -277,83 +231,66 @@ export default function ClickToCall({
           {/* Idle: offer the Call button (plus any prior confirmation). */}
           {state === 'idle' ? (
             <>
-              <button type="button" onClick={startCall} style={callButtonStyle}>
-                Call {contactName}
-              </button>
+              <div>
+                <Button variant="primary" icon="phone" onClick={startCall}>
+                  Call {contactName}
+                </Button>
+              </div>
               {confirmation ? (
-                <p
-                  role="status"
-                  style={{ margin: '0.75rem 0 0', color: '#16a34a', fontSize: '0.875rem' }}
-                >
-                  {confirmation}
-                </p>
+                <div className="banner banner--success" role="status">
+                  <span className="banner__icon">
+                    <Icon name="checkCircle" size={16} />
+                  </span>
+                  <span>{confirmation}</span>
+                </div>
               ) : null}
             </>
           ) : null}
 
           {/* Live: status dot + label, elapsed timer once connected, Hang up. */}
           {isLive ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className="col gap-5">
+              <div className="row gap-4 center">
                 <span
                   aria-hidden="true"
-                  style={{
-                    display: 'inline-block',
-                    width: 10,
-                    height: 10,
-                    borderRadius: '50%',
-                    background: STATE_COLORS[state],
-                  }}
+                  className="pill__dot"
+                  style={{ width: 10, height: 10, background: STATE_COLORS[state] }}
                 />
-                <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#374151' }}>
-                  {STATE_LABELS[state]}
-                </span>
+                <span className="semib sm">{STATE_LABELS[state]}</span>
                 {state === 'connected' ? (
-                  <span
-                    style={{
-                      marginLeft: 'auto',
-                      fontVariantNumeric: 'tabular-nums',
-                      fontSize: '0.9375rem',
-                      color: '#374151',
-                    }}
-                  >
+                  <span className="mono tnum sm" style={{ marginLeft: 'auto' }}>
                     {formatElapsed(elapsedMs)}
                   </span>
                 ) : null}
               </div>
-              <button type="button" onClick={hangup} style={hangupButtonStyle}>
-                Hang up
-              </button>
+              <div>
+                <Button variant="danger" icon="x" onClick={hangup}>
+                  Hang up
+                </Button>
+              </div>
             </div>
           ) : null}
 
           {/* Ended: present the disposition buttons. */}
           {isAwaitingOutcome ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <p style={{ margin: 0, fontSize: '0.9375rem', color: '#374151' }}>
-                Call ended{wasConnected ? ` after ${formatElapsed(elapsedMs)}` : ''}.
-                How did it go?
+            <div className="col gap-5">
+              <p className="sm" style={{ margin: 0 }}>
+                Call ended{wasConnected ? ` after ${formatElapsed(elapsedMs)}` : ''}. How did it
+                go?
               </p>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                  gap: '0.5rem',
-                }}
-              >
+              <div className="outcome-grid">
                 {outcomes.map((outcome) => (
                   <button
                     key={outcome.key}
                     type="button"
+                    className="outcome-btn"
                     onClick={() => void handleOutcome(outcome)}
                     disabled={logging !== null}
-                    style={
-                      logging !== null
-                        ? { ...outcomeButtonStyle, opacity: 0.5, cursor: 'not-allowed' }
-                        : outcomeButtonStyle
-                    }
+                    style={logging !== null ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
                   >
-                    {logging === outcome.key ? 'Saving…' : outcome.label}
+                    <span className="outcome-btn__label">
+                      {logging === outcome.key ? 'Saving…' : outcome.label}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -361,12 +298,15 @@ export default function ClickToCall({
           ) : null}
 
           {error ? (
-            <p role="alert" style={{ margin: '0.75rem 0 0', color: '#dc2626', fontSize: '0.875rem' }}>
-              {error}
-            </p>
+            <div className="banner banner--danger" role="alert">
+              <span className="banner__icon">
+                <Icon name="alertCircle" size={16} />
+              </span>
+              <span>{error}</span>
+            </div>
           ) : null}
-        </>
+        </div>
       )}
-    </section>
+    </Card>
   );
 }
