@@ -1,23 +1,14 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getTodayContacts } from '@/lib/supabase/queries';
-import type { Contact, ContactStatus, TouchpointChannel } from '@/lib/types/domain';
+import type { Contact, TouchpointChannel } from '@/lib/types/domain';
+import { Avatar, Badge, Card, EmptyState, Pill } from '@/components/ui';
+import { STATUS_PILLS } from '@/lib/ui/status';
 
 // Auth state + due-today data change per request; never prerender.
 export const dynamic = 'force-dynamic';
 
 // --- Display helpers ---------------------------------------------------------
-
-/** Human-readable label for each contact status. */
-const STATUS_LABELS: Record<ContactStatus, string> = {
-  none: 'No status',
-  amber: 'Amber',
-  red: 'Red',
-  green: 'Green',
-  meeting: 'Meeting',
-  notinterested: 'Not interested',
-  bounced: 'Bounced',
-};
 
 /** Human-readable label for each touchpoint channel. */
 const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
@@ -33,6 +24,17 @@ function contactName(contact: Contact): string {
   if (name) return name;
   if (contact.email) return contact.email;
   return 'Unnamed contact';
+}
+
+/** Up-to-two-letter initials for the avatar, derived from name/email. */
+function contactInitials(contact: Contact): string {
+  const first = contact.firstName?.trim()?.[0] ?? '';
+  const last = contact.lastName?.trim()?.[0] ?? '';
+  const initials = `${first}${last}`.trim();
+  if (initials) return initials.toUpperCase();
+  const email = contact.email?.trim();
+  if (email) return email.slice(0, 2).toUpperCase();
+  return '?';
 }
 
 /** `YYYY-MM-DD` today, in UTC, to match how `follow_up` (a SQL date) is compared. */
@@ -117,25 +119,6 @@ async function getLastTouchpoints(
   return result;
 }
 
-// --- Inline styles (Tailwind is not wired yet; mirror app/page.tsx) ----------
-
-const cellStyle: React.CSSProperties = {
-  padding: '0.625rem 0.75rem',
-  borderBottom: '1px solid #eee',
-  textAlign: 'left',
-  verticalAlign: 'top',
-};
-
-const headStyle: React.CSSProperties = {
-  ...cellStyle,
-  borderBottom: '2px solid #ddd',
-  fontWeight: 600,
-  color: '#555',
-  fontSize: '0.8125rem',
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-};
-
 // --- Page --------------------------------------------------------------------
 
 export default async function TodayPage() {
@@ -152,123 +135,97 @@ export default async function TodayPage() {
   const lastTouchpoints = await getLastTouchpoints(contacts.map((c) => c.id));
   const today = todayDateString();
 
+  const dueCount = contacts.length;
+  const dueLabel =
+    dueCount === 0
+      ? 'No follow-ups due today'
+      : `${dueCount} ${dueCount === 1 ? 'follow-up' : 'follow-ups'} due today or overdue`;
+
   return (
-    <main
-      style={{
-        padding: '2rem',
-        fontFamily: 'system-ui, sans-serif',
-        maxWidth: 960,
-        margin: '0 auto',
-      }}
-    >
-      <h1 style={{ marginBottom: '0.25rem' }}>Today</h1>
-      <p style={{ marginTop: 0, color: '#666' }}>
-        Contacts due today or overdue for follow-up.
-      </p>
-
-      {contacts.length === 0 ? (
-        <div
-          style={{
-            marginTop: '2rem',
-            padding: '2rem',
-            textAlign: 'center',
-            color: '#666',
-            background: '#fafafa',
-            border: '1px solid #eee',
-            borderRadius: 6,
-          }}
-        >
-          <p style={{ margin: 0, fontSize: '1.05rem' }}>Nothing due today.</p>
-          <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem' }}>
-            You&rsquo;re all caught up on follow-ups.
-          </p>
+    <div className="content__inner">
+      <div className="page-head">
+        <div>
+          <div className="page-head__title">Today</div>
+          <div className="page-head__sub">{dueLabel}.</div>
         </div>
-      ) : (
-        <table
-          style={{
-            marginTop: '1.5rem',
-            width: '100%',
-            borderCollapse: 'collapse',
-            fontSize: '0.9375rem',
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={headStyle} scope="col">
-                Name
-              </th>
-              <th style={headStyle} scope="col">
-                Company
-              </th>
-              <th style={headStyle} scope="col">
-                Status
-              </th>
-              <th style={headStyle} scope="col">
-                Follow-up
-              </th>
-              <th style={headStyle} scope="col">
-                Last touchpoint
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {contacts.map((contact) => {
-              const last = lastTouchpoints.get(contact.id);
-              const overdue = contact.followUp !== null && contact.followUp < today;
+      </div>
 
-              return (
-                <tr key={contact.id}>
-                  <td style={cellStyle}>
-                    <span style={{ fontWeight: 500 }}>{contactName(contact)}</span>
-                    {contact.jobTitle ? (
-                      <span style={{ display: 'block', color: '#888', fontSize: '0.8125rem' }}>
-                        {contact.jobTitle}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td style={cellStyle}>{contact.company ?? '—'}</td>
-                  <td style={cellStyle}>{STATUS_LABELS[contact.status]}</td>
-                  <td style={cellStyle}>
-                    {contact.followUp ? (
-                      <>
-                        {formatDate(contact.followUp)}
-                        {overdue ? (
-                          <span
-                            style={{
-                              marginLeft: '0.5rem',
-                              color: '#b91c1c',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            Overdue
-                          </span>
-                        ) : null}
-                      </>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td style={cellStyle}>
-                    {last ? (
-                      <>
-                        {CHANNEL_LABELS[last.channel]}
-                        <span style={{ color: '#888' }}>
-                          {' · '}
-                          {formatTimestamp(last.occurredAt)}
-                        </span>
-                      </>
-                    ) : (
-                      <span style={{ color: '#aaa' }}>No touchpoints</span>
-                    )}
-                  </td>
+      <Card title="Due today" bodyStyle={{ padding: 0 }}>
+        {contacts.length === 0 ? (
+          <EmptyState
+            icon="checkCircle"
+            title="Nothing due today"
+            desc="You're all caught up on follow-ups."
+          />
+        ) : (
+          <div className="tbl-wrap" style={{ border: 'none', borderRadius: 0 }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Company</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Follow-up</th>
+                  <th scope="col">Last touchpoint</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </main>
+              </thead>
+              <tbody>
+                {contacts.map((contact) => {
+                  const last = lastTouchpoints.get(contact.id);
+                  const overdue = contact.followUp !== null && contact.followUp < today;
+
+                  return (
+                    <tr key={contact.id}>
+                      <td>
+                        <div className="row gap-5 center">
+                          <Avatar initials={contactInitials(contact)} size="sm" />
+                          <div style={{ minWidth: 0 }}>
+                            <div className="medb" style={{ whiteSpace: 'nowrap' }}>
+                              {contactName(contact)}
+                            </div>
+                            {contact.jobTitle ? (
+                              <div className="cap tert" style={{ whiteSpace: 'nowrap' }}>
+                                {contact.jobTitle}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="sm muted">{contact.company ?? '—'}</td>
+                      <td>
+                        <Pill spec={STATUS_PILLS[contact.status]} />
+                      </td>
+                      <td className="sm">
+                        {contact.followUp ? (
+                          <span className="row gap-3 center">
+                            <span>{formatDate(contact.followUp)}</span>
+                            {overdue ? <Badge tone="danger">Overdue</Badge> : null}
+                          </span>
+                        ) : (
+                          <span className="tert">—</span>
+                        )}
+                      </td>
+                      <td className="sm muted" style={{ whiteSpace: 'nowrap' }}>
+                        {last ? (
+                          <>
+                            {CHANNEL_LABELS[last.channel]}
+                            <span className="tert">
+                              {' · '}
+                              {formatTimestamp(last.occurredAt)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="tert">No touchpoints</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
