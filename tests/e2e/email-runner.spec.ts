@@ -79,7 +79,7 @@ test.beforeAll(async () => {
   const existingSettings = ((orgRow as { settings: Record<string, unknown> | null } | null)?.settings ?? {});
   await admin
     .from('organizations')
-    .update({ settings: { ...existingSettings, seqSkipWeekends: false, dailyGoal: 30 } })
+    .update({ settings: { ...existingSettings, seqSkipWeekends: false, seqDailyCap: 30 } })
     .eq('id', orgId);
 
   // Idempotent reseed. Also clear the test emails' suppressions — they're keyed

@@ -41,16 +41,15 @@ const callingCodeSchema = z.string().transform((value, ctx) => {
 // is deliberately NOT used here for that reason.
 const orgSettingsPatchSchema = z
   .object({
-    dailyGoal: z.number().int().nonnegative().optional(),
-    weeklyCallsGoal: z.number().int().nonnegative().optional(),
-    weeklyEmailsGoal: z.number().int().nonnegative().optional(),
-    rhythmGreen: z.number().int().nonnegative().optional(),
-    rhythmAmber: z.number().int().nonnegative().optional(),
-    rhythmRed: z.number().int().nonnegative().optional(),
-    rhythmNone: z.number().int().nonnegative().optional(),
-    signature: z.string().optional(),
-    defaultCountryCode: callingCodeSchema.optional(),
+    // Account-tier (edited in /admin). Per-user keys (goals, rhythm, signature,
+    // snippets, dialler identity) moved to user_settings — see UserSettings.
+    seqDailyCap: z.number().int().nonnegative().optional(),
+    // Send-window hours, 0–23 (UK time). The admin form posts plain hour numbers.
+    seqSendWindowFrom: z.number().int().min(0).max(23).optional(),
+    seqSendWindowTo: z.number().int().min(0).max(23).optional(),
     seqSkipWeekends: z.boolean().optional(),
+    defaultCountryCode: callingCodeSchema.optional(),
+    zohoCrmUrl: z.string().url().optional(),
   })
   .passthrough();
 

@@ -8,6 +8,14 @@ export interface NavGroup {
   items: ReadonlyArray<NavItem>;
 }
 
+/**
+ * The Admin nav item, shown only to allowlisted admins. Kept OUT of NAV_GROUPS
+ * (and therefore out of the command palette, which derives its list from
+ * NAV_GROUPS at module load) so /admin isn't advertised to non-admins. The
+ * sidebar appends it when its `isAdmin` prop is true.
+ */
+export const ADMIN_NAV_ITEM: NavItem = { href: '/admin', label: 'Admin', icon: 'settings' };
+
 export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     group: 'Outreach',
@@ -56,6 +64,7 @@ export const ROUTE_TITLES: ReadonlyArray<readonly [string, string]> = [
   ['/activity', 'Activity'],
   ['/import', 'Import'],
   ['/settings', 'Settings'],
+  ['/admin', 'Admin'],
 ];
 
 export function titleForPath(pathname: string): string {

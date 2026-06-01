@@ -1,19 +1,22 @@
 'use client';
 
-import { useActionState } from 'react';
-import type { OrgSettings } from '@/lib/types/domain';
+import { useActionState, useState } from 'react';
+import type { UserSettings } from '@/lib/types/domain';
 import { Button, Card, Field, Icon } from '@/components/ui';
 
 /**
- * Org settings form. Renders one control per editable `OrgSettings` field,
- * pre-filled from the current settings, and submits to a passed-in Server
- * Action via `useActionState` so the page can surface inline success / error
- * feedback without a navigation.
+ * Per-user settings form. Renders one control per editable `UserSettings` field,
+ * pre-filled from the current settings, and submits to a passed-in Server Action
+ * via `useActionState` so the page can surface inline success / error feedback
+ * without a navigation.
  *
  * The action receives the form's FormData, parses + validates it (numbers as
- * numbers), calls `updateOrgSettings`, and returns a `SettingsFormState`. We
- * keep the action state here (rather than a redirect) because Settings is a
- * stay-in-place edit screen.
+ * numbers, repeated `snippet` inputs as a string[]), calls `updateUserSettings`,
+ * and returns a `SettingsFormState`. We keep the action state here (rather than a
+ * redirect) because Settings is a stay-in-place edit screen.
+ *
+ * Account-wide settings (sequence sender, Zoho, defaults, deployment config)
+ * live in the separate /admin panel — this form is scoped to the signed-in user.
  *
  * Styling uses the shared design system (Card + Field + .input classes, Button
  * primitive) — see components/contact-form.tsx for established conventions.
@@ -42,14 +45,72 @@ export interface SettingsFormProps {
     prevState: SettingsFormState,
     formData: FormData,
   ) => Promise<SettingsFormState>;
-  /** Current org settings, used to pre-fill the controls. */
-  settings: OrgSettings;
+  /** Current per-user settings, used to pre-fill the controls. */
+  settings: UserSettings;
 }
 
 /** Coerce an optional number to a string for a controlled-ish number input. */
 function numValue(v: number | undefined): string {
   if (v === undefined) return '';
   return String(v);
+}
+
+/**
+ * Note-snippets list editor. Holds the list in client state; each snippet
+ * renders as an `<input name="snippet">` so the form submits them as repeated
+ * fields (the action collects them via `formData.getAll('snippet')`). Adding
+ * appends a blank row to edit; removing drops it. An empty list submits no
+ * `snippet` fields, which the action reads as "clear all".
+ */
+function NoteSnippetsEditor({ initial }: { initial: string[] }) {
+  const [snippets, setSnippets] = useState<string[]>(initial);
+
+  function update(index: number, value: string) {
+    setSnippets((prev) => prev.map((s, i) => (i === index ? value : s)));
+  }
+  function remove(index: number) {
+    setSnippets((prev) => prev.filter((_, i) => i !== index));
+  }
+  function add() {
+    setSnippets((prev) => [...prev, '']);
+  }
+
+  return (
+    <div className="col gap-4">
+      {snippets.length === 0 ? (
+        <p className="sm tert" style={{ margin: 0 }}>
+          No snippets yet. Add reusable quick notes to insert into note fields.
+        </p>
+      ) : (
+        snippets.map((snippet, index) => (
+          <div key={index} className="row gap-3 center">
+            <input
+              name="snippet"
+              type="text"
+              value={snippet}
+              onChange={(e) => update(index, e.target.value)}
+              className="input"
+              placeholder="e.g. Asked for proposal, follow up Friday"
+              style={{ flex: 1 }}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              icon="x"
+              aria-label="Remove snippet"
+              onClick={() => remove(index)}
+            />
+          </div>
+        ))
+      )}
+      <div>
+        <Button type="button" variant="secondary" size="sm" icon="plus" onClick={add}>
+          Add snippet
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export default function SettingsForm({ action, settings }: SettingsFormProps) {
@@ -60,7 +121,7 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
       <div className="col gap-6">
         <Card title="Goals">
           <div style={gridStyle}>
-            <Field label="Daily goal" htmlFor="dailyGoal" hint="Contacts to action per day.">
+            <Field label="Daily touchpoints" htmlFor="dailyGoal" hint="Contacts to action per day.">
               <input
                 id="dailyGoal"
                 name="dailyGoal"
@@ -72,7 +133,7 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
               />
             </Field>
 
-            <Field label="Weekly calls goal" htmlFor="weeklyCallsGoal">
+            <Field label="Weekly calls" htmlFor="weeklyCallsGoal">
               <input
                 id="weeklyCallsGoal"
                 name="weeklyCallsGoal"
@@ -84,7 +145,7 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
               />
             </Field>
 
-            <Field label="Weekly emails goal" htmlFor="weeklyEmailsGoal">
+            <Field label="Weekly emails" htmlFor="weeklyEmailsGoal">
               <input
                 id="weeklyEmailsGoal"
                 name="weeklyEmailsGoal"
@@ -103,7 +164,7 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
             Days until the next follow-up is due, by status.
           </p>
           <div style={gridStyle}>
-            <Field label="Green" htmlFor="rhythmGreen">
+            <Field label="In conversation" htmlFor="rhythmGreen">
               <input
                 id="rhythmGreen"
                 name="rhythmGreen"
@@ -115,7 +176,7 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
               />
             </Field>
 
-            <Field label="Amber" htmlFor="rhythmAmber">
+            <Field label="No time yet" htmlFor="rhythmAmber">
               <input
                 id="rhythmAmber"
                 name="rhythmAmber"
@@ -127,7 +188,7 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
               />
             </Field>
 
-            <Field label="Red" htmlFor="rhythmRed">
+            <Field label="No response" htmlFor="rhythmRed">
               <input
                 id="rhythmRed"
                 name="rhythmRed"
@@ -139,7 +200,7 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
               />
             </Field>
 
-            <Field label="No status" htmlFor="rhythmNone">
+            <Field label="Not contacted" htmlFor="rhythmNone">
               <input
                 id="rhythmNone"
                 name="rhythmNone"
@@ -153,45 +214,114 @@ export default function SettingsForm({ action, settings }: SettingsFormProps) {
           </div>
         </Card>
 
-        <Card title="Defaults">
+        <Card title="Email signature">
+          <Field label="Signature" htmlFor="signature" hint="Appended to emails you send.">
+            <textarea
+              id="signature"
+              name="signature"
+              rows={5}
+              defaultValue={settings.signature ?? ''}
+              className="input"
+              style={{ resize: 'vertical' }}
+            />
+          </Field>
+        </Card>
+
+        <Card title="Note snippets">
+          <p className="sm tert" style={{ margin: '0 0 var(--space-6)' }}>
+            Reusable quick notes you can insert into any note field.
+          </p>
+          <NoteSnippetsEditor initial={settings.noteSnippets ?? []} />
+        </Card>
+
+        <Card title="Telnyx dialler">
+          <p className="sm tert" style={{ margin: '0 0 var(--space-6)' }}>
+            Your dialling identity. The outbound caller ID is the number prospects
+            see when you call. The shared Telnyx account is managed by an admin.
+          </p>
           <div className="col gap-6">
             <Field
-              label="Default country code"
-              htmlFor="defaultCountryCode"
-              hint="Calling code used to normalise phone numbers, e.g. +44, +1, +34."
+              label="SIP user"
+              htmlFor="txSipUser"
+              hint="Your Credential Connection username in the Telnyx portal."
             >
               <input
-                id="defaultCountryCode"
-                name="defaultCountryCode"
+                id="txSipUser"
+                name="txSipUser"
                 type="text"
-                defaultValue={settings.defaultCountryCode ?? ''}
+                defaultValue={settings.txSipUser ?? ''}
                 className="input"
+                placeholder="yourname"
+                autoComplete="off"
               />
             </Field>
 
-            <Field label="Email signature" htmlFor="signature">
-              <textarea
-                id="signature"
-                name="signature"
-                rows={5}
-                defaultValue={settings.signature ?? ''}
-                className="input"
-                style={{ resize: 'vertical' }}
-              />
-            </Field>
-
-            <label htmlFor="seqSkipWeekends" className="row gap-4 center" style={{ cursor: 'pointer' }}>
+            <Field
+              label="Outbound CLI (your number)"
+              htmlFor="txCallerId"
+              hint="The number prospects see when you call, e.g. +447712345678."
+            >
               <input
-                id="seqSkipWeekends"
-                name="seqSkipWeekends"
-                type="checkbox"
-                defaultChecked={settings.seqSkipWeekends ?? false}
-                style={{ width: '1rem', height: '1rem' }}
+                id="txCallerId"
+                name="txCallerId"
+                type="text"
+                defaultValue={settings.txCallerId ?? ''}
+                className="input"
+                placeholder="+447712345678"
+                autoComplete="off"
               />
-              <span className="field-label" style={{ marginBottom: 0 }}>
-                Skip weekends when scheduling sequence steps
-              </span>
-            </label>
+            </Field>
+
+            {/* TODO(softphone): a per-user SIP password field belongs here once a
+                WebRTC softphone exists. It is a secret and must NOT be stored in
+                user_settings.settings (jsonb is readable by the user and any
+                service-role path) — store it Vault-backed in a restricted
+                per-user secret store. No live consumer today (basic dialler uses
+                tel: links; AMD bridges server-side via BRIDGE_SIP_USERNAME). */}
+          </div>
+        </Card>
+
+        <Card title="Dialler preferences">
+          <div style={gridStyle}>
+            <Field
+              label="Inter-call delay (sec)"
+              htmlFor="diallerInterCallDelaySec"
+              hint="Pause between consecutive auto-dial calls."
+            >
+              <input
+                id="diallerInterCallDelaySec"
+                name="diallerInterCallDelaySec"
+                type="number"
+                min={0}
+                step={1}
+                defaultValue={numValue(settings.diallerInterCallDelaySec)}
+                className="input"
+              />
+            </Field>
+
+            <Field label="Auto-dial mode" htmlFor="diallerAutoDial">
+              <select
+                id="diallerAutoDial"
+                name="diallerAutoDial"
+                defaultValue={settings.diallerAutoDial ? 'true' : 'false'}
+                className="input"
+              >
+                <option value="false">Manual (click to dial each)</option>
+                <option value="true">Auto (dial next after outcome)</option>
+              </select>
+            </Field>
+
+            <Field label="Synth dial/ring tones" htmlFor="diallerSynthTones">
+              <select
+                id="diallerSynthTones"
+                name="diallerSynthTones"
+                defaultValue={settings.diallerSynthTones ? 'true' : 'false'}
+                className="input"
+              >
+                <option value="false">Off (use Telnyx network ringback)</option>
+                <option value="true">On (browser-generated tones)</option>
+              </select>
+            </Field>
           </div>
         </Card>
 

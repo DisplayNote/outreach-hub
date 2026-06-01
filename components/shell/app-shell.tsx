@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/server';
+import { isAdminEmail } from '@/lib/auth/admin';
 import AppShellClient from './app-shell-client';
 
 export default async function AppShell({ children }: { children: ReactNode }) {
@@ -32,6 +33,7 @@ export default async function AppShell({ children }: { children: ReactNode }) {
     <AppShellClient
       user={{ email, name: email.split('@')[0] || 'User', initials, mailbox }}
       org={org}
+      isAdmin={isAdminEmail(email)}
     >
       {children}
     </AppShellClient>

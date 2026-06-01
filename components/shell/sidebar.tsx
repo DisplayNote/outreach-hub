@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { NAV_GROUPS } from './nav-config';
+import { NAV_GROUPS, ADMIN_NAV_ITEM, type NavGroup } from './nav-config';
 import Icon from '@/components/ui/icon';
 import type { ShellUser } from './app-shell-client';
 
@@ -9,12 +9,19 @@ export default function Sidebar({
   user,
   org,
   collapsed,
+  isAdmin,
 }: {
   user: ShellUser;
   org: string;
   collapsed: boolean;
+  isAdmin: boolean;
 }) {
   const pathname = usePathname();
+  // Append the Admin group only for allowlisted admins. The route itself is
+  // gated by requireAdmin() — this is cosmetic, so a non-admin never sees it.
+  const groups: ReadonlyArray<NavGroup> = isAdmin
+    ? [...NAV_GROUPS, { group: 'Admin', items: [ADMIN_NAV_ITEM] }]
+    : NAV_GROUPS;
   return (
     <nav className="sidebar">
       <Link href="/" className="sidebar__brand" aria-label="Outreach Hub — dashboard">
@@ -27,7 +34,7 @@ export default function Sidebar({
         )}
       </Link>
       <div className="sidebar__scroll">
-        {NAV_GROUPS.map((g) => (
+        {groups.map((g) => (
           <div key={g.group}>
             <div className="nav-group-label">{collapsed ? '·' : g.group}</div>
             {g.items.map((it) => {

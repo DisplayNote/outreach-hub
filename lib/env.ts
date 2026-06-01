@@ -40,6 +40,11 @@ const serverEnvSchema = publicEnvSchema
     // settings.senderEmail. A supported deploy-time config path so the scheduled
     // sender doesn't silently no-op waiting for someone to hand-patch the JSONB.
     CRON_SENDER_EMAIL: z.preprocess(emptyStringAsUndefined, z.string().email().optional()),
+    // Comma-separated email allowlist gating the /admin panel. A deploy-time
+    // value (must NOT be self-editable from inside the app), kept in env rather
+    // than the DB precisely so a DB write can never grant admin. Empty/unset =>
+    // nobody is an admin (the panel 404s for everyone).
+    ADMIN_EMAIL_ALLOWLIST: z.preprocess(emptyStringAsUndefined, z.string().optional()),
   })
   // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
   // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So
@@ -88,6 +93,21 @@ export function getPublicEnv(): PublicEnv {
 
 export function getServerEnv(): ServerEnv {
   return parseServerEnv(process.env);
+}
+
+/**
+ * The admin email allowlist, parsed from `ADMIN_EMAIL_ALLOWLIST`: comma-split,
+ * trimmed, lowercased, blanks dropped. Returns `[]` when unset, so an empty
+ * allowlist makes nobody an admin. Compare against a user's email lowercased
+ * (see `isAdminEmail`).
+ */
+export function getAdminEmails(env: EnvRecord = process.env): string[] {
+  const raw = env.ADMIN_EMAIL_ALLOWLIST;
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e !== '');
 }
 
 /**

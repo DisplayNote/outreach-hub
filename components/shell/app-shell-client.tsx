@@ -14,10 +14,12 @@ export interface ShellUser {
 export default function AppShellClient({
   user,
   org,
+  isAdmin,
   children,
 }: {
   user: ShellUser;
   org: string;
+  isAdmin: boolean;
   children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -48,7 +50,7 @@ export default function AppShellClient({
 
   return (
     <div className={`app ${collapsed ? 'is-collapsed' : ''}`}>
-      <Sidebar user={user} org={org} collapsed={collapsed} />
+      <Sidebar user={user} org={org} collapsed={collapsed} isAdmin={isAdmin} />
       <div className="main">
         <Topbar
           user={user}
