@@ -46,7 +46,7 @@
 .btn--subtle:hover:not(:disabled) { background: var(--bg-active); }
 
 .btn.is-loading { color: transparent !important; pointer-events: none; }
-.btn__spinner { position: absolute; width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: oh-spin 0.6s linear infinite; }
+.btn__spinner { position: absolute; top: 50%; left: 50%; margin: -8px 0 0 -8px; width: 16px; height: 16px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: oh-spin 0.6s linear infinite; }
 .btn--primary .btn__spinner, .btn--danger .btn__spinner { color: #fff; }
 .btn--secondary .btn__spinner, .btn--ghost .btn__spinner, .btn--subtle .btn__spinner { color: var(--text-secondary); }
 
