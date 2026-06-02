@@ -162,6 +162,17 @@ test.afterAll(async () => {
       { user_id: userId, org_id: orgId, settings: priorSettings ?? {} },
       { onConflict: 'user_id' },
     );
+
+  // Remove the campaign this spec created so it doesn't accumulate in a dev DB.
+  const { data: dialCamps } = await admin
+    .from('campaigns')
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('name', 'E2E AutoDial Campaign');
+  for (const c of dialCamps ?? []) {
+    await admin.from('contacts').delete().eq('org_id', orgId).eq('campaign_id', (c as { id: string }).id);
+  }
+  await admin.from('campaigns').delete().eq('org_id', orgId).eq('name', 'E2E AutoDial Campaign');
 });
 
 maybeTest('auto-dials the next contact after an outcome is recorded', async ({ page }) => {
