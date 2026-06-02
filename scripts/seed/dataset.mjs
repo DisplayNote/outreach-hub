@@ -213,6 +213,12 @@ export const mailpitReplies = [
  */
 export function validateDataset() {
   const errors = [];
+  // Offset fields are resolved into dates/timestamps by the seeder, so a stray
+  // float or wrong-sign value would silently produce incorrect dates. Guard the
+  // numeric shape here so a bad future edit fails validation, not seeding.
+  const isNonNegInt = (v) => Number.isInteger(v) && v >= 0;
+  const isIntOrNull = (v) => v === null || Number.isInteger(v);
+  const isNonNegIntOrNull = (v) => v === null || isNonNegInt(v);
   const templateKeys = new Set(templates.map((t) => t.key));
   const sequenceKeys = new Set(sequences.map((s) => s.key));
   const campaignKeys = new Set(campaigns.map((c) => c.key));
@@ -239,6 +245,9 @@ export function validateDataset() {
       if (step.templateKey !== null && !templateKeys.has(step.templateKey)) {
         errors.push(`step ${seq.key}#${step.order} references missing template ${step.templateKey}`);
       }
+      if (!isNonNegInt(step.dayOffset)) {
+        errors.push(`step ${seq.key}#${step.order} dayOffset must be a non-negative integer`);
+      }
     }
   }
 
@@ -251,6 +260,8 @@ export function validateDataset() {
   for (const c of contacts) {
     if (!campaignKeys.has(c.campaignKey)) errors.push(`contact ${c.key} references missing campaign ${c.campaignKey}`);
     if (!ENUMS.status.includes(c.status)) errors.push(`contact ${c.key} has bad status ${c.status}`);
+    if (!isNonNegIntOrNull(c.sequenceDay)) errors.push(`contact ${c.key} sequenceDay must be a non-negative integer or null`);
+    if (!isIntOrNull(c.followUpOffsetDays)) errors.push(`contact ${c.key} followUpOffsetDays must be an integer or null`);
   }
 
   const sentByContact = new Set(emailEvents.filter((e) => e.type === 'sent').map((e) => e.contactKey));
@@ -261,11 +272,14 @@ export function validateDataset() {
     if (ev.type !== 'sent' && !sentByContact.has(ev.contactKey)) {
       errors.push(`${ev.type} for ${ev.contactKey} has no prior sent event`);
     }
+    if (!isNonNegInt(ev.daysAgo)) errors.push(`event ${ev.messageId} daysAgo must be a non-negative integer`);
+    if (!isNonNegIntOrNull(ev.sequenceDay)) errors.push(`event ${ev.messageId} sequenceDay must be a non-negative integer or null`);
   }
 
   for (const tp of touchpoints) {
     if (!contactKeys.has(tp.contactKey)) errors.push(`touchpoint references missing contact ${tp.contactKey}`);
     if (!ENUMS.channel.includes(tp.channel)) errors.push(`touchpoint ${tp.key} bad channel ${tp.channel}`);
+    if (!isNonNegInt(tp.daysAgo)) errors.push(`touchpoint ${tp.key} daysAgo must be a non-negative integer`);
   }
 
   for (const s of suppressions) {

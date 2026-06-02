@@ -72,4 +72,36 @@ describe('seed dataset', () => {
     expect(suppressions.length).toBeGreaterThan(0);
     expect(touchpoints.length).toBeGreaterThan(0);
   });
+
+  it('numeric offset fields are integers of the correct sign', () => {
+    for (const c of contacts) {
+      if (c.sequenceDay !== null) {
+        expect(Number.isInteger(c.sequenceDay) && c.sequenceDay >= 0, `contact ${c.key} sequenceDay`).toBe(true);
+      }
+      if (c.followUpOffsetDays !== null) {
+        expect(Number.isInteger(c.followUpOffsetDays), `contact ${c.key} followUpOffsetDays`).toBe(true);
+      }
+    }
+    for (const ev of emailEvents) {
+      expect(Number.isInteger(ev.daysAgo) && ev.daysAgo >= 0, `event ${ev.messageId} daysAgo`).toBe(true);
+      if (ev.sequenceDay !== null) {
+        expect(Number.isInteger(ev.sequenceDay) && ev.sequenceDay >= 0, `event ${ev.messageId} sequenceDay`).toBe(true);
+      }
+    }
+    for (const tp of touchpoints) {
+      expect(Number.isInteger(tp.daysAgo) && tp.daysAgo >= 0, `touchpoint ${tp.key} daysAgo`).toBe(true);
+    }
+  });
+
+  it('validateDataset() rejects a non-integer offset', () => {
+    // Mutate-and-restore: prove the validator actually enforces the numeric
+    // shape (a float offset would otherwise seed a mid-day / wrong timestamp).
+    const original = contacts[0]!.sequenceDay;
+    contacts[0]!.sequenceDay = 1.5;
+    try {
+      expect(() => validateDataset()).toThrow(/sequenceDay/);
+    } finally {
+      contacts[0]!.sequenceDay = original;
+    }
+  });
 });
