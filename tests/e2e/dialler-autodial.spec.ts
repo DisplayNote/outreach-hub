@@ -162,6 +162,14 @@ test.afterAll(async () => {
       { user_id: userId, org_id: orgId, settings: priorSettings ?? {} },
       { onConflict: 'user_id' },
     );
+
+  // Remove the campaign this spec created so it doesn't accumulate in a dev DB.
+  // Delete by the id captured in beforeAll — no extra lookup, and it can't touch
+  // another campaign that happens to share the name.
+  if (campaignId) {
+    await admin.from('contacts').delete().eq('org_id', orgId).eq('campaign_id', campaignId);
+    await admin.from('campaigns').delete().eq('org_id', orgId).eq('id', campaignId);
+  }
 });
 
 maybeTest('auto-dials the next contact after an outcome is recorded', async ({ page }) => {

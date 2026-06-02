@@ -1,0 +1,107 @@
+import { describe, it, expect } from 'vitest';
+// dataset.mjs is plain ESM data — import works directly under Vitest.
+import {
+  ENUMS,
+  templates,
+  sequences,
+  campaigns,
+  contacts,
+  touchpoints,
+  emailEvents,
+  suppressions,
+  userSettings,
+  mailpitReplies,
+  validateDataset,
+} from '../../../scripts/seed/dataset.mjs';
+
+describe('seed dataset', () => {
+  it('passes validateDataset() with no errors', () => {
+    expect(() => validateDataset()).not.toThrow();
+  });
+
+  it('covers every contact_status at least once', () => {
+    const present = new Set(contacts.map((c) => c.status));
+    for (const status of ENUMS.status) {
+      expect(present.has(status), `missing status: ${status}`).toBe(true);
+    }
+  });
+
+  it('has at least one contact due today and one overdue', () => {
+    expect(contacts.some((c) => c.followUpOffsetDays === 0)).toBe(true);
+    expect(contacts.some((c) => typeof c.followUpOffsetDays === 'number' && c.followUpOffsetDays < 0)).toBe(true);
+  });
+
+  it('has exactly one deliberately unlinked campaign', () => {
+    expect(campaigns.filter((c) => c.sequenceKey === null)).toHaveLength(1);
+  });
+
+  it('every email sequence step references an existing template', () => {
+    const templateKeys = new Set(templates.map((t) => t.key));
+    for (const seq of sequences) {
+      for (const step of seq.steps) {
+        if (step.channel === 'email') {
+          expect(step.templateKey, `email step in ${seq.key} needs a template`).not.toBeNull();
+          expect(templateKeys.has(step.templateKey as string)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('every reply/bounce event has a matching sent event for the same contact', () => {
+    const sentByContact = new Set(
+      emailEvents.filter((e) => e.type === 'sent').map((e) => e.contactKey),
+    );
+    for (const ev of emailEvents.filter((e) => e.type !== 'sent')) {
+      expect(sentByContact.has(ev.contactKey), `${ev.type} for ${ev.contactKey} has no prior sent`).toBe(true);
+    }
+  });
+
+  it('every mailpit reply targets a contact that has a sent event (so it correlates)', () => {
+    const sentByContact = new Set(
+      emailEvents.filter((e) => e.type === 'sent').map((e) => e.contactKey),
+    );
+    expect(mailpitReplies.length).toBeGreaterThan(0);
+    for (const r of mailpitReplies) {
+      expect(sentByContact.has(r.contactKey), `mailpit reply for ${r.contactKey} needs a sent event`).toBe(true);
+    }
+  });
+
+  it('exposes user settings with goals', () => {
+    expect(userSettings.dailyGoal).toBeGreaterThan(0);
+    expect(Array.isArray(userSettings.noteSnippets)).toBe(true);
+    expect(suppressions.length).toBeGreaterThan(0);
+    expect(touchpoints.length).toBeGreaterThan(0);
+  });
+
+  it('numeric offset fields are integers of the correct sign', () => {
+    for (const c of contacts) {
+      if (c.sequenceDay !== null) {
+        expect(Number.isInteger(c.sequenceDay) && c.sequenceDay >= 0, `contact ${c.key} sequenceDay`).toBe(true);
+      }
+      if (c.followUpOffsetDays !== null) {
+        expect(Number.isInteger(c.followUpOffsetDays), `contact ${c.key} followUpOffsetDays`).toBe(true);
+      }
+    }
+    for (const ev of emailEvents) {
+      expect(Number.isInteger(ev.daysAgo) && ev.daysAgo >= 0, `event ${ev.messageId} daysAgo`).toBe(true);
+      if (ev.sequenceDay !== null) {
+        expect(Number.isInteger(ev.sequenceDay) && ev.sequenceDay >= 0, `event ${ev.messageId} sequenceDay`).toBe(true);
+      }
+    }
+    for (const tp of touchpoints) {
+      expect(Number.isInteger(tp.daysAgo) && tp.daysAgo >= 0, `touchpoint ${tp.key} daysAgo`).toBe(true);
+    }
+  });
+
+  it('validateDataset() rejects a non-integer offset', () => {
+    // Mutate-and-restore: prove the validator actually enforces the numeric
+    // shape (a float offset would otherwise seed a mid-day / wrong timestamp).
+    const original = contacts[0]!.sequenceDay;
+    contacts[0]!.sequenceDay = 1.5;
+    try {
+      expect(() => validateDataset()).toThrow(/sequenceDay/);
+    } finally {
+      contacts[0]!.sequenceDay = original;
+    }
+  });
+});

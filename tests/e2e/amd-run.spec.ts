@@ -116,6 +116,30 @@ test.beforeAll(async () => {
   contactId = (contact as { id: string }).id;
 });
 
+test.afterAll(async () => {
+  if (!CAN_RUN) return;
+  // Resolve the dev org the same way beforeAll does (orgId is local to that hook).
+  const { data: userRow } = await admin
+    .from('users')
+    .select('org_id')
+    .eq('email', 'dev@outreach.local')
+    .single();
+  const orgId = (userRow as { org_id: string } | null)?.org_id;
+  if (!orgId) return;
+  // Contacts cascade-delete their touchpoints/email_events; delete them by the
+  // campaign, then the campaign itself. Mirrors email-runner.spec.ts's idempotent
+  // deletes so repeated runs don't leave 'E2E AMD Campaign' rows in a dev DB.
+  const { data: camps } = await admin
+    .from('campaigns')
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('name', 'E2E AMD Campaign');
+  for (const c of camps ?? []) {
+    await admin.from('contacts').delete().eq('org_id', orgId).eq('campaign_id', (c as { id: string }).id);
+  }
+  await admin.from('campaigns').delete().eq('org_id', orgId).eq('name', 'E2E AMD Campaign');
+});
+
 maybeTest('AMD run auto-detects a machine and logs the voicemail touchpoint', async ({ page }) => {
   // Dev sign-in (mock).
   await page.goto('/login');
