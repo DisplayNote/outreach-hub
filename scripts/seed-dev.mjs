@@ -80,7 +80,13 @@ async function ensureDevOrg() {
     .limit(1);
   if (error) die(`could not read dev user: ${error.message}`);
   const row = rows?.[0];
-  if (!row) die('dev user has no public.users row yet — sign in via /auth/mock once, then re-run');
+  if (!row) {
+    // The auth user exists but its public.users row is missing — the
+    // on_auth_user_created trigger only fires on auth.users INSERT, so signing
+    // in won't recreate it. Reset the local DB (or delete the auth user) so the
+    // trigger runs cleanly on the next createUser.
+    die('dev auth user exists but has no public.users row. Run `make db-reset` (or delete the auth user), then re-run.');
+  }
   return { userId: row.id, orgId: row.org_id };
 }
 

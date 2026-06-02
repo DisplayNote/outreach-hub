@@ -74,8 +74,9 @@ service-role client, env from `NEXT_PUBLIC_SUPABASE_URL` +
 `SUPABASE_SERVICE_ROLE_KEY`).
 
 Steps:
-1. **Localhost guard** — parse `NEXT_PUBLIC_SUPABASE_URL`; abort unless host is
-   `127.0.0.1` or `localhost`. Prevents ever seeding a remote/prod project.
+1. **Localhost guard** — parse `NEXT_PUBLIC_SUPABASE_URL`; abort unless host is a
+   loopback host (`127.0.0.1`, `localhost`, or IPv6 `::1`/`[::1]`). Prevents ever
+   seeding a remote/prod project.
 2. **Ensure dev user/org** — `admin.auth.admin.createUser` for
    `dev@outreach.local` (ignore "already exists"), then read `org_id` from
    `public.users`.
@@ -136,7 +137,7 @@ recurring.
   - *Event Follow-up* — 2 steps.
 - **4 campaigns**: 3 linked to sequences via `sequence_id` (+ denormalised name);
   **1 deliberately unlinked** to exercise the "Not linked — set it" queue state.
-- **~40 contacts** across campaigns spanning **every** `contact_status`
+- **18 contacts** across campaigns spanning **every** `contact_status`
   (none/amber/red/green/meeting/notinterested/bounced), varied `sequence_day` and
   `follow_up` (due-today / overdue / future / null), phone+mobile on a good
   subset (dialler-ready), realistic names/companies/titles/countries/LinkedIn.
@@ -163,7 +164,8 @@ recurring.
 - **Manual verification**: run `make seed` against the local stack and load
   Today / Pipeline / Queue / Reports / Dialler / Settings in the preview to
   confirm each populates; with `EMAIL_DRIVER=mailpit`, run `make seed-inbox` and
-  "Scan inbox now" to confirm a reply and a bounce are processed.
+  "Scan inbox now" to confirm the injected replies are processed (bounces are
+  exercised via the in-app Sim button, not Mailpit).
 
 ## Files touched
 

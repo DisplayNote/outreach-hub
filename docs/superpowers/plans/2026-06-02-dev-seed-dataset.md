@@ -193,38 +193,38 @@ export const templates = [
   {
     key: 'intro',
     name: 'Intro — first touch',
-    subject: 'Quick idea for {{company}}',
-    body: 'Hi {{firstName}},\n\nI work with teams like {{company}} on classroom & meeting-room display tooling. Worth a quick chat?\n\nBest,\nPaul',
+    subject: 'Quick idea for {company}',
+    body: 'Hi {firstName},\n\nI work with teams like {company} on classroom & meeting-room display tooling. Worth a quick chat?\n\nBest,\nPaul',
   },
   {
     key: 'follow1',
     name: 'Follow-up #1',
-    subject: 'Re: Quick idea for {{company}}',
-    body: 'Hi {{firstName}},\n\nCircling back — happy to send a 2-minute overview if useful.\n\nPaul',
+    subject: 'Re: Quick idea for {company}',
+    body: 'Hi {firstName},\n\nCircling back — happy to send a 2-minute overview if useful.\n\nPaul',
   },
   {
     key: 'follow2',
     name: 'Follow-up #2',
-    subject: 'One more thought for {{company}}',
-    body: 'Hi {{firstName}},\n\nA few {{company}}-style orgs saw real savings. Open to a look?\n\nPaul',
+    subject: 'One more thought for {company}',
+    body: 'Hi {firstName},\n\nA few {company}-style orgs saw real savings. Open to a look?\n\nPaul',
   },
   {
     key: 'breakup',
     name: 'Break-up',
     subject: 'Closing the loop',
-    body: 'Hi {{firstName}},\n\nI’ll stop here so I’m not a nuisance — just reply if the timing changes.\n\nPaul',
+    body: 'Hi {firstName},\n\nI’ll stop here so I’m not a nuisance — just reply if the timing changes.\n\nPaul',
   },
   {
     key: 'reengage',
     name: 'Re-engagement',
-    subject: 'Still on your radar, {{firstName}}?',
-    body: 'Hi {{firstName}},\n\nWe spoke a while back about {{company}}. Lots has shipped since — reconnect?\n\nPaul',
+    subject: 'Still on your radar, {firstName}?',
+    body: 'Hi {firstName},\n\nWe spoke a while back about {company}. Lots has shipped since — reconnect?\n\nPaul',
   },
   {
     key: 'meeting',
     name: 'Meeting confirm',
     subject: 'Confirmed: our chat',
-    body: 'Hi {{firstName}},\n\nLooking forward to it. Invite to follow.\n\nPaul',
+    body: 'Hi {firstName},\n\nLooking forward to it. Invite to follow.\n\nPaul',
   },
 ];
 
@@ -279,7 +279,7 @@ export const contacts = [
   { key: 'greenwin', campaignKey: 'msp_q2', firstName: 'Priya', lastName: 'Nair', email: 'priya.nair@example.com', company: 'Helix Cloud', phone: '+441990001111', mobile: '+447700900789', jobTitle: 'CTO', seniority: 'C-level', country: 'United Kingdom', linkedin: 'https://www.linkedin.com/in/priya-nair/', status: 'green', sequenceDay: 7, followUpOffsetDays: 5, notes: 'Replied positively — sent calendar link.' },
   { key: 'meetingset', campaignKey: 'msp_q2', firstName: 'Dan', lastName: 'OBrien', email: 'dan.obrien@example.com', company: 'Brightwave', phone: '+441222333444', mobile: '+447700900222', jobTitle: 'Director', seniority: 'Director', country: 'Ireland', linkedin: null, status: 'meeting', sequenceDay: 3, followUpOffsetDays: 3, notes: 'Demo booked Thursday.' },
   { key: 'bounced1', campaignKey: 'msp_q2', firstName: 'Carl', lastName: 'Vesely', email: 'carl.vesely@bademail.example.com', company: 'Vesely IT', phone: null, mobile: null, jobTitle: 'Owner', seniority: 'Owner', country: 'United Kingdom', linkedin: null, status: 'bounced', sequenceDay: 0, followUpOffsetDays: null, notes: 'Hard bounce on first send.' },
-  { key: 'notint1', campaignKey: 'msp_q2', firstName: 'Grace', lastName: 'Ffield', email: 'grace.field@example.com', company: 'Fieldworks', phone: '+441333444555', mobile: null, jobTitle: 'Ops Lead', seniority: 'Lead', country: 'United Kingdom', linkedin: null, status: 'notinterested', sequenceDay: 3, followUpOffsetDays: null, notes: 'Said not now, try Q4.' },
+  { key: 'notint1', campaignKey: 'msp_q2', firstName: 'Grace', lastName: 'Field', email: 'grace.field@example.com', company: 'Fieldworks', phone: '+441333444555', mobile: null, jobTitle: 'Ops Lead', seniority: 'Lead', country: 'United Kingdom', linkedin: null, status: 'notinterested', sequenceDay: 3, followUpOffsetDays: null, notes: 'Said not now, try Q4.' },
 
   // --- Education EMEA: mix incl. future + fresh ------------------------------
   { key: 'amaia', campaignKey: 'edu', firstName: 'Amaia', lastName: 'Etxe', email: 'amaia.etxe@example.com', company: 'Bilbao School Trust', phone: '+34600111222', mobile: '+34600333444', jobTitle: 'Head of Digital', seniority: 'Head', country: 'Spain', linkedin: 'https://www.linkedin.com/in/amaia-etxe/', status: 'amber', sequenceDay: 0, followUpOffsetDays: 1, notes: null },

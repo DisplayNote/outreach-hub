@@ -147,11 +147,13 @@ make dev-docker  # production app container + Mailpit, with Supabase started by 
 `make seed` fills your LOCAL Supabase with a realistic, full-coverage dataset so
 every screen has something to work with, and removes the `E2E *` rows that e2e
 runs leave behind. It is **localhost-only** (it refuses to run unless
-`NEXT_PUBLIC_SUPABASE_URL` points at `127.0.0.1`/`localhost`) and **idempotent**
-(wipe-then-insert scoped to the dev org), so you can re-run it any time.
+`NEXT_PUBLIC_SUPABASE_URL` points at a loopback host — `127.0.0.1`, `localhost`,
+or IPv6 `::1`/`[::1]`) and **idempotent** (wipe-then-insert scoped to the dev
+org), so you can re-run it any time.
 
-Prereqs: the dev stack is up (`make dev`) and you have signed in once via
-`/auth/mock` (so the dev org exists). Then:
+Prereqs: just the dev stack running (`make dev`). `make seed` creates the dev
+user + org itself via the service role, so you don't need to sign in via
+`/auth/mock` first. Then:
 
 ```bash
 make seed         # dataset + best-effort Mailpit reply injection
@@ -160,7 +162,7 @@ make seed-inbox   # just re-inject the Mailpit replies
 
 What it creates: a template library, three sequences (one multi-step), four
 campaigns (one deliberately **unlinked**, to show the queue's "Not linked"
-state), ~20 contacts spanning every status / sequence position / follow-up
+state), 18 contacts spanning every status / sequence position / follow-up
 bucket (incl. due-today and overdue), touchpoints, send/reply/bounce history,
 suppressions, and tuned per-user goals/dialler settings.
 
