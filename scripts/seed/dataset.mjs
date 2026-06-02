@@ -21,38 +21,38 @@ export const templates = [
   {
     key: 'intro',
     name: 'Intro — first touch',
-    subject: 'Quick idea for {{company}}',
-    body: 'Hi {{firstName}},\n\nI work with teams like {{company}} on classroom & meeting-room display tooling. Worth a quick chat?\n\nBest,\nPaul',
+    subject: 'Quick idea for {company}',
+    body: 'Hi {firstName},\n\nI work with teams like {company} on classroom & meeting-room display tooling. Worth a quick chat?\n\nBest,\nPaul',
   },
   {
     key: 'follow1',
     name: 'Follow-up #1',
-    subject: 'Re: Quick idea for {{company}}',
-    body: 'Hi {{firstName}},\n\nCircling back — happy to send a 2-minute overview if useful.\n\nPaul',
+    subject: 'Re: Quick idea for {company}',
+    body: 'Hi {firstName},\n\nCircling back — happy to send a 2-minute overview if useful.\n\nPaul',
   },
   {
     key: 'follow2',
     name: 'Follow-up #2',
-    subject: 'One more thought for {{company}}',
-    body: 'Hi {{firstName}},\n\nA few {{company}}-style orgs saw real savings. Open to a look?\n\nPaul',
+    subject: 'One more thought for {company}',
+    body: 'Hi {firstName},\n\nA few {company}-style orgs saw real savings. Open to a look?\n\nPaul',
   },
   {
     key: 'breakup',
     name: 'Break-up',
     subject: 'Closing the loop',
-    body: 'Hi {{firstName}},\n\nI’ll stop here so I’m not a nuisance — just reply if the timing changes.\n\nPaul',
+    body: 'Hi {firstName},\n\nI’ll stop here so I’m not a nuisance — just reply if the timing changes.\n\nPaul',
   },
   {
     key: 'reengage',
     name: 'Re-engagement',
-    subject: 'Still on your radar, {{firstName}}?',
-    body: 'Hi {{firstName}},\n\nWe spoke a while back about {{company}}. Lots has shipped since — reconnect?\n\nPaul',
+    subject: 'Still on your radar, {firstName}?',
+    body: 'Hi {firstName},\n\nWe spoke a while back about {company}. Lots has shipped since — reconnect?\n\nPaul',
   },
   {
     key: 'meeting',
     name: 'Meeting confirm',
     subject: 'Confirmed: our chat',
-    body: 'Hi {{firstName}},\n\nLooking forward to it. Invite to follow.\n\nPaul',
+    body: 'Hi {firstName},\n\nLooking forward to it. Invite to follow.\n\nPaul',
   },
 ];
 
