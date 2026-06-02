@@ -50,7 +50,9 @@ if (!serviceKey) die('SUPABASE_SERVICE_ROLE_KEY is not set');
   } catch {
     die(`could not parse NEXT_PUBLIC_SUPABASE_URL: ${url}`);
   }
-  if (host !== '127.0.0.1' && host !== 'localhost') {
+  // Loopback only — IPv4, the `localhost` alias, and IPv6 `::1` (URL.hostname
+  // returns it bracketed as `[::1]`). Anything else is treated as remote.
+  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '[::1]' && host !== '::1') {
     die(`refusing to run against non-local host "${host}". This script is LOCAL-ONLY.`);
   }
 }
@@ -89,13 +91,23 @@ async function wipe(orgId, userId) {
     const { error } = await admin.from(table).delete().eq('org_id', orgId);
     if (error) die(`wipe ${table} failed: ${error.message}`);
   }
-  await admin.from('user_settings').delete().eq('user_id', userId);
+  {
+    const { error } = await admin.from('user_settings').delete().eq('user_id', userId);
+    if (error) die(`wipe user_settings failed: ${error.message}`);
+  }
 
   // Belt-and-braces: clear E2E-named rows globally in case e2e used another org.
-  await admin.from('contacts').delete().like('company', 'E2E %');
-  await admin.from('campaigns').delete().like('name', 'E2E %');
-  await admin.from('sequences').delete().like('name', 'E2E %');
-  await admin.from('templates').delete().like('name', 'E2E %');
+  // Fail loudly on error — a silent failure here would leave the very clutter
+  // this step claims to remove while still reporting success.
+  for (const [table, column] of [
+    ['contacts', 'company'],
+    ['campaigns', 'name'],
+    ['sequences', 'name'],
+    ['templates', 'name'],
+  ]) {
+    const { error } = await admin.from(table).delete().like(column, 'E2E %');
+    if (error) die(`wipe E2E ${table} failed: ${error.message}`);
+  }
 }
 
 async function insertAll(orgId, userId) {

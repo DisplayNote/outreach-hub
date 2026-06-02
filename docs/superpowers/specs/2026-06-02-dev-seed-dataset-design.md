@@ -92,15 +92,19 @@ Steps:
 5. **Summary** — print per-table inserted counts and next-step hints.
 
 ### 3. `scripts/seed-inbox.mjs` — Mailpit injector
-Uses `nodemailer` (already a dependency) to SMTP-deliver fake inbound messages to
-Mailpit at `localhost:1025` (accepts any auth):
-- A few **replies** from seeded contacts (`From:` the contact, `Subject: Re: …`,
-  `In-Reply-To`/`References` pointing at the seeded `sent` message-ids so the
-  scanner's correlation succeeds).
-- A couple of **bounce** NDRs (`From: mailer-daemon@…`, body naming the failed
-  recipient).
+Uses `nodemailer` (already a dependency) to SMTP-deliver fake inbound **replies**
+to Mailpit at `localhost:1025` (accepts any auth): each message has `From:` a
+seeded contact and a `Subject: Re: …`. The Mailpit driver maps only
+`from`/`to`/`subject`/`receivedAt`/`bodyText`, so the scanner correlates a reply
+to its contact purely by **sender address** against the seeded `sent` event (no
+`In-Reply-To`/`References` threading is needed or used).
 
-These appear via "Scan inbox now" when `EMAIL_DRIVER=mailpit`. **Best-effort**:
+**Bounces are not injected here.** The Mailpit driver can't recover an NDR's
+failed recipient, so the scanner ignores Mailpit bounces; live bounce testing
+goes through the in-app "Sim bounce" button (mock driver), which sets
+`failedRecipient` correctly.
+
+Replies appear via "Scan inbox now" when `EMAIL_DRIVER=mailpit`. **Best-effort**:
 if `:1025` is unreachable, log a warning and exit 0 (so `make seed` doesn't fail
 when the user runs the default mock stack).
 
@@ -124,7 +128,8 @@ recurring.
 ## The dataset (full coverage)
 
 - **~6 templates**: intro, follow-up #1, follow-up #2, break-up, re-engagement,
-  meeting-confirm — with `{{firstName}}` / `{{company}}` placeholders.
+  meeting-confirm — with single-brace `{firstName}` / `{company}` merge tokens
+  (the syntax `lib/email/render.ts` substitutes).
 - **3 sequences (+ steps)**:
   - *MSP Cold Outreach* — 5 steps, email/linkedin mix at day offsets 0/3/5/7/14.
   - *Re-engagement* — 3 steps.

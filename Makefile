@@ -38,12 +38,10 @@ db-reset:  ## Reset the local DB (destroys data)
 	@pnpm exec supabase db reset
 
 seed:  ## Seed LOCAL dev DB with a full-coverage dataset (+ best-effort Mailpit replies)
-	@set -a; . ./.env.local; set +a; \
-	node scripts/seed-dev.mjs && node scripts/seed-inbox.mjs
+	@bash -c '. scripts/lib/load-dotenv.sh && load_dotenv .env.local && node scripts/seed-dev.mjs && node scripts/seed-inbox.mjs'
 
 seed-inbox:  ## Inject live reply messages into Mailpit (EMAIL_DRIVER=mailpit path)
-	@set -a; . ./.env.local; set +a; \
-	node scripts/seed-inbox.mjs
+	@bash -c '. scripts/lib/load-dotenv.sh && load_dotenv .env.local && node scripts/seed-inbox.mjs'
 
 db-migration:  ## Create a new migration (usage: make db-migration name=add_contacts)
 	@pnpm exec supabase migration new $(name)
