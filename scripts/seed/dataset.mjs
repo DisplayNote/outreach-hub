@@ -239,10 +239,12 @@ export function validateDataset() {
   for (const seq of sequences) {
     for (const step of seq.steps) {
       if (!ENUMS.channel.includes(step.channel)) errors.push(`bad channel ${step.channel} in ${seq.key}`);
-      if (step.channel === 'email' && (step.templateKey === null || !templateKeys.has(step.templateKey))) {
-        errors.push(`email step ${seq.key}#${step.order} needs a valid template`);
-      }
-      if (step.templateKey !== null && !templateKeys.has(step.templateKey)) {
+      // One report per step: an email step must name a template; any non-null
+      // templateKey (email or not) must resolve. The else-if avoids double-
+      // reporting an email step whose templateKey is set but missing.
+      if (step.channel === 'email' && step.templateKey === null) {
+        errors.push(`email step ${seq.key}#${step.order} needs a template`);
+      } else if (step.templateKey !== null && !templateKeys.has(step.templateKey)) {
         errors.push(`step ${seq.key}#${step.order} references missing template ${step.templateKey}`);
       }
       if (!isNonNegInt(step.dayOffset)) {

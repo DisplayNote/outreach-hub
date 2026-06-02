@@ -93,7 +93,11 @@ async function ensureDevOrg() {
 async function wipe(orgId, userId) {
   // Child-first within the dev org (most tables cascade from contacts/campaigns,
   // but delete explicitly so re-runs are clean regardless of cascade config).
-  for (const table of ['suppressions', 'email_events', 'touchpoints', 'contacts', 'sequence_steps', 'sequences', 'templates', 'campaigns']) {
+  // Delete campaigns right after contacts and BEFORE sequences/templates: a
+  // campaign's sequence_id FK is ON DELETE SET NULL, so removing sequences first
+  // would issue needless UPDATEs (and fire updated_at triggers) on rows we're
+  // about to delete anyway.
+  for (const table of ['suppressions', 'email_events', 'touchpoints', 'contacts', 'campaigns', 'sequence_steps', 'sequences', 'templates']) {
     const { error } = await admin.from(table).delete().eq('org_id', orgId);
     if (error) die(`wipe ${table} failed: ${error.message}`);
   }
