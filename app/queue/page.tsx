@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrgId } from '@/lib/supabase/org';
 import { getOrgSettings, listCampaigns, listSequences } from '@/lib/supabase/queries';
+import { campaignSequenceStatuses } from '@/lib/campaigns/sequence-status';
 import { getEmailDriver } from '@/lib/email/index';
 import { supabaseEmailStore } from '@/lib/email/store';
 import { renderTemplate } from '@/lib/email/render';
@@ -38,6 +39,18 @@ export default async function QueuePage() {
   const today = new Date().toISOString().slice(0, 10);
   const due = await store.dueContacts(today);
   const [campaigns, sequences] = await Promise.all([listCampaigns(), listSequences()]);
+
+  // Resolve each campaign's linked-sequence name from sequence_id (the link the
+  // runner follows), not the stale-able free-text column — see sequence-status.
+  const campaignStatuses = campaignSequenceStatuses(campaigns, sequences);
+
+  // How many contacts are enrolled at all (follow_up set) — a contact only ever
+  // reaches the due queue once enrolled, so this distinguishes "nobody enrolled
+  // yet" from "enrolled but not due today". RLS scopes the count to the org.
+  const { count: enrolledCount } = await supabase
+    .from('contacts')
+    .select('id', { count: 'exact', head: true })
+    .not('follow_up', 'is', null);
 
   const queue: QueueItem[] = due.map((d) => ({
     contactId: d.contact.id,
@@ -79,8 +92,8 @@ export default async function QueuePage() {
       <EmailRunner
         queue={queue}
         emailMockEnabled={isEmailMockEnabled()}
-        campaigns={campaigns.map((c) => ({ id: c.id, name: c.name }))}
-        sequences={sequences.map((s) => ({ id: s.id, name: s.name }))}
+        campaigns={campaignStatuses}
+        enrolledCount={enrolledCount ?? 0}
       />
     </div>
   );
