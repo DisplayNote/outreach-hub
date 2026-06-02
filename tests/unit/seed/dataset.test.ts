@@ -41,7 +41,7 @@ describe('seed dataset', () => {
       for (const step of seq.steps) {
         if (step.channel === 'email') {
           expect(step.templateKey, `email step in ${seq.key} needs a template`).not.toBeNull();
-          expect(templateKeys.has(step.templateKey)).toBe(true);
+          expect(templateKeys.has(step.templateKey as string)).toBe(true);
         }
       }
     }
