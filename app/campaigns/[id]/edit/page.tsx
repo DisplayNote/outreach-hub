@@ -3,21 +3,11 @@ import CampaignForm from '@/components/campaign-form';
 import { updateCampaign } from '@/lib/actions/campaigns';
 import type { UpdateCampaignInput } from '@/lib/actions/campaigns';
 import { createClient } from '@/lib/supabase/server';
-import { listCampaigns } from '@/lib/supabase/queries';
+import { listCampaigns, listSequences } from '@/lib/supabase/queries';
 import { Card } from '@/components/ui';
 
 // Auth state + campaign data change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
-
-// --- FormData parsing ---------------------------------------------------------
-
-/** Trim a form field; collapse empty/missing to null so the column stays clean. */
-function text(formData: FormData, key: string): string | null {
-  const raw = formData.get(key);
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  return trimmed === '' ? null : trimmed;
-}
 
 export default async function EditCampaignPage({
   params,
@@ -37,7 +27,7 @@ export default async function EditCampaignPage({
 
   // No single-row campaign query exists; resolve from the RLS-scoped list. A
   // missing id (unknown or cross-org) yields a 404 at the page level.
-  const campaigns = await listCampaigns();
+  const [campaigns, sequences] = await Promise.all([listCampaigns(), listSequences()]);
   const campaign = campaigns.find((c) => c.id === id);
 
   if (!campaign) {
@@ -46,13 +36,14 @@ export default async function EditCampaignPage({
 
   // Server Action bound to the form. Parses the submitted FormData into the
   // typed UpdateCampaignInput, updates by id (RLS scopes to the org), then
-  // redirects back to the campaigns list.
+  // redirects back to the campaigns list. `sequenceId` is the raw <select>
+  // value ('' for "no sequence"); updateCampaign validates and resolves it.
   async function action(formData: FormData): Promise<void> {
     'use server';
 
     const input: UpdateCampaignInput = {
       name: String(formData.get('name') ?? '').trim(),
-      sequence: text(formData, 'sequence'),
+      sequenceId: String(formData.get('sequenceId') ?? ''),
     };
 
     await updateCampaign(id, input);
@@ -71,6 +62,7 @@ export default async function EditCampaignPage({
         <CampaignForm
           action={action}
           campaign={campaign}
+          sequences={sequences}
           submitLabel="Save changes"
           cancelHref="/campaigns"
         />

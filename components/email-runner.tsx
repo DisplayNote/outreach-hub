@@ -2,20 +2,19 @@
 
 /**
  * Email Queue controller (PHASE_5_SPEC §10). Drives the manual triggers — run
- * the sender (with a dry-run preview), scan the inbox, link a campaign to a
- * sequence + enrol its contacts, and (dev-only, gated) simulate a reply/bounce
- * so the full reply→stop / bounce→suppress loop is exercisable without a real
- * mailbox. Re-fetches the server component after a mutation via router.refresh().
+ * the sender (with a dry-run preview), scan the inbox, enrol a campaign's
+ * contacts, and (dev-only, gated) simulate a reply/bounce so the full
+ * reply→stop / bounce→suppress loop is exercisable without a real mailbox.
+ * Re-fetches the server component after a mutation via router.refresh().
+ *
+ * Linking a campaign to a sequence is done on the campaign's own edit page (a
+ * validated dropdown), so this controller only reports each campaign's linked
+ * sequence here and offers enrolment — the queue's two prerequisites.
  */
 import { useCallback, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  runSenderNow,
-  scanInboxNow,
-  setCampaignSequence,
-  enrolInSequence,
-  simulateInbound,
-} from '@/lib/actions/email';
+import { runSenderNow, scanInboxNow, enrolInSequence, simulateInbound } from '@/lib/actions/email';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Icon } from '@/components/ui';
 import { initials } from '@/lib/ui/initials';
 
@@ -30,19 +29,21 @@ export interface QueueItem {
 export interface EmailRunnerProps {
   queue: readonly QueueItem[];
   emailMockEnabled: boolean;
-  campaigns: ReadonlyArray<{ id: string; name: string }>;
-  sequences: ReadonlyArray<{ id: string; name: string }>;
+  /** Org campaigns with the name of their currently linked sequence (or null). */
+  campaigns: ReadonlyArray<{ id: string; name: string; sequenceName: string | null }>;
+  /** How many contacts are enrolled (follow_up set) across the org. */
+  enrolledCount: number;
 }
 
-export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequences }: EmailRunnerProps) {
+export default function EmailRunner({ queue, emailMockEnabled, campaigns, enrolledCount }: EmailRunnerProps) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dryRun, setDryRun] = useState(false);
   const [campaignId, setCampaignId] = useState(campaigns[0]?.id ?? '');
-  const [sequenceId, setSequenceId] = useState(sequences[0]?.id ?? '');
   const [simEmail, setSimEmail] = useState('');
+  const linkedCount = campaigns.filter((c) => c.sequenceName).length;
 
   const act = useCallback(
     async (label: string, fn: () => Promise<string>) => {
@@ -73,12 +74,6 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
     act('scan', async () => {
       const r = await scanInboxNow();
       return `Scan: ${r.replies} repl${r.replies === 1 ? 'y' : 'ies'}, ${r.bounces} bounce(s), ${r.ignored} ignored.`;
-    });
-
-  const link = () =>
-    act('link', async () => {
-      await setCampaignSequence(campaignId, sequenceId);
-      return 'Linked campaign to sequence.';
     });
 
   const enrol = () =>
@@ -125,8 +120,14 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
         </div>
       ) : null}
 
-      {/* Sequence setup */}
-      <Card title="Sequence setup">
+      {/* Enrolment — the queue is built from a campaign's contacts once the
+          campaign is linked to a sequence (set on the campaign's edit page) and
+          its contacts are enrolled here. */}
+      <Card title="Enrolment">
+        <p className="sm muted" style={{ marginTop: 0, marginBottom: 'var(--space-5)' }}>
+          A campaign&rsquo;s sequence is set on its own <b>edit</b> page. Once linked, enrol its
+          contacts here to schedule their first step.
+        </p>
         <div className="row gap-5 center" style={{ flexWrap: 'wrap' }}>
           <select
             aria-label="Campaign"
@@ -140,27 +141,6 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
               </option>
             ))}
           </select>
-          <select
-            aria-label="Sequence"
-            className="input"
-            value={sequenceId}
-            onChange={(e) => setSequenceId(e.target.value)}
-          >
-            {sequences.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <Button
-            variant="secondary"
-            icon="sequence"
-            onClick={link}
-            disabled={busy !== null || !campaignId || !sequenceId}
-            loading={busy === 'link'}
-          >
-            Link
-          </Button>
           <Button
             variant="secondary"
             icon="userPlus"
@@ -171,6 +151,38 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
             Enrol campaign contacts
           </Button>
         </div>
+
+        {campaigns.length > 0 ? (
+          <div className="tbl-wrap" style={{ marginTop: 'var(--space-5)' }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th scope="col">Campaign</th>
+                  <th scope="col">Linked sequence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((c) => (
+                  <tr key={c.id}>
+                    <td className="sm">{c.name}</td>
+                    <td className="sm">
+                      {c.sequenceName ? (
+                        <Badge tone="success">{c.sequenceName}</Badge>
+                      ) : (
+                        <span className="tert">
+                          Not linked —{' '}
+                          <Link href={`/campaigns/${c.id}/edit`} className="medb">
+                            set it
+                          </Link>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </Card>
 
       {/* Due queue */}
@@ -178,8 +190,20 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, sequen
         {queue.length === 0 ? (
           <EmptyState
             icon="inbox"
-            title="Nobody is due"
-            desc="Link a campaign to a sequence and enrol its contacts to populate the queue."
+            title="Nobody is due today"
+            desc="A contact appears here once it's enrolled and its next step has come due."
+            action={
+              <ul
+                className="sm muted"
+                style={{ textAlign: 'left', margin: 0, paddingLeft: '1.2em' }}
+              >
+                <li>
+                  {linkedCount} of {campaigns.length} campaign(s) linked to a sequence
+                </li>
+                <li>{enrolledCount} contact(s) enrolled</li>
+                <li>Enrolled contacts become due on or after their follow-up date</li>
+              </ul>
+            }
           />
         ) : (
           <div className="tbl-wrap" style={{ border: 'none', borderRadius: 0 }}>

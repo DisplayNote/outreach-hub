@@ -3,20 +3,11 @@ import CampaignForm from '@/components/campaign-form';
 import { createCampaign } from '@/lib/actions/campaigns';
 import type { CreateCampaignInput } from '@/lib/actions/campaigns';
 import { createClient } from '@/lib/supabase/server';
+import { listSequences } from '@/lib/supabase/queries';
 import { Card } from '@/components/ui';
 
 // Auth state changes per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
-
-// --- FormData parsing ---------------------------------------------------------
-
-/** Trim a form field; collapse empty/missing to null so the column stays clean. */
-function text(formData: FormData, key: string): string | null {
-  const raw = formData.get(key);
-  if (typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  return trimmed === '' ? null : trimmed;
-}
 
 export default async function NewCampaignPage() {
   const supabase = await createClient();
@@ -28,15 +19,18 @@ export default async function NewCampaignPage() {
     redirect('/login');
   }
 
+  const sequences = await listSequences();
+
   // Server Action bound to the form. Parses the submitted FormData into the
   // typed CreateCampaignInput, inserts (org_id is set inside createCampaign),
-  // then redirects to the campaigns list.
+  // then redirects to the campaigns list. `sequenceId` is the raw <select>
+  // value ('' for "no sequence"); createCampaign validates and resolves it.
   async function action(formData: FormData): Promise<void> {
     'use server';
 
     const input: CreateCampaignInput = {
       name: String(formData.get('name') ?? '').trim(),
-      sequence: text(formData, 'sequence'),
+      sequenceId: String(formData.get('sequenceId') ?? ''),
     };
 
     await createCampaign(input);
@@ -52,7 +46,12 @@ export default async function NewCampaignPage() {
         </div>
       </div>
       <Card>
-        <CampaignForm action={action} submitLabel="Create campaign" cancelHref="/campaigns" />
+        <CampaignForm
+          action={action}
+          sequences={sequences}
+          submitLabel="Create campaign"
+          cancelHref="/campaigns"
+        />
       </Card>
     </div>
   );

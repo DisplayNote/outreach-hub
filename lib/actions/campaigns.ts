@@ -54,27 +54,56 @@ function revalidateCampaignRoutes(): void {
 
 const uuid = z.string().uuid();
 
-// Trimmed, non-empty string or null. Empty collapses to null.
-const nullableText = z
-  .string()
-  .trim()
-  .transform((v) => (v === '' ? null : v))
-  .nullable();
+// A sequence selection from the campaign form's <select>: a real sequence UUID,
+// or '' / null (the "no sequence" option) which collapses to null. Anything that
+// isn't a UUID or empty is rejected before we touch the DB — so a campaign can no
+// longer reference a sequence that doesn't exist. `.optional()` keeps "field
+// absent" distinct from "cleared": absent → undefined → no-change on update.
+const sequenceSelection = z
+  .union([z.string().uuid(), z.literal(''), z.null()])
+  .transform((v) => (v === '' ? null : v));
 
 const createCampaignSchema = z.object({
   name: z.string().trim().min(1, 'name is required'),
-  sequence: nullableText.optional(),
+  sequenceId: sequenceSelection.optional(),
 });
 
 const updateCampaignSchema = z
   .object({
     name: z.string().trim().min(1, 'name is required').optional(),
-    sequence: nullableText.optional(),
+    sequenceId: sequenceSelection.optional(),
   })
   .strict();
 
 export type CreateCampaignInput = z.input<typeof createCampaignSchema>;
 export type UpdateCampaignInput = z.input<typeof updateCampaignSchema>;
+
+/**
+ * Resolve a selected sequence id to the {id, name} we persist, validating it
+ * exists in the caller's org (the query is RLS-scoped, and the DB FK enforces
+ * the same org link on write). The name is denormalised into the display-only
+ * `campaigns.sequence` column so the campaigns list can show it without a join;
+ * `sequence_id` is the load-bearing link the email runner actually follows.
+ */
+async function resolveSequenceLink(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sequenceId: string | null,
+): Promise<{ id: string | null; name: string | null }> {
+  if (sequenceId === null) return { id: null, name: null };
+  const { data, error } = await supabase
+    .from('sequences')
+    .select('id, name')
+    .eq('id', sequenceId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`failed to resolve sequence ${sequenceId}: ${error.message}`);
+  }
+  if (!data) {
+    throw new Error('The selected sequence no longer exists — pick another sequence.');
+  }
+  const row = data as { id: string; name: string };
+  return { id: row.id, name: row.name };
+}
 
 // --- Actions ------------------------------------------------------------------
 
@@ -86,8 +115,12 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Campai
   const row: Record<string, unknown> = {
     org_id: orgId,
     name: parsed.name,
-    sequence: parsed.sequence ?? null,
   };
+  if (parsed.sequenceId !== undefined) {
+    const link = await resolveSequenceLink(supabase, parsed.sequenceId);
+    row['sequence_id'] = link.id;
+    row['sequence'] = link.name;
+  }
 
   const { data, error } = await supabase
     .from('campaigns')
@@ -116,8 +149,10 @@ export async function updateCampaign(
   if (parsed.name !== undefined) {
     patch['name'] = parsed.name;
   }
-  if (parsed.sequence !== undefined) {
-    patch['sequence'] = parsed.sequence;
+  if (parsed.sequenceId !== undefined) {
+    const link = await resolveSequenceLink(supabase, parsed.sequenceId);
+    patch['sequence_id'] = link.id;
+    patch['sequence'] = link.name;
   }
 
   if (Object.keys(patch).length === 0) {
