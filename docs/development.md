@@ -141,3 +141,38 @@ make db-migration name=add_contacts  # scaffolds a new migration file
 make dev-stop    # tears the stack down (keeps volumes)
 make dev-docker  # production app container + Mailpit, with Supabase started by CLI
 ```
+
+## Seeding dev data
+
+`make seed` fills your LOCAL Supabase with a realistic, full-coverage dataset so
+every screen has something to work with, and removes the `E2E *` rows that e2e
+runs leave behind. It is **localhost-only** (it refuses to run unless
+`NEXT_PUBLIC_SUPABASE_URL` points at `127.0.0.1`/`localhost`) and **idempotent**
+(wipe-then-insert scoped to the dev org), so you can re-run it any time.
+
+Prereqs: the dev stack is up (`make dev`) and you have signed in once via
+`/auth/mock` (so the dev org exists). Then:
+
+```bash
+make seed         # dataset + best-effort Mailpit reply injection
+make seed-inbox   # just re-inject the Mailpit replies
+```
+
+What it creates: a template library, three sequences (one multi-step), four
+campaigns (one deliberately **unlinked**, to show the queue's "Not linked"
+state), ~20 contacts spanning every status / sequence position / follow-up
+bucket (incl. due-today and overdue), touchpoints, send/reply/bounce history,
+suppressions, and tuned per-user goals/dialler settings.
+
+### Testing the inbox
+
+- **Replies (live):** run with `EMAIL_DRIVER=mailpit`, then `make seed-inbox`
+  injects reply messages into Mailpit (http://localhost:8025). Open the Email
+  Queue and click **Scan inbox now** — the scanner correlates each reply to the
+  contact by sender address and records it.
+- **Bounces (live):** use the in-app **Sim bounce** button on the Email Queue
+  (default `mock` driver). The Mailpit path can't carry a recoverable failed
+  recipient, so bounces are exercised through the mock driver instead.
+- **History (always):** `make seed` also writes past `sent`/`reply`/`bounce`
+  `email_events` so Activity, Reports and the pipeline look populated without any
+  scanning.
