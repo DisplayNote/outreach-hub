@@ -164,15 +164,12 @@ test.afterAll(async () => {
     );
 
   // Remove the campaign this spec created so it doesn't accumulate in a dev DB.
-  const { data: dialCamps } = await admin
-    .from('campaigns')
-    .select('id')
-    .eq('org_id', orgId)
-    .eq('name', 'E2E AutoDial Campaign');
-  for (const c of dialCamps ?? []) {
-    await admin.from('contacts').delete().eq('org_id', orgId).eq('campaign_id', (c as { id: string }).id);
+  // Delete by the id captured in beforeAll — no extra lookup, and it can't touch
+  // another campaign that happens to share the name.
+  if (campaignId) {
+    await admin.from('contacts').delete().eq('org_id', orgId).eq('campaign_id', campaignId);
+    await admin.from('campaigns').delete().eq('org_id', orgId).eq('id', campaignId);
   }
-  await admin.from('campaigns').delete().eq('org_id', orgId).eq('name', 'E2E AutoDial Campaign');
 });
 
 maybeTest('auto-dials the next contact after an outcome is recorded', async ({ page }) => {

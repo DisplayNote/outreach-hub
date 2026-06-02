@@ -17,7 +17,7 @@ import nodemailer from 'nodemailer';
 import { contacts, mailpitReplies } from './seed/dataset.mjs';
 
 const HOST = process.env.MAILPIT_HOST ?? '127.0.0.1';
-const PORT = Number(process.env.MAILPIT_SMTP_PORT ?? 1025);
+const PORT = Number(process.env.MAILPIT_PORT ?? 1025); // matches lib/email/mailpit.ts
 const SENDER = process.env.SEED_SENDER ?? 'paul@displaynote.dev'; // the "you" mailbox
 
 async function main() {
@@ -46,6 +46,9 @@ async function main() {
     sent += 1;
     console.log(`seed-inbox: queued reply from ${contact.email} ("${r.subject}")`);
   }
+  // Close the SMTP transport so the Node process exits promptly instead of
+  // lingering on an open socket (which makes `make seed` look like it hangs).
+  transport.close();
   console.log(`seed-inbox: injected ${sent} reply message(s) into Mailpit.`);
   console.log('Next: set EMAIL_DRIVER=mailpit, open the Email Queue, click "Scan inbox now".');
 }
