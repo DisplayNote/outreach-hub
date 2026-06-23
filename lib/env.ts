@@ -20,6 +20,16 @@ const serverEnvSchema = publicEnvSchema
       emptyStringAsUndefined,
       z.string().min(1).optional(),
     ),
+    // Auth.js (v5) + Microsoft Entra ID. AUTH_SECRET signs the session JWT;
+    // AZURE_AD_* drive the Entra OAuth provider. These replace the legacy
+    // Supabase-managed Azure provider config (MS_CLIENT_*). All four are
+    // OPTIONAL at the schema level so the unit suite + `next build` succeed
+    // without real credentials; the auth config supplies safe build-time
+    // fallbacks and only a live sign-in needs them populated.
+    AUTH_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    AZURE_AD_CLIENT_ID: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    AZURE_AD_CLIENT_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    AZURE_AD_TENANT_ID: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
     EMAIL_DRIVER: z
       .enum(['mock', 'mailpit', 'graph-dev', 'graph-prod'])
       .default('mock'),
