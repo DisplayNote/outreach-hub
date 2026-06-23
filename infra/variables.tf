@@ -23,6 +23,23 @@ variable "azure_location" {
   default     = "uksouth"
 }
 
+variable "azure_tenant_id" {
+  description = "Entra tenant id (used for Key Vault RBAC)."
+  type        = string
+}
+
+# ─── Postgres Flexible Server ─────────────────────────────────────────────────
+variable "pg_admin_login" {
+  description = "Administrator login for the Azure Postgres Flexible Server."
+  type        = string
+}
+
+variable "pg_admin_password" {
+  description = "Administrator password for the Azure Postgres Flexible Server."
+  type        = string
+  sensitive   = true
+}
+
 # ─── App hosting ──────────────────────────────────────────────────────────────
 # DNS is managed manually (outside Terraform). After the app host is provisioned,
 # create the CNAME for this subdomain and the mail records (SPF / DKIM / DMARC)

@@ -2,7 +2,12 @@ env = "prod"
 
 # Azure
 azure_subscription_id = "00000000-0000-0000-0000-000000000000"
+azure_tenant_id       = "00000000-0000-0000-0000-000000000000"
 azure_location        = "uksouth"
+
+# Postgres Flexible Server admin (rotate via Key Vault in production)
+pg_admin_login    = "pgadmin"
+pg_admin_password = "xxx"
 
 # App hosting (DNS records are created manually, outside Terraform)
 app_subdomain = "outreach" # → outreach.displaynote.com (create the CNAME by hand)
