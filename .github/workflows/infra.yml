@@ -57,12 +57,16 @@ jobs:
         working-directory: infra
         run: terraform validate
 
+      # Variables come from the TF_VAR_* env above (repo secrets), NOT a tfvars
+      # file — infra/envs/prod.tfvars is gitignored (operator-only), so it never
+      # exists in CI. Referencing it here previously failed every infra PR with
+      # "variables file does not exist".
       - name: Plan
         if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
         working-directory: infra
-        run: terraform plan -var-file=envs/prod.tfvars -no-color
+        run: terraform plan -no-color
 
       - name: Apply (manual gate)
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
         working-directory: infra
-        run: terraform apply -var-file=envs/prod.tfvars -auto-approve
+        run: terraform apply -auto-approve
