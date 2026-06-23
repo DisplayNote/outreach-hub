@@ -1,11 +1,6 @@
-output "supabase_project_url" {
-  description = "Supabase REST URL for this environment."
-  value       = "https://${var.supabase_project_ref}.supabase.co"
-}
-
-output "vercel_project_id" {
-  description = "Vercel project id (echoed for cross-tool reference)."
-  value       = vercel_project.this.id
+output "acr_login_server" {
+  description = "Login server hostname of the Azure Container Registry."
+  value       = azurerm_container_registry.this.login_server
 }
 
 output "app_url" {
