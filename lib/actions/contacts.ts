@@ -304,10 +304,17 @@ export async function deleteContact(id: string): Promise<{ id: string }> {
   const contactId = uuid.parse(id);
   const supabase = await createClient();
 
-  const { error } = await supabase.from('contacts').delete().eq('id', contactId);
+  // Require a returned row: a delete that matches nothing (stale/unknown id, or
+  // a contact in another org filtered by RLS) reports no error, so without this
+  // the UI would falsely confirm a delete that didn't happen — and a successful
+  // "delete" of another org's id would confirm that resource exists.
+  const { data, error } = await supabase.from('contacts').delete().eq('id', contactId).select('id');
 
   if (error) {
     throw new Error(`deleteContact: failed to delete contact ${contactId}: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error(`deleteContact: contact ${contactId} not found (or not in your org).`);
   }
 
   revalidateContactRoutes(contactId);

@@ -22,7 +22,12 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   }
   try {
     const result = await scanInboxAllOrgs(createServiceClient());
-    return NextResponse.json({ ok: true, ...result });
+    // A configured org that couldn't be scanned (no mailbox resolved) is a
+    // deploy misconfiguration, not a healthy run: surface it as non-2xx so
+    // monitoring alerts. Otherwise replies/bounces silently stop processing and
+    // the team keeps emailing people who replied or bounced. Mirrors run/route.
+    const ok = result.skipped === 0;
+    return NextResponse.json({ ok, ...result }, { status: ok ? 200 : 500 });
   } catch (cause) {
     console.error('email scan cron failed', cause);
     return new NextResponse('scan failed', { status: 500 });

@@ -150,10 +150,15 @@ export async function deleteTemplate(id: string): Promise<{ id: string }> {
   const templateId = uuid.parse(id);
   const supabase = await createClient();
 
-  const { error } = await supabase.from('templates').delete().eq('id', templateId);
+  // Require a returned row so a no-match (stale id, or another org's template
+  // hidden by RLS) is a clear error rather than a false success confirmation.
+  const { data, error } = await supabase.from('templates').delete().eq('id', templateId).select('id');
 
   if (error) {
     throw new Error(`deleteTemplate: failed to delete template ${templateId}: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error(`deleteTemplate: template ${templateId} not found (or not in your org).`);
   }
 
   revalidateTemplateRoutes();

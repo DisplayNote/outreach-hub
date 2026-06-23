@@ -144,47 +144,75 @@ export async function logCallOutcome(
 
   const touchpoint = toTouchpoint(tpData as TouchpointRow);
 
-  // 2. Apply the contact-level effects in one UPDATE:
+  // 2. Apply the contact-level effects:
   //    - status, with precedence (never downgrade a stronger terminal state); and
   //    - a next-day follow-up for callback-requested, so it resurfaces in /today.
   let status: Contact['status'] | null = null;
-  const contactUpdate: Record<string, unknown> = {};
+  const schedulesCallback = outcomeSchedulesCallback(parsed.outcome);
+  const followUpPatch = { follow_up: tomorrowDate() };
+  let followUpApplied = false;
 
   if (outcome.statusEffect !== 'none') {
-    const { data: currentRow, error: readError } = await supabase
+    // CAS-with-retry (mirrors recordInbound in the email store): a blind
+    // read-then-write would let a concurrent reply-scan or another rep's outcome
+    // — landing between our read and write — be clobbered, e.g. downgrading a
+    // `meeting` booked via an inbound reply. Re-evaluate precedence against the
+    // LIVE status and only write when it hasn't moved since the read.
+    let settled = false;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const { data: currentRow, error: readError } = await supabase
+        .from('contacts')
+        .select('status')
+        .eq('id', id)
+        .eq('org_id', orgId)
+        .maybeSingle();
+      if (readError) {
+        throw new Error(`logCallOutcome: failed to read contact ${id}: ${readError.message}`);
+      }
+      if (!currentRow) {
+        settled = true; // contact gone — nothing to apply
+        break;
+      }
+      const observed = (currentRow as { status: Contact['status'] }).status;
+      const next = resolveStatusEffect(observed, outcome.statusEffect);
+      if (next === null || next === observed) {
+        status = next === null ? null : observed; // already at/over target — no write
+        settled = true;
+        break;
+      }
+      const { data: changed, error: updateError } = await supabase
+        .from('contacts')
+        .update({ status: next, ...(schedulesCallback ? followUpPatch : {}) })
+        .eq('id', id)
+        .eq('org_id', orgId)
+        .eq('status', observed) // CAS guard: only if status hasn't moved
+        .select('id');
+      if (updateError) {
+        throw new Error(`logCallOutcome: failed to update contact ${id}: ${updateError.message}`);
+      }
+      if ((changed?.length ?? 0) > 0) {
+        status = next;
+        followUpApplied = schedulesCallback; // written atomically with the status
+        settled = true;
+        break;
+      }
+      // Lost the CAS (status moved under us) — loop re-reads and recomputes.
+    }
+    if (!settled) {
+      throw new Error(`logCallOutcome: lost compare-and-set on status for contact ${id} after retries`);
+    }
+  }
+
+  // Apply the callback follow-up when it wasn't already written alongside a
+  // status change above (no status effect, or precedence left status untouched).
+  if (schedulesCallback && !followUpApplied) {
+    const { error: followUpError } = await supabase
       .from('contacts')
-      .select('status')
+      .update(followUpPatch)
       .eq('id', id)
-      .single();
-
-    if (readError) {
-      throw new Error(
-        `logCallOutcome: failed to read contact ${id}: ${readError.message}`,
-      );
-    }
-
-    const current = (currentRow as { status: Contact['status'] }).status;
-    const next = resolveStatusEffect(current, outcome.statusEffect);
-    if (next !== null) {
-      contactUpdate.status = next;
-      status = next;
-    }
-  }
-
-  if (outcomeSchedulesCallback(parsed.outcome)) {
-    contactUpdate.follow_up = tomorrowDate();
-  }
-
-  if (Object.keys(contactUpdate).length > 0) {
-    const { error: updateError } = await supabase
-      .from('contacts')
-      .update(contactUpdate)
-      .eq('id', id);
-
-    if (updateError) {
-      throw new Error(
-        `logCallOutcome: failed to update contact ${id}: ${updateError.message}`,
-      );
+      .eq('org_id', orgId);
+    if (followUpError) {
+      throw new Error(`logCallOutcome: failed to set follow-up for contact ${id}: ${followUpError.message}`);
     }
   }
 

@@ -13,6 +13,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrgId } from '@/lib/supabase/org';
+import { requireAdmin } from '@/lib/auth/admin';
 import { normaliseCallingCode } from '@/lib/dialler/normalise';
 import { mergeOrgSettingsPatch } from '@/lib/org-settings';
 import type { OrgSettings } from '@/lib/types/domain';
@@ -58,6 +59,11 @@ export type UpdateOrgSettingsInput = z.input<typeof orgSettingsPatchSchema>;
 // --- Action -------------------------------------------------------------------
 
 export async function updateOrgSettings(patch: UpdateOrgSettingsInput): Promise<OrgSettings> {
+  // Account-tier settings (daily cap, send window, …) are admin-only. The /admin
+  // page wrapper already gates rendering, but this 'use server' action is its own
+  // RPC entry point — re-assert admin here so a non-admin member can't invoke it
+  // directly (RLS only scopes it to the org, not to admins). notFound() on miss.
+  await requireAdmin();
   const parsed = orgSettingsPatchSchema.parse(patch);
   const orgId = await getCurrentOrgId();
   const supabase = await createClient();

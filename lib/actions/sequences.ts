@@ -169,10 +169,15 @@ export async function deleteSequence(id: string): Promise<{ id: string }> {
   const supabase = await createClient();
 
   // Steps are removed by the `on delete cascade` FK on sequence_steps.
-  const { error } = await supabase.from('sequences').delete().eq('id', sequenceId);
+  // Require a returned row so a no-match (stale id, or another org's sequence
+  // hidden by RLS) is a clear error rather than a false success confirmation.
+  const { data, error } = await supabase.from('sequences').delete().eq('id', sequenceId).select('id');
 
   if (error) {
     throw new Error(`deleteSequence: failed to delete sequence ${sequenceId}: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error(`deleteSequence: sequence ${sequenceId} not found (or not in your org).`);
   }
 
   revalidateSequenceRoutes();
@@ -282,10 +287,15 @@ export async function deleteSequenceStep(id: string): Promise<{ id: string }> {
   const stepId = uuid.parse(id);
   const supabase = await createClient();
 
-  const { error } = await supabase.from('sequence_steps').delete().eq('id', stepId);
+  // Require a returned row so a no-match (stale id, or another org's step hidden
+  // by RLS) is a clear error rather than a false success confirmation.
+  const { data, error } = await supabase.from('sequence_steps').delete().eq('id', stepId).select('id');
 
   if (error) {
     throw new Error(`deleteSequenceStep: failed to delete step ${stepId}: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error(`deleteSequenceStep: step ${stepId} not found (or not in your org).`);
   }
 
   revalidateSequenceRoutes();

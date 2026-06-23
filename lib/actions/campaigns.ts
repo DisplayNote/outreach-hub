@@ -179,10 +179,15 @@ export async function deleteCampaign(id: string): Promise<{ id: string }> {
   const campaignId = uuid.parse(id);
   const supabase = await createClient();
 
-  const { error } = await supabase.from('campaigns').delete().eq('id', campaignId);
+  // Require a returned row so a no-match (stale id, or another org's campaign
+  // hidden by RLS) is a clear error rather than a false success confirmation.
+  const { data, error } = await supabase.from('campaigns').delete().eq('id', campaignId).select('id');
 
   if (error) {
     throw new Error(`deleteCampaign: failed to delete campaign ${campaignId}: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new Error(`deleteCampaign: campaign ${campaignId} not found (or not in your org).`);
   }
 
   revalidateCampaignRoutes();
