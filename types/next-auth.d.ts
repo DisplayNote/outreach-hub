@@ -13,6 +13,9 @@ declare module 'next-auth' {
       orgId?: string;
       role?: string;
     } & DefaultSession['user'];
+    // INTERIM (Phase 4 adds refresh): Graph delegated access token, read
+    // server-side by lib/graph/token.ts for manual Graph send/scan.
+    accessToken?: string;
   }
 }
 

@@ -1,10 +1,8 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { signOut } from '@/lib/auth/config';
 
-export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-
-  const { origin } = new URL(request.url);
-  return NextResponse.redirect(`${origin}/login`, { status: 303 });
+// Sign-out endpoint kept at the existing path so the sidebar form (POST
+// /auth/signout) is unchanged. Auth.js `signOut` clears the session cookie and
+// redirects to /login.
+export async function POST() {
+  await signOut({ redirectTo: '/login' });
 }

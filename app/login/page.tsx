@@ -1,6 +1,6 @@
 import { isAuthMockEnabled } from '@/lib/env';
-import { Icon } from '@/components/ui';
 import MicrosoftSignIn from './microsoft-sign-in';
+import DevSignIn from './dev-sign-in';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,16 +75,7 @@ export default function LoginPage() {
               <p className="cap tert" style={{ marginBottom: 'var(--space-5)' }}>
                 Local development only — signs in as a seeded test user, no Microsoft required.
               </p>
-              <form action="/auth/mock" method="post">
-                <button
-                  type="submit"
-                  className="btn btn--ghost btn--md"
-                  style={{ width: '100%', justifyContent: 'center' }}
-                >
-                  <Icon name="flask" size={15} />
-                  Dev sign-in (mock)
-                </button>
-              </form>
+              <DevSignIn />
             </>
           ) : null}
 

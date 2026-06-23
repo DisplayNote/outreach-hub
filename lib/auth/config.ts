@@ -139,6 +139,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (typeof token.role === 'string') session.user.role = token.role;
         if (typeof token.email === 'string') session.user.email = token.email;
       }
+      // INTERIM (Phase 4 adds refresh): surface the Graph delegated access token
+      // on the session so server-only code (lib/graph/token.ts → email actions)
+      // can read it. The session is consumed server-side via auth(); the token
+      // is not rendered to the client.
+      if (typeof token.accessToken === 'string') session.accessToken = token.accessToken;
       return session;
     },
   },

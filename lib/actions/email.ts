@@ -12,7 +12,8 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/auth/org';
+import { getCurrentOrgId, getCurrentUser } from '@/lib/auth/org';
+import { delegatedGraphToken } from '@/lib/graph/token';
 import { getOrgSettings, getUserSettings } from '@/lib/supabase/queries';
 import { getEmailDriver } from '@/lib/email/index';
 import { supabaseEmailStore } from '@/lib/email/store';
@@ -36,11 +37,12 @@ function todayUtc(): string {
 }
 
 async function buildContext() {
-  const orgId = await getCurrentOrgId();
+  // Identity now comes from the Auth.js session (Supabase auth is retired); the
+  // supabase client is kept ONLY for the email store, which Phase 3 converts to
+  // Drizzle. getCurrentUser throws if unauthenticated, so `user` is always real.
+  const user = await getCurrentUser();
+  const orgId = user.orgId;
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
   // Manual sends render with the SIGNED-IN USER's signature (a per-user-tier
   // setting), falling back to any org-level signature for users who haven't set
   // one. Everything else (sender mailbox, weekend rule, cap) stays org-scoped.
@@ -52,20 +54,20 @@ async function buildContext() {
   };
 
   // Manual (per-user) path: bind the Graph driver to the SIGNED-IN USER'S
-  // delegated token (their Supabase Azure/Entra session's provider_token), NOT
-  // the cron's shared GRAPH_ACCESS_TOKEN — otherwise every org/user would send
-  // from one mailbox and inbound would apply to the wrong tenant. mock/mailpit
-  // need no token. Fail clearly (don't fall back to the shared token) if the
-  // delegated token is absent — the user must have signed in with the Mail
-  // scopes (Mail.Send/Mail.Read; requested incrementally at login).
+  // delegated token (their Entra session's Graph access token, captured at login
+  // and surfaced via lib/graph/token.ts), NOT the cron's shared
+  // GRAPH_ACCESS_TOKEN — otherwise every org/user would send from one mailbox
+  // and inbound would apply to the wrong tenant. mock/mailpit need no token. Fail
+  // clearly (don't fall back to the shared token) if the delegated token is
+  // absent — the user must have signed in with the Mail scopes
+  // (Mail.Send/Mail.Read; requested at login).
+  // INTERIM (Phase 4 adds refresh): no refresh-on-expiry yet; an expired token
+  // surfaces downstream as GRAPH_UNAUTHORIZED → the re-auth prompt.
   const driverName = process.env.EMAIL_DRIVER;
   const isGraph = driverName === 'graph-dev' || driverName === 'graph-prod';
   let accessToken: string | undefined;
   if (isGraph) {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    accessToken = session?.provider_token ?? undefined;
+    accessToken = (await delegatedGraphToken()) ?? undefined;
     if (!accessToken) {
       throw new Error(
         'Manual email send/scan with the Graph driver needs your delegated Microsoft token ' +
