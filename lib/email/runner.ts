@@ -68,6 +68,34 @@ function isWeekend(today: string): boolean {
   return dow === 0 || dow === 6;
 }
 
+/** Hour (0–23) in UK wall-clock time for an ISO instant (BST/GMT via the IANA zone). */
+function ukHour(nowIso: string): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London',
+      hourCycle: 'h23',
+      hour: 'numeric',
+    }).format(new Date(nowIso)),
+  );
+}
+
+/**
+ * Outside the org's configured send window? The window is [from, to) in UK
+ * wall-clock hours — send when from <= hour < to. It's OPT-IN: an unset bound
+ * means "no window" (never restrict), so existing orgs are unaffected until an
+ * admin sets it. A reversed/empty window (from >= to) is treated as "no window"
+ * rather than an all-day block, so a fat-fingered setting can't silently stop
+ * all sending. Applies to BOTH the cron and the manual "Run sender now" path,
+ * mirroring how the daily cap and weekend skip already apply to both.
+ */
+function isOutsideSendWindow(nowIso: string, settings: OrgSettings): boolean {
+  const from = settings.seqSendWindowFrom;
+  const to = settings.seqSendWindowTo;
+  if (from === undefined || to === undefined || from >= to) return false;
+  const hour = ukHour(nowIso);
+  return hour < from || hour >= to;
+}
+
 /** Most-overdue first, then earliest sequence step (DECISION 5.1). */
 function order(a: DueContact, b: DueContact): number {
   const fa = a.contact.followUp ?? '';
@@ -80,6 +108,11 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
   const empty: RunSenderResult = { planned: [], sent: 0, skipped: 0, errors: [], remaining: 0 };
   const skipWeekends = deps.settings.seqSkipWeekends ?? true;
   if (skipWeekends && isWeekend(opts.today)) return empty;
+
+  // Outside the configured send window (UK hours) → no-op, like the weekend
+  // skip. Dry runs are gated too: planning a send the runner wouldn't make
+  // would misreport what "Run sender now" is about to do.
+  if (isOutsideSendWindow(deps.now(), deps.settings)) return empty;
 
   // Daily send cap is an ACCOUNT-tier setting: the cron sender is org-scoped
   // (one configured mailbox, no per-user context), so it reads the org's

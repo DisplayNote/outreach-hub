@@ -11,7 +11,9 @@ resource "vercel_project" "this" {
   build_command    = "pnpm build"
   install_command  = "corepack enable pnpm && pnpm install --frozen-lockfile"
   output_directory = ".next"
-  node_version     = "20.x"
+  # Must satisfy package.json engines (>=24.13) and match the Dockerfile (24.x).
+  # A lower version here fails `pnpm install --frozen-lockfile`'s engines check.
+  node_version     = "24.x"
 
   lifecycle {
     ignore_changes = [

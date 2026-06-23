@@ -211,4 +211,56 @@ describe('runSender', () => {
     expect(res.sent).toBe(0);
     expect(driver.sent).toHaveLength(0);
   });
+
+  // --- Send window (UK wall-clock hours, [from, to), opt-in) -----------------
+  // 2026-05-29 is BST (UTC+1), so a UTC instant maps to UK = UTC + 1h.
+  const windowDeps = (rec: Rec, driver: MockDriver, nowIso: string, window: Partial<OrgSettings>) => ({
+    store: fakeStore(rec),
+    driver,
+    settings: { ...settings, ...window } as OrgSettings,
+    from: 'paul@displaynote.com',
+    now: () => nowIso,
+  });
+
+  it('sends inside the send window', async () => {
+    rec.dueList = [due('a')];
+    // UTC 09:00 → UK 10:00, inside [8, 18).
+    const res = await runSender(windowDeps(rec, driver, '2026-05-29T09:00:00.000Z', { seqSendWindowFrom: 8, seqSendWindowTo: 18 }), { today: '2026-05-29' });
+    expect(res.sent).toBe(1);
+  });
+
+  it('is a no-op before the send window opens', async () => {
+    rec.dueList = [due('a')];
+    // UTC 06:00 → UK 07:00, before [8, 18).
+    const res = await runSender(windowDeps(rec, driver, '2026-05-29T06:00:00.000Z', { seqSendWindowFrom: 8, seqSendWindowTo: 18 }), { today: '2026-05-29' });
+    expect(res.sent).toBe(0);
+    expect(driver.sent).toHaveLength(0);
+  });
+
+  it('is a no-op after the send window closes (upper bound exclusive)', async () => {
+    rec.dueList = [due('a')];
+    // UTC 09:00 → UK 10:00; window [8, 10) excludes hour 10.
+    const res = await runSender(windowDeps(rec, driver, '2026-05-29T09:00:00.000Z', { seqSendWindowFrom: 8, seqSendWindowTo: 10 }), { today: '2026-05-29' });
+    expect(res.sent).toBe(0);
+  });
+
+  it('sends at the lower bound (inclusive)', async () => {
+    rec.dueList = [due('a')];
+    // UTC 09:00 → UK 10:00; window [10, 18) includes hour 10.
+    const res = await runSender(windowDeps(rec, driver, '2026-05-29T09:00:00.000Z', { seqSendWindowFrom: 10, seqSendWindowTo: 18 }), { today: '2026-05-29' });
+    expect(res.sent).toBe(1);
+  });
+
+  it('ignores an unset or invalid (from >= to) window and sends regardless of hour', async () => {
+    rec.dueList = [due('a')];
+    // 23:00 with no window configured → sends (window is opt-in).
+    const res1 = await runSender(windowDeps(rec, driver, '2026-05-29T23:00:00.000Z', {}), { today: '2026-05-29' });
+    expect(res1.sent).toBe(1);
+
+    rec = { sent: [], sentToday: 0, dueList: [due('b')] };
+    driver = new MockDriver();
+    // from >= to is treated as no window, not an all-day block.
+    const res2 = await runSender(windowDeps(rec, driver, '2026-05-29T23:00:00.000Z', { seqSendWindowFrom: 18, seqSendWindowTo: 8 }), { today: '2026-05-29' });
+    expect(res2.sent).toBe(1);
+  });
 });
