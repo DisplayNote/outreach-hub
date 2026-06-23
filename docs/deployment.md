@@ -78,9 +78,11 @@ disabled by design — there is no non-prod backend). Set **Production** env var
 | `CRON_SENDER_EMAIL` | sender mailbox, unless the org sets `settings.senderEmail` |
 | `ADMIN_EMAIL_ALLOWLIST` | comma-separated admin emails; unset → `/admin` 404s for everyone |
 
-**Node version:** the project uses Node **24.x** (set in `infra/vercel.tf`,
-`package.json#engines`, and the `Dockerfile`). Keep them aligned — a lower Vercel
-runtime fails `pnpm install --frozen-lockfile`'s engines check.
+**Node version:** the project runs on Node **24.x**, pinned by
+`package.json#engines` (`>=24.13`) and the `Dockerfile`. The Vercel Terraform
+provider only accepts up to `22.x` for the project setting, so `infra/vercel.tf`
+sets `22.x` and the `engines` field overrides it up to 24 at build/runtime.
+Confirm in the Vercel build log (`node -v`) after the first deploy.
 
 ### Scheduled sending (Vercel Cron — works out of the box)
 
