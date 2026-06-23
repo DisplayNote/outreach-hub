@@ -1,8 +1,8 @@
 // Module augmentation for Auth.js (next-auth v5): teach the Session.user and
 // JWT types about the org-scoped identity claims our jwt/session callbacks set
-// (id/orgId/role/email on the user; the matching token fields + the interim
-// Graph delegated-token fields on the JWT). Without this, reading
-// `session.user.orgId` or `token.userId` would not type-check under strict.
+// (id/orgId/role/email). The Graph delegated tokens are deliberately NOT here:
+// they live server-side in public.user_graph_tokens, never on the session/JWT,
+// so they cannot leak via GET /api/auth/session.
 
 import type { DefaultSession } from 'next-auth';
 
@@ -13,9 +13,6 @@ declare module 'next-auth' {
       orgId?: string;
       role?: string;
     } & DefaultSession['user'];
-    // INTERIM (Phase 4 adds refresh): Graph delegated access token, read
-    // server-side by lib/graph/token.ts for manual Graph send/scan.
-    accessToken?: string;
   }
 }
 
@@ -25,9 +22,5 @@ declare module 'next-auth/jwt' {
     orgId?: string;
     role?: string;
     email?: string;
-    // INTERIM (Phase 4 adds refresh): Graph delegated tokens captured at login.
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: number;
   }
 }

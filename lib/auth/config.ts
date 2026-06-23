@@ -3,8 +3,23 @@ import EntraID from 'next-auth/providers/microsoft-entra-id';
 import Credentials from 'next-auth/providers/credentials';
 import { getServerEnv, isAuthMockEnabled } from '@/lib/env';
 import { provisionUser } from '@/lib/auth/provision';
+import { storeGraphTokens } from '@/lib/auth/graph-tokens';
 
 const env = getServerEnv();
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Fail closed in production: the ENTIRE RLS scoping chain trusts the signed JWT
+// (orgId/userId/role flow into the withRls GUCs), so a missing AUTH_SECRET — and
+// the dev fallback below — would sign sessions with a public constant and let an
+// attacker forge any org/role. Likewise the issuer must be tenant-pinned (not
+// "common") in prod, or any Microsoft tenant could self-provision an org.
+if (isProduction && !env.AUTH_SECRET) {
+  throw new Error('AUTH_SECRET is required in production (it signs the session JWT that RLS trusts).');
+}
+if (isProduction && !env.AZURE_AD_TENANT_ID) {
+  throw new Error('AZURE_AD_TENANT_ID is required in production (the Entra issuer must be tenant-pinned, not "common").');
+}
+const authSecret = env.AUTH_SECRET ?? 'dev-insecure-secret-set-AUTH_SECRET';
 
 // Public paths reachable WITHOUT an authenticated session. The login + Auth.js
 // routes themselves, plus API routes that authenticate by their own mechanism
@@ -77,10 +92,9 @@ if (isAuthMockEnabled()) {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers,
-  // AUTH_SECRET is required by Auth.js to sign the JWT. Optional in the schema
-  // (so the unit suite / build run without it); fall back to a clearly-marked
-  // dev value when absent so local dev works. A production deploy MUST set it.
-  secret: env.AUTH_SECRET ?? 'dev-insecure-secret-set-AUTH_SECRET',
+  // Signs the JWT. Real value required in production (guarded above); the
+  // dev fallback only ever applies in non-production.
+  secret: authSecret,
   session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
   callbacks: {
@@ -98,14 +112,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // delegated tokens and provision the org + user row. On subsequent
       // requests the token already carries everything, so we skip the DB call.
       if (account) {
-        // INTERIM (Phase 4 adds refresh): stash the Graph delegated access token
-        // (and refresh token / expiry) on the JWT so lib/actions/email.ts can
-        // source it for manual Graph send/scan. Phase 4 replaces this with a
-        // refresh-on-expiry helper backed by durable token storage.
-        if (account.access_token) token.accessToken = account.access_token;
-        if (account.refresh_token) token.refreshToken = account.refresh_token;
-        if (typeof account.expires_at === 'number') token.expiresAt = account.expires_at;
-
         // Resolve the signing-in email from the OAuth profile (Entra) or the
         // Credentials user (dev). Then provision idempotently → { userId, orgId,
         // role } and pin them on the JWT for RLS context + the admin gate.
@@ -126,6 +132,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.orgId = provisioned.orgId;
           token.role = provisioned.role;
           token.email = email;
+
+          // Persist the delegated Graph tokens SERVER-SIDE (own RLS-scoped row),
+          // never on the JWT/session — so they can't be read via /api/auth/session.
+          // lib/graph/token.ts reads them back. Phase 4 adds refresh-on-expiry.
+          await storeGraphTokens(
+            { userId: provisioned.userId, orgId: provisioned.orgId },
+            {
+              accessToken: account.access_token ?? null,
+              refreshToken: account.refresh_token ?? null,
+              expiresAt: account.expires_at ?? null,
+            },
+          );
         }
       }
       return token;
@@ -139,11 +157,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (typeof token.role === 'string') session.user.role = token.role;
         if (typeof token.email === 'string') session.user.email = token.email;
       }
-      // INTERIM (Phase 4 adds refresh): surface the Graph delegated access token
-      // on the session so server-only code (lib/graph/token.ts → email actions)
-      // can read it. The session is consumed server-side via auth(); the token
-      // is not rendered to the client.
-      if (typeof token.accessToken === 'string') session.accessToken = token.accessToken;
+      // The Graph delegated token is deliberately NOT projected here — it lives
+      // server-side in public.user_graph_tokens (read via lib/graph/token.ts),
+      // so it can never leak through GET /api/auth/session.
       return session;
     },
   },
