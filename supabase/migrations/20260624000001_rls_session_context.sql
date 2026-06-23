@@ -47,15 +47,15 @@ create policy "user_settings update own" on public.user_settings
   with check (user_id = public.current_user_id() and org_id = public.current_org_id());
 
 -- App runtime role: a LOGIN role the app connects AS, NON-owner so RLS APPLIES
--- (the owner/superuser used for migrations bypasses RLS). In production the
--- password is sourced from Key Vault; 'apppw' is the local-dev value only.
+-- (the owner/superuser used for migrations bypasses RLS). Created WITHOUT a
+-- committed password — the runner (scripts/migrate.mjs) sets it from
+-- APP_USER_PASSWORD (local dev) / Key Vault (Azure), so no credential lives in
+-- git. Table/function grants + the organizations column-restriction are
+-- (re)asserted by the runner's post-migration grant step, so future tables are
+-- covered and the column-restriction is always applied last.
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'app_user') then
-    create role app_user login password 'apppw';
+    create role app_user login;
   end if;
 end $$;
 grant usage on schema public to app_user;
-grant select, insert, update, delete on all tables in schema public to app_user;
-grant execute on all functions in schema public to app_user;
-alter default privileges in schema public grant select, insert, update, delete on tables to app_user;
-alter default privileges in schema public grant execute on functions to app_user;

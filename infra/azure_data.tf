@@ -34,3 +34,18 @@ resource "azurerm_key_vault" "this" {
   sku_name                   = "standard"
   rbac_authorization_enabled = true
 }
+
+# app_user runtime DB password — generated here, stored in Key Vault, never in
+# git or in a SQL migration. The deploy injects it as APP_USER_PASSWORD for the
+# migration runner (which runs `alter role app_user with password ...`) and
+# builds the app's DATABASE_URL from it. Rotate by tainting this resource.
+resource "random_password" "app_user" {
+  length  = 32
+  special = false # avoid URL-encoding pain in DATABASE_URL
+}
+
+resource "azurerm_key_vault_secret" "app_user_password" {
+  name         = "app-user-password"
+  value        = random_password.app_user.result
+  key_vault_id = azurerm_key_vault.this.id
+}
