@@ -1,12 +1,17 @@
 /**
  * Public one-click unsubscribe (compliance). No session: the request is
  * authenticated by the HMAC-signed token in the URL (see lib/email/unsubscribe),
- * which carries the org + email. A valid token adds an `unsubscribed` suppression
- * via the service-role client (scoped to the org from the token), so the sender's
- * due-contacts anti-join stops emailing that address.
+ * which carries the org + email.
  *
- *  - GET  → a person clicked the footer link; add the suppression, show a page.
- *  - POST → RFC 8058 List-Unsubscribe-Post one-click; add the suppression, 200.
+ *  - GET  → a human (or a mail scanner / link-prefetcher) opened the footer link.
+ *           GET is SAFE — it only renders a confirmation page with a button; it
+ *           does NOT write. This stops corporate safe-link scanners (Defender
+ *           SafeLinks, Proofpoint, Mimecast) and prefetchers from silently
+ *           unsubscribing a recipient who never clicked.
+ *  - POST → the actual opt-out: the RFC 8058 one-click `List-Unsubscribe-Post`
+ *           flow, and the confirmation page's button. Records an `unsubscribed`
+ *           suppression (service-role, scoped to the token's org) AND stops the
+ *           matching contact's sequence, so a later email edit can't un-suppress.
  *
  * Idempotent: re-unsubscribing is a no-op upsert.
  */
@@ -14,54 +19,90 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';
 import { createServiceClient } from '@/lib/supabase/service';
 import { verifyUnsubscribeToken } from '@/lib/email/unsubscribe';
+import { escapeLike } from '@/lib/supabase/like';
 
 export const runtime = 'nodejs';
 
-function page(title: string, message: string, status: number): NextResponse {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title}</title></head>
-<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;color:#222">
-<h1 style="font-size:1.25rem">${title}</h1><p>${message}</p></body></html>`;
-  return new NextResponse(html, { status, headers: { 'content-type': 'text/html; charset=utf-8' } });
+// Statuses the sender's anti-join already treats as terminal; we never overwrite
+// a stronger pipeline state (a booked meeting, a hard bounce) with the opt-out.
+const TERMINAL_STATUSES = '(notinterested,bounced,meeting)';
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-async function unsubscribe(request: NextRequest): Promise<{ ok: boolean; status: number }> {
+function page(title: string, message: string, status: number, formAction?: string): NextResponse {
+  const form = formAction
+    ? `<form method="post" action="${escapeHtml(formAction)}">
+<button type="submit" style="font:inherit;padding:.6rem 1rem;border:0;border-radius:6px;background:#222;color:#fff;cursor:pointer">Confirm unsubscribe</button></form>`
+    : '';
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>${escapeHtml(title)}</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem;color:#222">
+<h1 style="font-size:1.25rem">${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${form}</body></html>`;
+  return new NextResponse(html, {
+    status,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' },
+  });
+}
+
+/** Resolve the token claim, or a reason it failed. */
+function claimFrom(request: NextRequest): { secret: string; claim: { orgId: string; email: string } | null } | null {
   const env = getServerEnv();
-  if (!env.UNSUBSCRIBE_SECRET) {
-    // Feature not configured — don't pretend it worked.
-    return { ok: false, status: 404 };
-  }
+  if (!env.UNSUBSCRIBE_SECRET) return null; // feature not configured
   const token = request.nextUrl.searchParams.get('token');
-  if (!token) return { ok: false, status: 400 };
+  return { secret: env.UNSUBSCRIBE_SECRET, claim: token ? verifyUnsubscribeToken(token, env.UNSUBSCRIBE_SECRET) : null };
+}
 
-  const claim = verifyUnsubscribeToken(token, env.UNSUBSCRIBE_SECRET);
-  if (!claim) return { ok: false, status: 400 };
-
+/** Record the suppression and stop the contact's sequence. Returns ok. */
+async function applyUnsubscribe(claim: { orgId: string; email: string }): Promise<boolean> {
+  const email = claim.email.toLowerCase();
   const supabase = createServiceClient();
-  const { error } = await supabase.from('suppressions').upsert(
-    { org_id: claim.orgId, email: claim.email.toLowerCase(), reason: 'unsubscribed' },
-    { onConflict: 'org_id,email', ignoreDuplicates: true },
-  );
+  const { error } = await supabase
+    .from('suppressions')
+    .upsert({ org_id: claim.orgId, email, reason: 'unsubscribed' }, { onConflict: 'org_id,email', ignoreDuplicates: true });
   if (error) {
     console.error('unsubscribe: failed to record suppression', error);
-    return { ok: false, status: 500 };
+    return false;
   }
-  return { ok: true, status: 200 };
+  // Address-level suppression alone would silently stop matching if the contact's
+  // email is later edited — so also mark the matching contact(s) terminal so the
+  // opt-out survives an address change. Non-fatal: the suppression is the primary
+  // guard. Never overwrite an already-terminal/stronger status.
+  const { error: contactError } = await supabase
+    .from('contacts')
+    .update({ status: 'notinterested' })
+    .eq('org_id', claim.orgId)
+    .ilike('email', escapeLike(email))
+    .not('status', 'in', TERMINAL_STATUSES);
+  if (contactError) console.error('unsubscribe: failed to stop contact sequence', contactError);
+  return true;
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const { ok, status } = await unsubscribe(request);
-  if (ok) {
-    return page('Unsubscribed', 'You will no longer receive these emails. You can close this page.', 200);
-  }
-  if (status === 400) return page('Invalid link', 'This unsubscribe link is invalid or has expired.', 400);
-  if (status === 404) return page('Not available', 'Unsubscribe is not configured.', 404);
-  return page('Something went wrong', 'Please try again later.', 500);
+  const ctx = claimFrom(request);
+  if (!ctx) return page('Not available', 'Unsubscribe is not configured.', 404);
+  if (!ctx.claim) return page('Invalid link', 'This unsubscribe link is invalid or has expired.', 400);
+  // SAFE GET: confirm intent with a button that POSTs — no write here.
+  return page(
+    'Unsubscribe',
+    'Click the button below to stop receiving these emails.',
+    200,
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+  );
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const { status } = await unsubscribe(request);
-  // One-click clients don't render a body; status is what matters.
-  return new NextResponse(null, { status });
+  const ctx = claimFrom(request);
+  if (!ctx) return new NextResponse(null, { status: 404 });
+  if (!ctx.claim) return new NextResponse(null, { status: 400 });
+  const ok = await applyUnsubscribe(ctx.claim);
+  if (!ok) return new NextResponse(null, { status: 500 });
+  // A browser form-submit shows this page; one-click clients ignore the body.
+  return page('Unsubscribed', 'You will no longer receive these emails. You can close this page.', 200);
 }

@@ -28,6 +28,11 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** Like {@link escapeHtml} but also safe inside a double-quoted attribute (href). */
+function escapeAttr(text: string): string {
+  return escapeHtml(text).replace(/"/g, '&quot;');
+}
+
 export interface RunSenderDeps {
   store: EmailStore;
   driver: EmailDriver;
@@ -69,6 +74,12 @@ export interface RunSenderResult {
   errors: { contactId: string; message: string; stage?: 'send' | 'record'; code?: string }[];
   /** Eligible contacts left unsent because the daily cap was exhausted. */
   remaining: number;
+  /**
+   * Set when the run was a no-op because sending is time-gated (not because the
+   * queue was empty), so the UI can say "outside send window" / "weekend" rather
+   * than a misleading "nothing to send".
+   */
+  suppressed?: 'weekend' | 'window';
 }
 
 function isWeekend(today: string): boolean {
@@ -115,12 +126,12 @@ function order(a: DueContact, b: DueContact): number {
 export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Promise<RunSenderResult> {
   const empty: RunSenderResult = { planned: [], sent: 0, skipped: 0, errors: [], remaining: 0 };
   const skipWeekends = deps.settings.seqSkipWeekends ?? true;
-  if (skipWeekends && isWeekend(opts.today)) return empty;
+  if (skipWeekends && isWeekend(opts.today)) return { ...empty, suppressed: 'weekend' };
 
   // Outside the configured send window (UK hours) → no-op, like the weekend
   // skip. Dry runs are gated too: planning a send the runner wouldn't make
   // would misreport what "Run sender now" is about to do.
-  if (isOutsideSendWindow(deps.now(), deps.settings)) return empty;
+  if (isOutsideSendWindow(deps.now(), deps.settings)) return { ...empty, suppressed: 'window' };
 
   // Daily send cap is an ACCOUNT-tier setting: the cron sender is org-scoped
   // (one configured mailbox, no per-user context), so it reads the org's
@@ -195,7 +206,7 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
         ? `${rendered.body}\n\n—\nTo stop receiving these emails, unsubscribe here: ${unsub.url}`
         : rendered.body,
       bodyHtml: unsub
-        ? `${bodyHtmlBase}<br><br>—<br><a href="${escapeHtml(unsub.url)}">Unsubscribe from these emails</a>`
+        ? `${bodyHtmlBase}<br><br>—<br><a href="${escapeAttr(unsub.url)}" style="color:#888">Unsubscribe from these emails</a>`
         : bodyHtmlBase,
       ...(unsub ? { headers: unsub.headers } : {}),
     };

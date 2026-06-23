@@ -198,6 +198,57 @@ describe('GraphDriver auth + headers + DSN recovery', () => {
     expect(replies[0]!.failedRecipient).toBe('dave@corp.com');
   });
 
+  it('does not mis-correlate a bounce to the NDR sender mentioned first in the body', async () => {
+    // The generic bounce mailbox (not a "system sender") appears before the real
+    // failed recipient — the fallback must skip the message's own sender.
+    const list = {
+      value: [
+        {
+          id: 'ndr11',
+          from: { emailAddress: { address: 'bounces@mailgun.example' } },
+          subject: 'Returned mail: see transcript',
+          bodyPreview: 'Delivery to bounces@mailgun.example failed permanently for carol@corp.com',
+        },
+      ],
+    };
+    const fetchImpl = vi.fn(async (u: string) => (String(u).includes('/$value') ? resp({}, false, 404) : resp(list)));
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.failedRecipient).toBe('carol@corp.com');
+  });
+
+  it('decodes numeric HTML entities in the body to find the failed address', async () => {
+    const list = {
+      value: [
+        {
+          id: 'ndr12',
+          from: { emailAddress: { address: 'mailer-daemon@corp.com' } },
+          subject: 'Undeliverable',
+          body: { contentType: 'html', content: '<p>Failed: alice&#64;corp.com</p>' },
+        },
+      ],
+    };
+    const fetchImpl = vi.fn(async (u: string) => (String(u).includes('/$value') ? resp({}, false, 404) : resp(list)));
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.failedRecipient).toBe('alice@corp.com');
+  });
+
+  it('retries the send without headers when the tenant rejects internetMessageHeaders', async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async (_u: string, init?: RequestInit) => {
+      calls += 1;
+      const sent = JSON.parse((init?.body as string) ?? '{}');
+      // First attempt carries the header and is rejected (400); the retry has no
+      // headers and succeeds (202) — the email still goes out.
+      return sent.message?.internetMessageHeaders ? resp({}, false, 400) : resp({}, true, 202);
+    });
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const ref = await driver.send({ from: 'm@x', to: ['a@x'], subject: 's', headers: { 'List-Unsubscribe': '<https://x/u>' } });
+    expect(ref.messageId).toBeTruthy();
+    expect(calls).toBe(2);
+  });
+
   it('parses Final-Recipient from the full body when $value is unavailable', async () => {
     const list = {
       value: [

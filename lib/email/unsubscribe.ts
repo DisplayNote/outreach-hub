@@ -38,6 +38,12 @@ function normaliseEmail(email: string): string {
 
 /** Sign an `{orgId,email}` pair into an opaque, URL-safe unsubscribe token. */
 export function signUnsubscribeToken(orgId: string, email: string, secret: string): string {
+  // Enforce the separator invariant the verify-side split relies on: orgId is a
+  // UUID in practice, but guard so a future caller passing a ':'-bearing id can't
+  // make the token round-trip to a DIFFERENT {orgId,email} than was signed.
+  if (orgId.includes(':')) {
+    throw new Error('signUnsubscribeToken: orgId must not contain ":"');
+  }
   const payload = `${orgId}:${normaliseEmail(email)}`;
   const sig = createHmac('sha256', secret).update(payload).digest();
   return `${Buffer.from(payload).toString('base64url')}.${sig.toString('base64url')}`;

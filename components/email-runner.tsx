@@ -65,6 +65,10 @@ export default function EmailRunner({ queue, emailMockEnabled, campaigns, enroll
   const runNow = () =>
     act('run', async () => {
       const r = await runSenderNow({ dryRun });
+      // A time-gated no-op is distinct from an empty queue — say so, rather than
+      // reporting a misleading "0 would send".
+      if (r.suppressed === 'window') return 'Outside the send window — nothing sent. Adjust it in Admin.';
+      if (r.suppressed === 'weekend') return 'Weekends are skipped — nothing sent.';
       return dryRun
         ? `Dry run: ${r.planned.length} would send, ${r.remaining} over the daily cap.`
         : `Sent ${r.sent}, skipped ${r.skipped}, ${r.errors.length} error(s), ${r.remaining} left over the cap.`;

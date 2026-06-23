@@ -10,7 +10,13 @@ import { SUPABASE_AUTH_COOKIE_NAME } from '@/lib/supabase/cookie-name';
 const PUBLIC_PATH_PREFIXES = ['/login', '/auth/', '/api/email/', '/api/telnyx/', '/api/unsubscribe'];
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
+  // Exact match, or a path UNDER the prefix — never a sibling that merely shares
+  // the prefix string (so '/api/unsubscribe' can't also expose a future
+  // '/api/unsubscribe-admin'). A trailing-slash prefix is already subtree-scoped.
+  return PUBLIC_PATH_PREFIXES.some(
+    (prefix) =>
+      pathname === prefix || pathname.startsWith(prefix.endsWith('/') ? prefix : `${prefix}/`),
+  );
 }
 
 export async function updateSession(request: NextRequest): Promise<NextResponse> {

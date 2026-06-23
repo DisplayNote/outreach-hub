@@ -32,6 +32,10 @@ describe('unsubscribe tokens', () => {
     expect(verifyUnsubscribeToken(token, SECRET)).not.toBeNull();
   });
 
+  it('refuses to sign with an orgId containing the ":" separator', () => {
+    expect(() => signUnsubscribeToken('a:b', 'x@y.com', SECRET)).toThrow();
+  });
+
   it('rejects malformed tokens', () => {
     for (const bad of ['', 'no-dot', '.', 'a.', '.b', 'not base64!.sig']) {
       expect(verifyUnsubscribeToken(bad, SECRET)).toBeNull();

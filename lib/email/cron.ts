@@ -54,6 +54,13 @@ export async function runSenderAllOrgs(
 ): Promise<{ orgs: number; sent: number; skipped: number; errors: number }> {
   const driver = getEmailDriver();
   const fallbackFrom = getServerEnv().CRON_SENDER_EMAIL;
+  const unsubscribe = getUnsubscribeConfig();
+  if (!unsubscribe && process.env.NODE_ENV === 'production') {
+    console.warn(
+      'cron runSender: APP_BASE_URL/UNSUBSCRIBE_SECRET unset — outbound mail has NO unsubscribe ' +
+        'link or List-Unsubscribe header (compliance risk). Set both in the deployment env.',
+    );
+  }
   let sent = 0;
   let skipped = 0;
   let errors = 0;
@@ -71,7 +78,7 @@ export async function runSenderAllOrgs(
     }
     const store = supabaseEmailStore(client, { orgId: org.id, provider: driver.name, settings: org.settings });
     const res = await runSender(
-      { store, driver, settings: org.settings, from, unsubscribe: getUnsubscribeConfig(), now: () => new Date().toISOString() },
+      { store, driver, settings: org.settings, from, unsubscribe, now: () => new Date().toISOString() },
       { today: todayUtc() },
     );
     sent += res.sent;

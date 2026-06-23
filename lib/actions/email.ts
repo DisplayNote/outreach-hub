@@ -95,16 +95,34 @@ const REAUTH_MESSAGE =
   'Your Microsoft sign-in has expired or email access was revoked. Sign out and sign back in to ' +
   're-grant email access (Mail.Send / Mail.Read), then try again.';
 
+/**
+ * Unsubscribe config for sends, with a loud production warning when it's unset —
+ * sending commercial mail with no opt-out is a compliance exposure, so make a
+ * missing APP_BASE_URL/UNSUBSCRIBE_SECRET visible rather than silently degrading.
+ */
+function resolveUnsubscribe() {
+  const cfg = getUnsubscribeConfig();
+  if (!cfg && process.env.NODE_ENV === 'production') {
+    console.warn(
+      'runSenderNow: APP_BASE_URL/UNSUBSCRIBE_SECRET unset — outbound mail has NO unsubscribe ' +
+        'link or List-Unsubscribe header (compliance risk). Set both in the deployment env.',
+    );
+  }
+  return cfg;
+}
+
 export async function runSenderNow(input: RunSenderNowInput = {}): Promise<RunSenderResult> {
   const opts = runSenderSchema.parse(input);
   const { settings, driver, store, from } = await buildContext();
   const result = await runSender(
-    { store, driver, settings, from, unsubscribe: getUnsubscribeConfig(), now: () => new Date().toISOString() },
+    { store, driver, settings, from, unsubscribe: resolveUnsubscribe(), now: () => new Date().toISOString() },
     { today: todayUtc(), ...(opts.dryRun !== undefined ? { dryRun: opts.dryRun } : {}), ...(opts.limit !== undefined ? { limit: opts.limit } : {}) },
   );
-  // An expired delegated token fails every send identically — surface it once as
-  // an actionable re-auth prompt rather than N opaque per-contact errors.
-  if (result.errors.some((e) => e.code === 'GRAPH_UNAUTHORIZED')) {
+  // An expired delegated token fails sends with GRAPH_UNAUTHORIZED. Only hard-fail
+  // with the re-auth prompt when NOTHING succeeded — if some sends landed before
+  // the token expired they're already persisted, so keep them (revalidate + return)
+  // and let result.errors carry the auth failure rather than discarding real sends.
+  if (result.errors.some((e) => e.code === 'GRAPH_UNAUTHORIZED') && result.sent === 0) {
     throw new Error(REAUTH_MESSAGE);
   }
   if (!opts.dryRun) {

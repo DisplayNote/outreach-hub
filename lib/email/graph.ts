@@ -27,19 +27,36 @@ const ANY_EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
  * parsing against a real tenant is a fast-follow; this handles the common case
  * where the failed address appears in the preview text.)
  */
-function parseFailedRecipient(text: string): string | undefined {
+function parseFailedRecipient(text: string, excludeFrom?: string): string | undefined {
   const dsn = DSN_RECIPIENT.exec(text);
   if (dsn?.[1]) return dsn[1].toLowerCase();
+  const exclude = excludeFrom?.toLowerCase();
   for (const addr of text.match(ANY_EMAIL) ?? []) {
-    if (!isSystemSender(addr)) return addr.toLowerCase();
+    const lower = addr.toLowerCase();
+    // Skip system mailers AND the NDR's OWN sender: a generic bounce mailbox
+    // (bounces@…, noreply@…) isn't a "system sender", so without this the
+    // fallback could latch onto the bounce sender instead of the prospect.
+    if (!isSystemSender(addr) && lower !== exclude) return lower;
   }
   return undefined;
 }
 
-/** Strip tags/entities enough for the DSN regexes to read an HTML NDR body. */
+function fromCodePoint(cp: number): string {
+  return Number.isFinite(cp) && cp >= 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : '';
+}
+
+/**
+ * Strip tags + decode the entities a DSN regex needs from an HTML NDR body.
+ * Numeric entities are decoded BEFORE `&amp;` so `&amp;#64;` stays the literal
+ * text `&#64;` rather than being double-decoded into `@`.
+ */
 function htmlToText(content: string): string {
   return content
     .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, dec: string) => fromCodePoint(parseInt(dec, 10)))
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
@@ -95,30 +112,37 @@ export class GraphDriver implements EmailDriver {
   }
 
   async send(message: OutboundMessage): Promise<SentRef> {
-    const headers = message.headers ?? {};
-    const internetMessageHeaders = Object.entries(headers).map(([name, value]) => ({ name, value }));
-    const payload = {
-      message: {
-        subject: message.subject,
-        body: { contentType: message.bodyHtml ? 'HTML' : 'Text', content: message.bodyHtml ?? message.bodyText ?? '' },
-        toRecipients: message.to.map((address) => ({ emailAddress: { address } })),
-        ccRecipients: (message.cc ?? []).map((address) => ({ emailAddress: { address } })),
-        bccRecipients: (message.bcc ?? []).map((address) => ({ emailAddress: { address } })),
-        // Graph maps extra headers (e.g. List-Unsubscribe) via internetMessageHeaders.
-        // Some tenants only accept `x-`-prefixed custom headers; if List-Unsubscribe
-        // is rejected the visible footer link added by the runner still works.
-        ...(internetMessageHeaders.length > 0 ? { internetMessageHeaders } : {}),
-      },
-      saveToSentItems: true,
+    const internetMessageHeaders = Object.entries(message.headers ?? {}).map(([name, value]) => ({ name, value }));
+    const baseMessage = {
+      subject: message.subject,
+      body: { contentType: message.bodyHtml ? 'HTML' : 'Text', content: message.bodyHtml ?? message.bodyText ?? '' },
+      toRecipients: message.to.map((address) => ({ emailAddress: { address } })),
+      ccRecipients: (message.cc ?? []).map((address) => ({ emailAddress: { address } })),
+      bccRecipients: (message.bcc ?? []).map((address) => ({ emailAddress: { address } })),
     };
-    const resp = await this.call('POST', '/me/sendMail', payload);
-    if (resp.status === 401) {
-      throw new EmailDriverError(
+    const payload = (withHeaders: boolean) => ({
+      message:
+        withHeaders && internetMessageHeaders.length > 0 ? { ...baseMessage, internetMessageHeaders } : baseMessage,
+      saveToSentItems: true,
+    });
+
+    const unauthorized = () =>
+      new EmailDriverError(
         'Microsoft sign-in expired or email access was revoked. Sign out and sign back in to ' +
           're-grant Mail.Send / Mail.Read, then retry.',
         undefined,
         'GRAPH_UNAUTHORIZED',
       );
+
+    let resp = await this.call('POST', '/me/sendMail', payload(true));
+    if (resp.status === 401) throw unauthorized();
+    // Graceful degradation: some tenants reject non-`x-` internetMessageHeaders
+    // (e.g. List-Unsubscribe) with a 4xx. Retry once WITHOUT the headers so the
+    // email — including its visible footer unsubscribe link — still goes out,
+    // rather than failing the whole send over an optional header.
+    if (!resp.ok && internetMessageHeaders.length > 0) {
+      resp = await this.call('POST', '/me/sendMail', payload(false));
+      if (resp.status === 401) throw unauthorized();
     }
     if (!resp.ok) {
       throw new EmailDriverError(`Graph sendMail failed (${resp.status})`, undefined, 'GRAPH_SEND');
@@ -233,7 +257,7 @@ export class GraphDriver implements EmailDriver {
       // is often past the preview cutoff. fetchReplies further upgrades this from
       // the raw MIME delivery-status part when available.
       const bodyText = m.body?.content ? htmlToText(m.body.content) : (m.bodyPreview ?? '');
-      const failed = parseFailedRecipient(`${subject}\n${bodyText}`);
+      const failed = parseFailedRecipient(`${subject}\n${bodyText}`, from);
       if (failed !== undefined) out.failedRecipient = failed;
     }
     return out;

@@ -212,6 +212,7 @@ describe('runSender', () => {
     const res = await runSender(deps(rec, driver), { today: '2026-05-30' }); // Saturday
     expect(res.sent).toBe(0);
     expect(driver.sent).toHaveLength(0);
+    expect(res.suppressed).toBe('weekend');
   });
 
   // --- Send window (UK wall-clock hours, [from, to), opt-in) -----------------
@@ -237,6 +238,7 @@ describe('runSender', () => {
     const res = await runSender(windowDeps(rec, driver, '2026-05-29T06:00:00.000Z', { seqSendWindowFrom: 8, seqSendWindowTo: 18 }), { today: '2026-05-29' });
     expect(res.sent).toBe(0);
     expect(driver.sent).toHaveLength(0);
+    expect(res.suppressed).toBe('window');
   });
 
   it('is a no-op after the send window closes (upper bound exclusive)', async () => {
