@@ -4,6 +4,7 @@ import { isAuthMockEnabled, parseServerEnv } from '@/lib/env';
 const baseEnv = {
   NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321',
   NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-key',
+  DATABASE_URL: 'postgres://app_user:apppw@localhost:5433/outreach',
 };
 
 describe('parseServerEnv', () => {

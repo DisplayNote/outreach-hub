@@ -9,6 +9,9 @@ const emptyStringAsUndefined = (value: unknown) => (value === '' ? undefined : v
 
 const serverEnvSchema = publicEnvSchema
   .extend({
+    // Azure-native data layer connection string (role `app_user`, so RLS
+    // applies). Required at runtime; migrations use DATABASE_URL_ADMIN instead.
+    DATABASE_URL: z.string().url(),
     SUPABASE_INTERNAL_URL: z.preprocess(
       emptyStringAsUndefined,
       z.string().url().optional(),
