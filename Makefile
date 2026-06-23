@@ -1,5 +1,5 @@
 .PHONY: help bootstrap bootstrap-prod dev dev-docker dev-stop test test-e2e lint typecheck build \
-        db-reset db-migration db-diff fns-serve tunnel clean seed seed-inbox
+        db-reset db-migrate db-migration db-diff fns-serve tunnel clean seed seed-inbox
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN{FS=":.*?## "}{printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -36,6 +36,9 @@ build:  ## Production build
 
 db-reset:  ## Reset the local DB (destroys data)
 	@pnpm exec supabase db reset
+
+db-migrate:  ## Apply SQL migrations to the target DB (DATABASE_URL_ADMIN)
+	@node scripts/migrate.mjs
 
 seed:  ## Seed LOCAL dev DB with a full-coverage dataset (+ best-effort Mailpit replies)
 	@bash -c '. scripts/lib/load-dotenv.sh && load_dotenv .env.local && node scripts/seed-dev.mjs && node scripts/seed-inbox.mjs'
