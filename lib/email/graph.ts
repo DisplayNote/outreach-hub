@@ -36,6 +36,15 @@ function parseFailedRecipient(text: string): string | undefined {
   return undefined;
 }
 
+/** Strip tags/entities enough for the DSN regexes to read an HTML NDR body. */
+function htmlToText(content: string): string {
+  return content
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
 interface GraphDriverOptions {
   /** Delegated access token (Mail.Send / Mail.Read). Deploy-time wiring. */
   accessToken?: string;
@@ -52,6 +61,7 @@ interface GraphMessage {
   toRecipients?: { emailAddress?: { address?: string } }[];
   receivedDateTime?: string;
   bodyPreview?: string;
+  body?: { contentType?: string; content?: string };
 }
 
 /**
@@ -85,6 +95,8 @@ export class GraphDriver implements EmailDriver {
   }
 
   async send(message: OutboundMessage): Promise<SentRef> {
+    const headers = message.headers ?? {};
+    const internetMessageHeaders = Object.entries(headers).map(([name, value]) => ({ name, value }));
     const payload = {
       message: {
         subject: message.subject,
@@ -92,10 +104,22 @@ export class GraphDriver implements EmailDriver {
         toRecipients: message.to.map((address) => ({ emailAddress: { address } })),
         ccRecipients: (message.cc ?? []).map((address) => ({ emailAddress: { address } })),
         bccRecipients: (message.bcc ?? []).map((address) => ({ emailAddress: { address } })),
+        // Graph maps extra headers (e.g. List-Unsubscribe) via internetMessageHeaders.
+        // Some tenants only accept `x-`-prefixed custom headers; if List-Unsubscribe
+        // is rejected the visible footer link added by the runner still works.
+        ...(internetMessageHeaders.length > 0 ? { internetMessageHeaders } : {}),
       },
       saveToSentItems: true,
     };
     const resp = await this.call('POST', '/me/sendMail', payload);
+    if (resp.status === 401) {
+      throw new EmailDriverError(
+        'Microsoft sign-in expired or email access was revoked. Sign out and sign back in to ' +
+          're-grant Mail.Send / Mail.Read, then retry.',
+        undefined,
+        'GRAPH_UNAUTHORIZED',
+      );
+    }
     if (!resp.ok) {
       throw new EmailDriverError(`Graph sendMail failed (${resp.status})`, undefined, 'GRAPH_SEND');
     }
@@ -120,14 +144,54 @@ export class GraphDriver implements EmailDriver {
     const out: InboundMessage[] = [];
     let resp = await this.call('GET', `/me/mailFolders/Inbox/messages?${params.toString()}`);
     for (;;) {
+      if (resp.status === 401) {
+        throw new EmailDriverError(
+          'Microsoft sign-in expired or email access was revoked. Sign out and sign back in to ' +
+            're-grant Mail.Send / Mail.Read, then retry.',
+          undefined,
+          'GRAPH_UNAUTHORIZED',
+        );
+      }
       if (!resp.ok) {
         throw new EmailDriverError(`Graph fetchReplies failed (${resp.status})`, undefined, 'GRAPH_FETCH');
       }
       const body = (await resp.json()) as { value?: GraphMessage[]; '@odata.nextLink'?: string };
-      for (const m of body.value ?? []) out.push(this.toInbound(m));
+      for (const m of body.value ?? []) {
+        const inbound = this.toInbound(m);
+        // For an NDR, the authoritative failed address lives in the
+        // `message/delivery-status` MIME part, not the human-readable body. Fetch
+        // the raw MIME and parse it; fall back to the body-derived guess on any
+        // error so a bounce is never dropped just because $value was unavailable.
+        if (m.id && (isSystemSender(inbound.from) || isNdrSubject(inbound.subject))) {
+          const recovered = await this.recoverFailedRecipientFromMime(m.id);
+          if (recovered) inbound.failedRecipient = recovered;
+        }
+        out.push(inbound);
+      }
       const next = body['@odata.nextLink'];
       if (!next) return out;
       resp = await this.callUrl('GET', next); // nextLink is an absolute Graph URL
+    }
+  }
+
+  /**
+   * Fetch a message's raw MIME (`/$value`) and recover the failed recipient from
+   * its RFC 3464 `message/delivery-status` part. Best-effort: returns undefined
+   * (not throws) on any failure, so the caller keeps its body-derived guess.
+   */
+  private async recoverFailedRecipientFromMime(messageId: string): Promise<string | undefined> {
+    try {
+      const resp = await this.call('GET', `/me/messages/${encodeURIComponent(messageId)}/$value`);
+      if (!resp.ok) return undefined;
+      // STRICT: trust only the authoritative RFC 3464 Final/Original-Recipient
+      // line here, NOT parseFailedRecipient's "first non-system address" fallback
+      // — raw MIME is full of other addresses (From, Reporting-MTA, the original
+      // headers) that the fallback would wrongly latch onto. No DSN line → leave
+      // the body-derived guess in place.
+      const dsn = DSN_RECIPIENT.exec(await resp.text());
+      return dsn?.[1] ? dsn[1].toLowerCase() : undefined;
+    } catch {
+      return undefined;
     }
   }
 
@@ -165,7 +229,11 @@ export class GraphDriver implements EmailDriver {
     // the prospect instead of the (wrong) sender.
     const subject = m.subject ?? '';
     if (isSystemSender(from) || isNdrSubject(subject)) {
-      const failed = parseFailedRecipient(`${subject}\n${m.bodyPreview ?? ''}`);
+      // Parse the FULL body (not just the preview) — the Final-Recipient DSN line
+      // is often past the preview cutoff. fetchReplies further upgrades this from
+      // the raw MIME delivery-status part when available.
+      const bodyText = m.body?.content ? htmlToText(m.body.content) : (m.bodyPreview ?? '');
+      const failed = parseFailedRecipient(`${subject}\n${bodyText}`);
       if (failed !== undefined) out.failedRecipient = failed;
     }
     return out;

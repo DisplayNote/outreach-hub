@@ -13,6 +13,8 @@ import type { OutboundMessage } from '@/lib/email/types';
 import type { DueContact, EmailStore } from '@/lib/email/store';
 import { renderTemplate } from '@/lib/email/render';
 import { businessDayAdd } from '@/lib/email/schedule';
+import { buildUnsubscribe, type UnsubscribeConfig } from '@/lib/email/unsubscribe';
+import { EmailDriverError } from '@/lib/email/types';
 import type { OrgSettings } from '@/lib/types/domain';
 
 const DEFAULT_DAILY_GOAL = 30;
@@ -32,6 +34,12 @@ export interface RunSenderDeps {
   settings: OrgSettings;
   /** Sending mailbox (the authenticated user's / org address). */
   from: string;
+  /**
+   * When set, every send gets a one-click unsubscribe footer + List-Unsubscribe
+   * header keyed to the recipient. Null/absent → no unsubscribe wiring (the
+   * caller resolves this from env; unconfigured local/test runs omit it).
+   */
+  unsubscribe?: UnsubscribeConfig | null;
   now(): string;
 }
 
@@ -58,7 +66,7 @@ export interface RunSenderResult {
    *    retry may re-send, since the contact wasn't advanced).
    *  - absent     — a surfaced non-send issue (e.g. a step with no template).
    */
-  errors: { contactId: string; message: string; stage?: 'send' | 'record' }[];
+  errors: { contactId: string; message: string; stage?: 'send' | 'record'; code?: string }[];
   /** Eligible contacts left unsent because the daily cap was exhausted. */
   remaining: number;
 }
@@ -174,12 +182,22 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       continue;
     }
 
+    // Per-recipient unsubscribe (compliance): a visible footer link (works in
+    // every client) plus the List-Unsubscribe header (one-click in supporting
+    // clients). Keyed to THIS recipient so the public route knows who/which org.
+    const unsub = deps.unsubscribe ? buildUnsubscribe(contact.orgId, claimedEmail, deps.unsubscribe) : null;
+    const bodyHtmlBase = escapeHtml(rendered.body).replace(/\n/g, '<br>');
     const message: OutboundMessage = {
       from: deps.from,
       to: [claimedEmail],
       subject: rendered.subject,
-      bodyText: rendered.body,
-      bodyHtml: escapeHtml(rendered.body).replace(/\n/g, '<br>'),
+      bodyText: unsub
+        ? `${rendered.body}\n\n—\nTo stop receiving these emails, unsubscribe here: ${unsub.url}`
+        : rendered.body,
+      bodyHtml: unsub
+        ? `${bodyHtmlBase}<br><br>—<br><a href="${escapeHtml(unsub.url)}">Unsubscribe from these emails</a>`
+        : bodyHtmlBase,
+      ...(unsub ? { headers: unsub.headers } : {}),
     };
 
     // Transport failure: nothing left the building — RELEASE the claim so the
@@ -200,6 +218,10 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
         contactId: contact.id,
         message: `send: ${cause instanceof Error ? cause.message : 'failed'}`,
         stage: 'send', // nothing left the system — safe retry
+        // Surface the driver error code (e.g. GRAPH_UNAUTHORIZED) so the manual
+        // path can turn an expired token into a single "re-authenticate" message
+        // instead of N opaque per-contact failures.
+        ...(cause instanceof EmailDriverError && cause.code !== undefined ? { code: cause.code } : {}),
       });
       continue;
     }

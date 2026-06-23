@@ -10,6 +10,7 @@ import { getEmailDriver } from '@/lib/email/index';
 import { supabaseEmailStore } from '@/lib/email/store';
 import { runSender } from '@/lib/email/runner';
 import { scanInbox } from '@/lib/email/scanner';
+import { getUnsubscribeConfig } from '@/lib/email/unsubscribe';
 
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
@@ -70,7 +71,7 @@ export async function runSenderAllOrgs(
     }
     const store = supabaseEmailStore(client, { orgId: org.id, provider: driver.name, settings: org.settings });
     const res = await runSender(
-      { store, driver, settings: org.settings, from, now: () => new Date().toISOString() },
+      { store, driver, settings: org.settings, from, unsubscribe: getUnsubscribeConfig(), now: () => new Date().toISOString() },
       { today: todayUtc() },
     );
     sent += res.sent;

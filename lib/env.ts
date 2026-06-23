@@ -45,6 +45,13 @@ const serverEnvSchema = publicEnvSchema
     // than the DB precisely so a DB write can never grant admin. Empty/unset =>
     // nobody is an admin (the panel 404s for everyone).
     ADMIN_EMAIL_ALLOWLIST: z.preprocess(emptyStringAsUndefined, z.string().optional()),
+    // Phase 5 — unsubscribe. APP_BASE_URL is the app's public origin, used to
+    // build absolute one-click unsubscribe links at send time (the sender has no
+    // request context). UNSUBSCRIBE_SECRET signs those links (HMAC). Both are
+    // optional, but BOTH must be set for the unsubscribe footer + List-Unsubscribe
+    // header to be added — production cold email should set them (compliance).
+    APP_BASE_URL: z.preprocess(emptyStringAsUndefined, z.string().url().optional()),
+    UNSUBSCRIBE_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
   })
   // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
   // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So

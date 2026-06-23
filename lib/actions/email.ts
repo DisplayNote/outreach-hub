@@ -18,6 +18,8 @@ import { getEmailDriver } from '@/lib/email/index';
 import { supabaseEmailStore } from '@/lib/email/store';
 import { runSender, type RunSenderResult } from '@/lib/email/runner';
 import { scanInbox, type ScanInboxResult } from '@/lib/email/scanner';
+import { getUnsubscribeConfig } from '@/lib/email/unsubscribe';
+import { EmailDriverError } from '@/lib/email/types';
 import { businessDayAdd } from '@/lib/email/schedule';
 import { buildSimulatedReply, buildSimulatedBounce } from '@/lib/email/mock';
 import { pushDevInbound } from '@/lib/email/dev-inbox';
@@ -89,13 +91,22 @@ async function buildContext() {
 const runSenderSchema = z.object({ dryRun: z.boolean().optional(), limit: z.number().int().positive().optional() });
 export type RunSenderNowInput = z.input<typeof runSenderSchema>;
 
+const REAUTH_MESSAGE =
+  'Your Microsoft sign-in has expired or email access was revoked. Sign out and sign back in to ' +
+  're-grant email access (Mail.Send / Mail.Read), then try again.';
+
 export async function runSenderNow(input: RunSenderNowInput = {}): Promise<RunSenderResult> {
   const opts = runSenderSchema.parse(input);
   const { settings, driver, store, from } = await buildContext();
   const result = await runSender(
-    { store, driver, settings, from, now: () => new Date().toISOString() },
+    { store, driver, settings, from, unsubscribe: getUnsubscribeConfig(), now: () => new Date().toISOString() },
     { today: todayUtc(), ...(opts.dryRun !== undefined ? { dryRun: opts.dryRun } : {}), ...(opts.limit !== undefined ? { limit: opts.limit } : {}) },
   );
+  // An expired delegated token fails every send identically — surface it once as
+  // an actionable re-auth prompt rather than N opaque per-contact errors.
+  if (result.errors.some((e) => e.code === 'GRAPH_UNAUTHORIZED')) {
+    throw new Error(REAUTH_MESSAGE);
+  }
   if (!opts.dryRun) {
     revalidatePath('/queue');
     revalidatePath('/today');
@@ -106,7 +117,16 @@ export async function runSenderNow(input: RunSenderNowInput = {}): Promise<RunSe
 
 export async function scanInboxNow(): Promise<ScanInboxResult> {
   const { orgId, driver, store, from } = await buildContext();
-  const result = await scanInbox({ store, driver, orgId, mailbox: from }, {});
+  let result: ScanInboxResult;
+  try {
+    result = await scanInbox({ store, driver, orgId, mailbox: from }, {});
+  } catch (cause) {
+    // A fetchReplies 401 means the delegated token expired — prompt re-auth.
+    if (cause instanceof EmailDriverError && cause.code === 'GRAPH_UNAUTHORIZED') {
+      throw new Error(REAUTH_MESSAGE);
+    }
+    throw cause;
+  }
   revalidatePath('/queue');
   revalidatePath('/pipeline');
   return result;

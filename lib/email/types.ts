@@ -11,6 +11,13 @@ export interface OutboundMessage {
   /** Optional in-reply-to / references for threading. */
   inReplyTo?: string;
   references?: string[];
+  /**
+   * Extra internet message headers to set on the outbound (e.g.
+   * `List-Unsubscribe`). Each driver maps these to its transport: nodemailer
+   * `headers`, Graph `internetMessageHeaders`. Drivers may drop headers their
+   * transport rejects.
+   */
+  headers?: Record<string, string>;
 }
 
 export interface SentRef {

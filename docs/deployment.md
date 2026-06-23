@@ -77,6 +77,8 @@ disabled by design — there is no non-prod backend). Set **Production** env var
 | `CRON_ORG_ID` | UUID of the org whose mailbox sends ⚠️ unset → the cron **throws** in prod (by design, not a silent no-op) |
 | `CRON_SENDER_EMAIL` | sender mailbox, unless the org sets `settings.senderEmail` |
 | `ADMIN_EMAIL_ALLOWLIST` | comma-separated admin emails; unset → `/admin` 404s for everyone |
+| `APP_BASE_URL` | the app's public origin (e.g. `https://outreach.displaynote.com`); used to build absolute unsubscribe links |
+| `UNSUBSCRIBE_SECRET` | strong random string; HMAC-signs unsubscribe tokens. **Set both this and `APP_BASE_URL`** or outbound mail ships without an unsubscribe link/header (not compliant for cold outreach) |
 
 **Node version:** the project runs on Node **24.x**, pinned by
 `package.json#engines` (`>=24.13`) and the `Dockerfile`. The Vercel Terraform

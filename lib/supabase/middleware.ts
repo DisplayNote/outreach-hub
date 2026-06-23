@@ -7,7 +7,7 @@ import { SUPABASE_AUTH_COOKIE_NAME } from '@/lib/supabase/cookie-name';
 // themselves, plus the API routes that authenticate by CRON_SECRET / Telnyx
 // signature rather than a Supabase session — gating those on a user would break
 // scheduled sending and inbound webhooks. Everything else redirects to /login.
-const PUBLIC_PATH_PREFIXES = ['/login', '/auth/', '/api/email/', '/api/telnyx/'];
+const PUBLIC_PATH_PREFIXES = ['/login', '/auth/', '/api/email/', '/api/telnyx/', '/api/unsubscribe'];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix));

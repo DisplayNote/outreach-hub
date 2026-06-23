@@ -1,5 +1,14 @@
 # Phase 0 status
 
+> ⚠️ **SUPERSEDED — historical only.** This file tracked the Phase 0 bootstrap.
+> The project has since shipped Phases 1–5 (domain model, campaigns/contacts,
+> dialler, settings/admin, and the email runner). It is **no longer the source of
+> truth** and is kept only for the bootstrap audit trail.
+>
+> For current state use, in order: `git log --oneline`, the open PRs, and
+> **[docs/deployment.md](docs/deployment.md)** for how to ship to production.
+> The blocked/prereq tables below reflect the Phase 0 snapshot and are stale.
+
 Source of truth for what landed, what's still blocked, and what's needed to unblock.
 
 **Spec:** [docs/OUTREACH_HUB_EXECUTION_PLAN.md](docs/OUTREACH_HUB_EXECUTION_PLAN.md) §5

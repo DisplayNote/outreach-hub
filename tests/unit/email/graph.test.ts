@@ -5,6 +5,11 @@ function resp(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body, text: async () => JSON.stringify(body) } as Response;
 }
 
+/** A raw-text response (e.g. a `/$value` MIME body). */
+function rawResp(text: string, ok = true, status = 200): Response {
+  return { ok, status, json: async () => ({}), text: async () => text } as Response;
+}
+
 describe('GraphDriver.send', () => {
   it('POSTs /me/sendMail with the message + bearer token', async () => {
     const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) => resp({}, true, 202));
@@ -93,7 +98,7 @@ describe('GraphDriver.fetchReplies', () => {
 
   it('recovers the failed recipient from an NDR preview into failedRecipient', async () => {
     const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
-      resp({
+      String(_u).includes('/$value') ? resp({}, false, 404) : resp({
         value: [
           {
             id: 'ndr1',
@@ -112,7 +117,7 @@ describe('GraphDriver.fetchReplies', () => {
 
   it('prefers an RFC 3464 Final-Recipient line over a stray address', async () => {
     const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
-      resp({
+      String(_u).includes('/$value') ? resp({}, false, 404) : resp({
         value: [
           {
             id: 'ndr2',
@@ -130,7 +135,7 @@ describe('GraphDriver.fetchReplies', () => {
 
   it('recovers the failed recipient from a subject-only NDR (non-system sender)', async () => {
     const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) =>
-      resp({
+      String(_u).includes('/$value') ? resp({}, false, 404) : resp({
         value: [
           {
             id: 'ndr3',
@@ -153,5 +158,61 @@ describe('GraphDriver.fetchReplies', () => {
     const driver = new GraphDriver('graph-dev', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
     const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
     expect(replies[0]!.failedRecipient).toBeUndefined();
+  });
+});
+
+describe('GraphDriver auth + headers + DSN recovery', () => {
+  it('throws GRAPH_UNAUTHORIZED on a 401 send (so the manual path can prompt re-auth)', async () => {
+    const fetchImpl = vi.fn(async () => resp({}, false, 401));
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(driver.send({ from: 'm@x', to: ['a@x'], subject: 's' })).rejects.toMatchObject({
+      code: 'GRAPH_UNAUTHORIZED',
+    });
+  });
+
+  it('throws GRAPH_UNAUTHORIZED on a 401 fetchReplies', async () => {
+    const fetchImpl = vi.fn(async () => resp({}, false, 401));
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' })).rejects.toMatchObject({
+      code: 'GRAPH_UNAUTHORIZED',
+    });
+  });
+
+  it('maps message.headers to Graph internetMessageHeaders', async () => {
+    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) => resp({}, true, 202));
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    await driver.send({ from: 'm@x', to: ['a@x'], subject: 's', headers: { 'List-Unsubscribe': '<https://x/u>' } });
+    const sent = JSON.parse((fetchImpl.mock.calls[0]![1] as RequestInit).body as string);
+    expect(sent.message.internetMessageHeaders).toEqual([{ name: 'List-Unsubscribe', value: '<https://x/u>' }]);
+  });
+
+  it('upgrades the failed recipient from the raw MIME delivery-status part', async () => {
+    const list = {
+      value: [{ id: 'ndr9', from: { emailAddress: { address: 'postmaster@corp.com' } }, subject: 'Undeliverable', bodyPreview: 'delivery failed' }],
+    };
+    const mime =
+      'From: postmaster@corp.com\r\nContent-Type: message/delivery-status\r\n\r\nReporting-MTA: dns; corp.com\r\nFinal-Recipient: rfc822; Dave@Corp.com\r\nAction: failed\r\nStatus: 5.1.1\r\n';
+    const fetchImpl = vi.fn(async (u: string) => (String(u).includes('/$value') ? rawResp(mime) : resp(list)));
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.failedRecipient).toBe('dave@corp.com');
+  });
+
+  it('parses Final-Recipient from the full body when $value is unavailable', async () => {
+    const list = {
+      value: [
+        {
+          id: 'ndr10',
+          from: { emailAddress: { address: 'mailer-daemon@corp.com' } },
+          subject: 'Mail delivery failed',
+          bodyPreview: 'truncated…',
+          body: { contentType: 'text', content: 'blah\nFinal-Recipient: rfc822; Erin@Corp.com\nStatus: 5.0.0' },
+        },
+      ],
+    };
+    const fetchImpl = vi.fn(async (u: string) => (String(u).includes('/$value') ? resp({}, false, 404) : resp(list)));
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    const replies = await driver.fetchReplies({ since: '2026-05-28T00:00:00.000Z' });
+    expect(replies[0]!.failedRecipient).toBe('erin@corp.com');
   });
 });
