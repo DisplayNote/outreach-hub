@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/supabase/org';
+import { getCurrentOrgId } from '@/lib/auth/org';
 import { getOrgSettings, listCampaigns, listSequences } from '@/lib/supabase/queries';
 import { campaignSequenceStatuses } from '@/lib/campaigns/sequence-status';
 import { getEmailDriver } from '@/lib/email/index';

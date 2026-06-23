@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getAdminEmails } from '@/lib/env';
-import { getCurrentUser, type CurrentUser } from '@/lib/supabase/org';
+import { getCurrentUser, type CurrentUser } from '@/lib/auth/org';
 
 /**
  * Admin gating for the /admin panel.

@@ -13,7 +13,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/supabase/org';
+import { getCurrentOrgId } from '@/lib/auth/org';
 import type { Template } from '@/lib/types/domain';
 
 // --- Raw row shape (snake_case, exactly as returned by PostgREST) ------------

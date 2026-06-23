@@ -19,7 +19,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/supabase/org';
+import { getCurrentOrgId } from '@/lib/auth/org';
 import { escapeLike } from '@/lib/supabase/like';
 
 // --- Inputs -------------------------------------------------------------------

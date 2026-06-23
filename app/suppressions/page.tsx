@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/supabase/org';
+import { getCurrentOrgId } from '@/lib/auth/org';
 import SuppressionAdmin, { type SuppressionRow } from '@/components/suppression-admin';
 
 export const dynamic = 'force-dynamic';

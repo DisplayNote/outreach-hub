@@ -14,7 +14,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentUser } from '@/lib/supabase/org';
+import { getCurrentUser } from '@/lib/auth/org';
 // mergeOrgSettingsPatch is generic over any jsonb settings blob (it just skips
 // `undefined` values onto a null-prototype target) — reuse it for user settings.
 import { mergeOrgSettingsPatch } from '@/lib/org-settings';

@@ -14,7 +14,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { getCurrentOrgId } from '@/lib/supabase/org';
+import { getCurrentOrgId } from '@/lib/auth/org';
 import { createClient } from '@/lib/supabase/server';
 import { getOrgSettings, getUserSettings } from '@/lib/supabase/queries';
 import { createAmdRuntime } from '@/lib/dialler/amd/runtime';
