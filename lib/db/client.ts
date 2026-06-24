@@ -1,11 +1,17 @@
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { getServerEnv } from '@/lib/env';
 
 // Single shared pool. `app_user` is a NON-owner role so RLS applies at runtime;
 // the owner role (used only for migrations) is never used by the app.
+//
+// Read DATABASE_URL directly from process.env (NOT via getServerEnv's zod parse)
+// so importing this module never throws at load time — node-postgres connects
+// lazily, so a missing URL only surfaces when a query actually runs. This keeps
+// test files that merely import the db (e.g. DATABASE_URL_TEST-gated suites that
+// then skip) from failing to load in CI. getServerEnv still validates
+// DATABASE_URL as required for the app's normal server boot.
 export const pool = new Pool({
-  connectionString: getServerEnv().DATABASE_URL,
+  connectionString: process.env.DATABASE_URL,
   max: Number(process.env.PGPOOL_MAX ?? 10),
   // TLS is conditional: a local Docker Postgres has no TLS (PGSSL=disable in
   // NON-production), while Azure Postgres Flexible Server presents a DigiCert
