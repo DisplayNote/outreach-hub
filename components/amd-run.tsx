@@ -17,7 +17,7 @@ import { logCallOutcome } from '@/lib/actions/dialler';
 import type { CallOutcomeKey } from '@/lib/dialler/types';
 import { getDiallerOutcomes } from '@/lib/dialler';
 import { startAmdRun, placeAmdCall, hangupAttempt, cancelAttempt, setRunStatus } from '@/lib/actions/dialler-amd';
-import { useAmdRun } from '@/lib/dialler/amd/realtime';
+import { useAmdRun } from '@/lib/dialler/amd/use-amd-run';
 import type { CallAttempt, CallAttemptState } from '@/lib/dialler/amd/types';
 import { Button, Card, EmptyState } from '@/components/ui';
 import type { DiallerQueueItem } from '@/components/dialler-run';
