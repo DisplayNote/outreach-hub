@@ -37,9 +37,11 @@ export function getEmailDriver(opts: { accessToken?: string; mailbox?: string } 
       return new MailpitDriver();
     case 'graph-dev':
     case 'graph-prod': {
-      const accessToken = opts.accessToken ?? process.env.GRAPH_ACCESS_TOKEN;
       return new GraphDriver(driver, {
-        ...(accessToken ? { accessToken } : {}),
+        // Callers must pass opts.accessToken explicitly: the cron path via MSAL
+        // appOnlyGraphToken(), the manual path via the user's delegated token.
+        // No env-var fallback — GraphDriver throws GRAPH_NO_TOKEN when absent.
+        ...(opts.accessToken ? { accessToken: opts.accessToken } : {}),
         // mailbox set → app-only path (/users/{mailbox}); absent → delegated (/me).
         ...(opts.mailbox ? { mailbox: opts.mailbox } : {}),
       });

@@ -21,7 +21,9 @@ async function cleanup(): Promise<void> {
   const { Client } = await import('pg');
   const admin = new Client({
     connectionString: process.env.DATABASE_URL_ADMIN,
-    ssl: false,
+    ssl: process.env.PGSSL === 'disable' && process.env.NODE_ENV !== 'production'
+      ? false
+      : { rejectUnauthorized: true },
   });
   await admin.connect();
   const r = await admin.query('select id, org_id from public.users where lower(email) = lower($1)', [
@@ -58,7 +60,12 @@ maybe('provisionUser', () => {
     // app_user with no org GUC set, RLS hides the row entirely (proving the row
     // is real but org-scoped — visibility is exercised in the next test).
     const { Client } = await import('pg');
-    const admin = new Client({ connectionString: process.env.DATABASE_URL_ADMIN, ssl: false });
+    const admin = new Client({
+      connectionString: process.env.DATABASE_URL_ADMIN,
+      ssl: process.env.PGSSL === 'disable' && process.env.NODE_ENV !== 'production'
+        ? false
+        : { rejectUnauthorized: true },
+    });
     await admin.connect();
     const count = await admin.query(
       'select count(*)::int as n from public.users where lower(email) = lower($1)',
