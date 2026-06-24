@@ -23,6 +23,15 @@ locals {
   )
 }
 
+# The composed DATABASE_URL (it embeds the app_user password) is stored in Key
+# Vault and referenced by the app via its managed identity — not injected into
+# the Container App revision by value, where a Reader could read it back.
+resource "azurerm_key_vault_secret" "database_url" {
+  name         = "database-url"
+  value        = local.app_database_url
+  key_vault_id = azurerm_key_vault.this.id
+}
+
 resource "azurerm_container_app" "app" {
   name                         = "ca-outreach-app-${var.env}"
   resource_group_name          = azurerm_resource_group.this.name
@@ -38,10 +47,11 @@ resource "azurerm_container_app" "app" {
     identity = "SystemAssigned"
   }
 
-  # ─── Secrets (Key Vault references + the composed DATABASE_URL) ─────────────
+  # ─── Secrets (all via Key Vault references through the app's identity) ──────
   secret {
-    name  = "database-url"
-    value = local.app_database_url
+    name                = "database-url"
+    identity            = "System"
+    key_vault_secret_id = azurerm_key_vault_secret.database_url.id
   }
   secret {
     name                = "auth-secret"

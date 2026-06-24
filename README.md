@@ -1,93 +1,76 @@
 # Outreach Hub
 
 DisplayNote's multi-user outreach platform. Replaces the legacy single-file PWA
-(`legacy/PaulsOutreachHub.html`) with a hosted Next.js + Supabase product.
+(`legacy/PaulsOutreachHub.html`) with a hosted Next.js app on Azure.
 
 ## Quick start
 
-Prerequisites: Node 24.13+ (prefer `.nvmrc`), pnpm 11+, Docker Desktop running,
-and an `.env.bootstrap` file (copy `.env.bootstrap.example`; see
-[docs/deployment.md](docs/deployment.md) for the pre-flight).
+Prerequisites: Node 24.13+ (see `.nvmrc`), pnpm 11+, Docker Desktop running, and
+an `.env.bootstrap` file (copy `.env.bootstrap.example`; for local dev you only
+need the Microsoft `MS_*` values).
 
 ```bash
 git clone https://github.com/DisplayNote/outreach-hub.git
 cd outreach-hub
-cp .env.bootstrap.example .env.bootstrap
-# For local dev, fill ONLY the Microsoft values (MS_CLIENT_ID/SECRET/TENANT).
-make bootstrap   # LOCAL: writes .env.local (no Supabase cloud / Vercel needed)
-make dev         # boots Mailpit + Supabase (local CLI stack) + Next.js
+pnpm install
+cp .env.bootstrap.example .env.bootstrap   # fill the MS_* values for local dev
+make bootstrap   # writes .env.local (no cloud account needed)
+make dev         # docker Postgres 16 + Mailpit → run migrations → next dev
 ```
 
-Deploying the prod cloud environment later needs the Supabase/Vercel creds in
-`.env.bootstrap`, then `make bootstrap-prod` (writes `infra/envs/prod.tfvars`).
+`make dev` brings up a local Postgres + Mailpit, applies the SQL migrations
+(`scripts/migrate.mjs`), and starts `next dev`. `make seed` loads a
+full-coverage dataset. Sign in via the dev login (enabled only on a loopback
+`APP_BASE_URL`); no Microsoft round-trip needed locally.
 
-For a production-style local app container instead of host `next dev`:
-
-```bash
-make dev-docker  # Supabase CLI + app container + Mailpit
-```
-
-Windows without GNU Make:
-
-```powershell
-Copy-Item .env.bootstrap.example .env.bootstrap
-# Fill .env.bootstrap with real values.
-.\scripts\dev-bootstrap.ps1
-.\scripts\dev-docker.ps1
-```
-
-The first run pulls Supabase container images (1–5 min). After that:
+Windows without GNU Make: `Copy-Item .env.bootstrap.example .env.bootstrap`, fill
+it, then `.\scripts\dev-bootstrap.ps1` and `.\scripts\dev.ps1`.
 
 | What | URL |
 |---|---|
 | App | http://localhost:3000 |
-| Supabase Studio | http://localhost:54323 |
 | Mailpit (dev SMTP UI) | http://localhost:8025 |
-| Supabase API | http://localhost:54321 |
+| Postgres | localhost:5433 (db `outreach`) |
 
-`make help` lists every target.
+`make help` lists every target. Deploying to Azure: see
+[docs/deployment.md](docs/deployment.md) (`make bootstrap-prod` → Terraform).
 
 ## Stack
 
-- **Frontend** — Next.js 15 (App Router), TypeScript strict, Vercel hosting
-- **Backend** — Supabase (Postgres + RLS + Auth + Realtime + Edge Functions + Vault + Storage)
-- **Auth** — Microsoft Entra ID (Azure OIDC) via Supabase Auth, multi-tenant
-- **Email** — pluggable `EmailDriver` interface: `mock` / `mailpit` / `graph-dev` / `graph-prod`
-- **Local runtime** — Supabase CLI-managed stack plus Mailpit; optional Next.js app container
-- **IaC** — Terraform in `infra/` (Supabase + Vercel); DNS managed manually
-- **CI/CD** — GitHub Actions (`ci`, `infra`, `db-migrate`, `functions-deploy`)
+- **Frontend / hosting** — Next.js 15 (App Router, `output: 'standalone'`), TypeScript strict, on **Azure Container Apps** (image in ACR)
+- **Database** — **Azure Database for PostgreSQL Flexible Server**; data access is `pg` + Drizzle behind `withRls(ctx, fn)` (a per-request tx that sets the `app.user_id`/`app.org_id` GUCs the **RLS** policies read). Secrets in **Azure Key Vault**
+- **Auth** — Microsoft Entra ID via **Auth.js v5**, tenant-pinned; the signed JWT feeds the RLS context
+- **Email** — pluggable `EmailDriver`: `mock` / `mailpit` / `graph-dev` / `graph-prod`; scheduled send/scan run as **ACA Jobs**
+- **Local runtime** — Docker Postgres 16 + Mailpit (`docker-compose.dev.yml`)
+- **IaC** — Terraform `azurerm` in `infra/`; DNS managed manually
+- **CI/CD** — GitHub Actions (`ci`, `infra`, `deploy`, `db-migrate`) via Azure OIDC
 - **Tests** — Vitest (unit) + Playwright (e2e)
 
-See [docs/architecture.md](docs/architecture.md) for the design.
+See [docs/architecture.md](docs/architecture.md) for the design, and the
+migration record at `docs/superpowers/plans/2026-06-23-azure-migration.md`.
 
 ## Repo layout
 
 ```
 app/             Next.js App Router (routes, layouts, server components)
-components/ui/   Reusable UI primitives (lands in Phase 1)
+components/      UI components
 lib/
   env.ts         Zod-validated env access
-  supabase/      Browser + server clients, SSR middleware helper
-  email/         EmailDriver abstraction + mock/mailpit/graph implementations
-  auth/          Auth helpers (lands in Phase 1)
-supabase/
-  migrations/    SQL migrations
-  functions/     Deno edge functions
-  config.toml    Local Supabase stack config
-infra/           Terraform (Supabase + Vercel; DNS is manual)
-.github/workflows/  CI/CD pipelines
-tests/{unit,e2e}/   Vitest + Playwright tests
-scripts/         Bootstrap, dev runtime, Docker runtime, and teardown scripts
+  db/            pg pool + Drizzle, withRls / withServiceRls, schema, escapeLike
+  auth/          Auth.js config, session→RLS helpers, provisioning, admin allowlist, Graph tokens
+  email/         EmailDriver abstraction + mock/mailpit/graph + cron cores
+  graph/         delegated + app-only (MSAL) Microsoft Graph tokens
+supabase/migrations/  Plain SQL migrations (applied by scripts/migrate.mjs; legacy dir name)
+infra/           Terraform azurerm (RG, ACR, Postgres, Key Vault, Container App, cron Jobs)
+.github/workflows/   CI/CD pipelines (ci, infra, deploy, db-migrate)
+docker-compose.dev.yml  Local Postgres 16 + Mailpit
+scripts/         dev-bootstrap, dev, teardown, migrate.mjs, seed-dev.mjs
+tests/{unit,e2e}/    Vitest + Playwright tests
 docs/            development.md, architecture.md, deployment.md
-legacy/          Original PaulsOutreachHub.html + Cloudflare AMD worker (reference only)
+legacy/          Original PaulsOutreachHub.html (reference only)
 ```
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for branch/commit conventions.
 PRs must keep `pnpm typecheck`, `pnpm lint`, and `pnpm test` green.
-
-## Status
-
-Phase 0 — bootstrap complete.
-See [docs/OUTREACH_HUB_EXECUTION_PLAN.md](docs/OUTREACH_HUB_EXECUTION_PLAN.md) for the roadmap.

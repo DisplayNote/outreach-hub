@@ -25,7 +25,10 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     // Surface per-contact send failures as a non-2xx so monitoring alerts: a
     // deploy misconfiguration (e.g. a missing Graph token) can make every send
     // fail while the route would otherwise look healthy with { ok: true }.
-    const ok = result.errors === 0;
+    // A configured org that couldn't be sent for (no resolvable sender mailbox)
+    // is a deploy misconfiguration, not a healthy run — fail the job so it alerts
+    // (mirrors scan/route). `errors` covers per-contact send/persist failures.
+    const ok = result.errors === 0 && result.skipped === 0;
     return NextResponse.json({ ok, ...result }, { status: ok ? 200 : 500 });
   } catch (cause) {
     console.error('email run cron failed', cause);

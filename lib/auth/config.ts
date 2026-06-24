@@ -49,8 +49,8 @@ function isPublicPath(pathname: string): boolean {
 
 // Build the provider list. The Entra provider is always present. The dev
 // Credentials provider is added ONLY when isAuthMockEnabled() — the same
-// triple-gate used elsewhere: NON-production AND AUTH_MOCK_ENABLED=true AND the
-// configured Supabase URL is loopback. It is therefore impossible to enable in
+// triple-gate used elsewhere: NON-production AND AUTH_MOCK_ENABLED=true AND
+// APP_BASE_URL is a loopback host. It is therefore impossible to enable in
 // production (NODE_ENV gate) regardless of how the other flags are set,
 // preserving the security property that no auth backdoor is reachable in prod.
 const providers: NextAuthConfig['providers'] = [

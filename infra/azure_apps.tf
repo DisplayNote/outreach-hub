@@ -70,6 +70,10 @@ resource "azurerm_container_app_job" "email_send" {
   replica_timeout_in_seconds = 600
   replica_retry_limit        = 1
 
+  identity {
+    type = "SystemAssigned"
+  }
+
   schedule_trigger_config {
     # Weekdays 09:15 UTC — matches the retired vercel.json send schedule.
     cron_expression          = "15 9 * * 1-5"
@@ -97,8 +101,9 @@ resource "azurerm_container_app_job" "email_send" {
   }
 
   secret {
-    name  = "cron-secret"
-    value = random_password.cron_secret.result
+    name                = "cron-secret"
+    identity            = "System"
+    key_vault_secret_id = azurerm_key_vault_secret.cron_secret.id
   }
 
   # Closes the Phase-4 deferral: refuse to apply if the cron target ever resolves
@@ -120,6 +125,10 @@ resource "azurerm_container_app_job" "email_scan" {
 
   replica_timeout_in_seconds = 600
   replica_retry_limit        = 1
+
+  identity {
+    type = "SystemAssigned"
+  }
 
   schedule_trigger_config {
     # Every 30 min, 07:00–18:00 UTC weekdays — matches the retired vercel.json scan schedule.
@@ -148,8 +157,9 @@ resource "azurerm_container_app_job" "email_scan" {
   }
 
   secret {
-    name  = "cron-secret"
-    value = random_password.cron_secret.result
+    name                = "cron-secret"
+    identity            = "System"
+    key_vault_secret_id = azurerm_key_vault_secret.cron_secret.id
   }
 
   # Same guard as email_send: refuse to apply against a loopback app URL.
@@ -159,4 +169,19 @@ resource "azurerm_container_app_job" "email_scan" {
       error_message = "app_internal_url must be the app's real ingress FQDN, not a loopback host (got: ${local.app_internal_url})."
     }
   }
+}
+
+# Each cron Job resolves its `cron-secret` Key Vault reference through its own
+# managed identity (same pattern + first-apply propagation trade-off as the app
+# — see azure_app.tf). This keeps CRON_SECRET out of the Job revision config.
+resource "azurerm_role_assignment" "job_send_kv_secrets_user" {
+  scope                = azurerm_key_vault.this.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_container_app_job.email_send.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "job_scan_kv_secrets_user" {
+  scope                = azurerm_key_vault.this.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_container_app_job.email_scan.identity[0].principal_id
 }
