@@ -45,7 +45,7 @@ cat > "$ROOT/.env.local" <<EOF
 # migrations connect as the postgres superuser (DATABASE_URL_ADMIN).
 DATABASE_URL=postgres://app_user:apppw@localhost:5433/outreach
 DATABASE_URL_ADMIN=postgres://postgres:postgres@localhost:5433/outreach
-DATABASE_URL_TEST=postgres://app_user:apppw@localhost:5433/outreach
+# DATABASE_URL_TEST=postgres://app_user:apppw@localhost:5433/outreach  # Uncomment to run DB integration tests
 APP_USER_PASSWORD=apppw
 # Local Postgres has no TLS; the migration runner honours PGSSL=disable in non-prod.
 PGSSL=disable

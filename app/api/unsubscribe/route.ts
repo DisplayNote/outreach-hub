@@ -118,10 +118,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ctx = claimFrom(request);
-  if (!ctx) return new NextResponse(null, { status: 404 });
-  if (!ctx.claim) return new NextResponse(null, { status: 400 });
+  // Mirror the GET error pages so a browser form-submit never shows a blank page.
+  // One-click List-Unsubscribe-Post clients ignore the body regardless.
+  if (!ctx) return page('Not available', 'Unsubscribe is not configured.', 404);
+  if (!ctx.claim) return page('Invalid link', 'This unsubscribe link is invalid or has expired.', 400);
   const ok = await applyUnsubscribe(ctx.claim);
   if (!ok) return new NextResponse(null, { status: 500 });
-  // A browser form-submit shows this page; one-click clients ignore the body.
   return page('Unsubscribed', 'You will no longer receive these emails. You can close this page.', 200);
 }
