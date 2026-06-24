@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { getSession } from '@/lib/auth/session';
 import {
   getActivityFeed,
   getPipelineSummary,
   getReportMetrics,
   getTodayContacts,
-} from '@/lib/supabase/queries';
+} from '@/lib/db/queries';
 import type { Contact, TouchpointChannel } from '@/lib/types/domain';
 import { Avatar, Badge, Card, EmptyState, Icon, Pill, StatCard } from '@/components/ui';
 import { STATUS_PILLS } from '@/lib/ui/status';
@@ -63,12 +63,8 @@ const CHANNEL_LABELS: Record<TouchpointChannel, string> = {
 // --- Page --------------------------------------------------------------------
 
 export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 
@@ -80,7 +76,7 @@ export default async function Home() {
     getActivityFeed(8),
   ]);
 
-  const greeting = (user.email?.split('@')[0] ?? 'there').replace(/[._-]+/g, ' ');
+  const greeting = (session.email?.split('@')[0] ?? 'there').replace(/[._-]+/g, ' ');
   const today = todayDateString();
 
   // Pipeline bars: show populated buckets, widest-first, scaled to the biggest.

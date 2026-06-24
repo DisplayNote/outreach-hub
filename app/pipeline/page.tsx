@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getPipelineSummary, listCampaigns } from '@/lib/supabase/queries';
+import { getSession } from '@/lib/auth/session';
+import { getPipelineSummary, listCampaigns } from '@/lib/db/queries';
 import { Card, EmptyState, Pill, StatCard } from '@/components/ui';
 import { STATUS_PILLS } from '@/lib/ui/status';
 
@@ -8,12 +8,8 @@ import { STATUS_PILLS } from '@/lib/ui/status';
 export const dynamic = 'force-dynamic';
 
 export default async function PipelinePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

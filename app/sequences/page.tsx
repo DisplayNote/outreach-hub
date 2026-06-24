@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth/session';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
-import { listSequences } from '@/lib/supabase/queries';
+import { listSequences } from '@/lib/db/queries';
 import { deleteSequence } from '@/lib/actions/sequences';
 import { Button, Card, EmptyState, Icon } from '@/components/ui';
 
@@ -21,12 +21,8 @@ async function deleteSequenceForm(formData: FormData): Promise<void> {
 // --- Page --------------------------------------------------------------------
 
 export default async function SequencesPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

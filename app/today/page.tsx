@@ -1,6 +1,10 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getTodayContacts } from '@/lib/supabase/queries';
+import { inArray, desc } from 'drizzle-orm';
+import { getSession } from '@/lib/auth/session';
+import { withRls } from '@/lib/db/rls';
+import { rlsCtxFromSession } from '@/lib/auth/session';
+import { touchpoints } from '@/lib/db/schema';
+import { getTodayContacts } from '@/lib/db/queries';
 import type { Contact, TouchpointChannel } from '@/lib/types/domain';
 import { Avatar, Badge, Card, EmptyState, Pill } from '@/components/ui';
 import { STATUS_PILLS } from '@/lib/ui/status';
@@ -79,30 +83,32 @@ async function getLastTouchpoints(
   const result = new Map<string, LastTouchpoint>();
   if (contactIds.length === 0) return result;
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from('touchpoints')
-    .select('contact_id, channel, occurred_at')
-    .in('contact_id', [...contactIds])
-    .order('occurred_at', { ascending: false });
+  const session = await getSession();
+  if (!session) return result;
 
-  if (error) {
+  let rows: Array<{ contactId: string; channel: TouchpointChannel; occurredAt: string }>;
+  try {
+    rows = await withRls(rlsCtxFromSession(session), (tx) =>
+      tx
+        .select({
+          contactId: touchpoints.contactId,
+          channel: touchpoints.channel,
+          occurredAt: touchpoints.occurredAt,
+        })
+        .from(touchpoints)
+        .where(inArray(touchpoints.contactId, [...contactIds]))
+        .orderBy(desc(touchpoints.occurredAt)),
+    );
+  } catch {
     // Last-touchpoint info is a nice-to-have on this read-only view; if it
     // fails we still render the due list rather than 500 the whole page.
     return result;
   }
 
-  const rows =
-    (data as Array<{
-      contact_id: string;
-      channel: TouchpointChannel;
-      occurred_at: string;
-    }> | null) ?? [];
-
   // Rows are newest-first, so the first one seen per contact is the latest.
   for (const row of rows) {
-    if (!result.has(row.contact_id)) {
-      result.set(row.contact_id, { channel: row.channel, occurredAt: row.occurred_at });
+    if (!result.has(row.contactId)) {
+      result.set(row.contactId, { channel: row.channel, occurredAt: row.occurredAt });
     }
   }
 
@@ -112,12 +118,8 @@ async function getLastTouchpoints(
 // --- Page --------------------------------------------------------------------
 
 export default async function TodayPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

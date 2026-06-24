@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/auth/org';
+import { desc } from 'drizzle-orm';
+import { getSession, rlsCtxFromSession } from '@/lib/auth/session';
+import { withRls } from '@/lib/db/rls';
+import { suppressions } from '@/lib/db/schema';
 import SuppressionAdmin, { type SuppressionRow } from '@/components/suppression-admin';
 
 export const dynamic = 'force-dynamic';
@@ -11,29 +13,29 @@ export const dynamic = 'force-dynamic';
  * remove one (the "un-skip" path).
  */
 export default async function SuppressionsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const session = await getSession();
+  if (!session) redirect('/login');
 
-  const orgId = await getCurrentOrgId();
-  const { data, error } = await supabase
-    .from('suppressions')
-    .select('id, email, reason, created_at')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: false });
-  // Surface a load failure instead of rendering an empty list — a silent empty
-  // suppression list reads as "nobody is suppressed" and would let an operator
-  // re-enable sending to addresses that are actually still suppressed.
-  if (error) throw new Error(`SuppressionsPage: failed to load suppressions: ${error.message}`);
-
-  const rows: SuppressionRow[] = (data ?? []).map((r) => ({
-    id: r.id as string,
-    email: r.email as string,
-    reason: r.reason as string,
-    createdAt: r.created_at as string,
-  }));
+  // RLS scopes `suppressions` to the caller's org (no app-layer org filter).
+  // A load failure throws (a silent empty list reads as "nobody is suppressed"
+  // and would let an operator re-enable sending to still-suppressed addresses).
+  const rows: SuppressionRow[] = await withRls(rlsCtxFromSession(session), async (tx) => {
+    const data = await tx
+      .select({
+        id: suppressions.id,
+        email: suppressions.email,
+        reason: suppressions.reason,
+        createdAt: suppressions.createdAt,
+      })
+      .from(suppressions)
+      .orderBy(desc(suppressions.createdAt));
+    return data.map((r) => ({
+      id: r.id,
+      email: r.email,
+      reason: r.reason,
+      createdAt: r.createdAt,
+    }));
+  });
 
   return (
     <div className="content__inner">

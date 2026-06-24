@@ -1,20 +1,16 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth/session';
 import ApolloImportForm from '@/components/apollo-import-form';
-import { createClient } from '@/lib/supabase/server';
-import { listCampaigns } from '@/lib/supabase/queries';
+import { listCampaigns } from '@/lib/db/queries';
 import { Card, EmptyState } from '@/components/ui';
 
 // Auth state + campaign list change per request; never prerender.
 export const dynamic = 'force-dynamic';
 
 export default async function ImportPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

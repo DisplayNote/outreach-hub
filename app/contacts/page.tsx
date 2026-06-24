@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { listContacts } from '@/lib/supabase/queries';
-import type { ContactWithCampaign } from '@/lib/supabase/queries';
+import { getSession } from '@/lib/auth/session';
+import { listContacts } from '@/lib/db/queries';
+import type { ContactWithCampaign } from '@/lib/db/queries';
 import { Avatar, Card, EmptyState, Icon, Pill } from '@/components/ui';
 import { STATUS_PILLS } from '@/lib/ui/status';
 import { contactInitials } from '@/lib/ui/initials';
@@ -36,12 +36,8 @@ function formatDate(isoDate: string): string {
 // --- Page --------------------------------------------------------------------
 
 export default async function ContactsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

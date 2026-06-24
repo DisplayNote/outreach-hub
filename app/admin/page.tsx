@@ -3,7 +3,7 @@ import type { AdminSettingsFormState } from '@/components/admin-settings-form';
 import { updateOrgSettings } from '@/lib/actions/settings';
 import type { UpdateOrgSettingsInput } from '@/lib/actions/settings';
 import { requireAdmin } from '@/lib/auth/admin';
-import { getOrgSettings } from '@/lib/supabase/queries';
+import { getOrgSettings } from '@/lib/db/queries';
 
 // Auth + admin gate + org settings all change per request; never prerender.
 export const dynamic = 'force-dynamic';

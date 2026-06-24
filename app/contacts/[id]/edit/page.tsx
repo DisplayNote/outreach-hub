@@ -1,9 +1,9 @@
 import { notFound, redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth/session';
 import ContactForm from '@/components/contact-form';
 import { updateContact } from '@/lib/actions/contacts';
 import type { UpdateContactInput } from '@/lib/actions/contacts';
-import { createClient } from '@/lib/supabase/server';
-import { getContact, listCampaigns } from '@/lib/supabase/queries';
+import { getContact, listCampaigns } from '@/lib/db/queries';
 import type { ContactStatus } from '@/lib/types/domain';
 import { CONTACT_STATUSES } from '@/lib/types/domain';
 import { Card } from '@/components/ui';
@@ -45,12 +45,8 @@ export default async function EditContactPage({
 }) {
   const { id } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

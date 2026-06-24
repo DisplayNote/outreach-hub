@@ -1,10 +1,12 @@
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/auth/org';
-import { getOrgSettings, listCampaigns, listSequences } from '@/lib/supabase/queries';
+import { count, isNotNull } from 'drizzle-orm';
+import { getSession, rlsCtxFromSession } from '@/lib/auth/session';
+import { withRls, type DrizzleTx } from '@/lib/db/rls';
+import { contacts } from '@/lib/db/schema';
+import { getOrgSettings, listCampaigns, listSequences } from '@/lib/db/queries';
 import { campaignSequenceStatuses } from '@/lib/campaigns/sequence-status';
 import { getEmailDriver } from '@/lib/email/index';
-import { supabaseEmailStore } from '@/lib/email/store';
+import { drizzleEmailStore } from '@/lib/email/store';
 import { renderTemplate } from '@/lib/email/render';
 import { isEmailMockEnabled } from '@/lib/env';
 import { Icon } from '@/components/ui';
@@ -25,16 +27,17 @@ function contactName(firstName: string | null, lastName: string | null, email: s
  * "Run sender now" / "Scan inbox now" / enrol / simulate actions.
  */
 export default async function QueuePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const session = await getSession();
+  if (!session) redirect('/login');
 
-  const orgId = await getCurrentOrgId();
+  const ctx = rlsCtxFromSession(session);
+  const orgId = session.orgId;
+  // Bind the store to the caller's RLS session; each method runs its own short
+  // transaction (SET LOCAL GUCs never leak between calls).
+  const runTx = <T,>(fn: (tx: DrizzleTx) => Promise<T>): Promise<T> => withRls(ctx, fn);
   const settings = await getOrgSettings();
   const driver = getEmailDriver();
-  const store = supabaseEmailStore(supabase, { orgId, provider: driver.name, settings });
+  const store = drizzleEmailStore(runTx, { orgId, provider: driver.name, settings });
 
   const today = new Date().toISOString().slice(0, 10);
   const due = await store.dueContacts(today);
@@ -47,10 +50,13 @@ export default async function QueuePage() {
   // How many contacts are enrolled at all (follow_up set) — a contact only ever
   // reaches the due queue once enrolled, so this distinguishes "nobody enrolled
   // yet" from "enrolled but not due today". RLS scopes the count to the org.
-  const { count: enrolledCount } = await supabase
-    .from('contacts')
-    .select('id', { count: 'exact', head: true })
-    .not('follow_up', 'is', null);
+  const enrolledRows = await runTx((tx) =>
+    tx
+      .select({ value: count() })
+      .from(contacts)
+      .where(isNotNull(contacts.followUp)),
+  );
+  const enrolledCount = enrolledRows[0]?.value ?? 0;
 
   const queue: QueueItem[] = due.map((d) => ({
     contactId: d.contact.id,

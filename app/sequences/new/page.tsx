@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { getSession } from '@/lib/auth/session';
 import { createSequence } from '@/lib/actions/sequences';
 import { Button, Card, Field } from '@/components/ui';
 
@@ -8,12 +8,8 @@ import { Button, Card, Field } from '@/components/ui';
 export const dynamic = 'force-dynamic';
 
 export default async function NewSequencePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 
