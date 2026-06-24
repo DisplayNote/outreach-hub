@@ -25,6 +25,10 @@ for _ in $(seq 1 30); do
   fi
   sleep 1
 done
+docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U postgres -d outreach >/dev/null 2>&1 || {
+  echo "ERROR: Postgres did not become ready after 30 s. Check 'docker compose logs postgres'." >&2
+  exit 1
+}
 
 echo "[2/3] Applying migrations (scripts/migrate.mjs)…"
 node scripts/migrate.mjs

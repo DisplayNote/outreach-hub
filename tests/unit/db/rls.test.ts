@@ -36,6 +36,6 @@ maybe('withRls', () => {
     const { pool } = await import('@/lib/db/client');
     await withRls({ userId: null, orgId: '00000000-0000-0000-0000-0000000000bb' }, async () => {});
     const r = await pool.query("select current_setting('app.org_id', true) as org");
-    expect(r.rows[0].org).toBe(''); // SET LOCAL did not escape the tx
+    expect(r.rows[0].org ?? '').toBe(''); // SET LOCAL did not escape the tx; PG returns null when unset
   });
 });

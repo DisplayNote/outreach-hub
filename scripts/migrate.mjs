@@ -4,6 +4,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { Client } from 'pg';
 
+if (!process.env.DATABASE_URL_ADMIN) {
+  console.error('migrate: DATABASE_URL_ADMIN is required. Set it before running migrations.');
+  process.exit(1);
+}
+
 const dir = new URL('../supabase/migrations/', import.meta.url);
 
 const client = new Client({

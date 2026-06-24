@@ -1,7 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, beforeAll, it, expect } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { db } from '@/lib/db/client';
-import { withServiceRls } from '@/lib/db/rls-service';
 
 // Integration test (gated on DATABASE_URL_TEST) for the AMD/dialler RLS path —
 // the cross-phase regression the final review caught: on Azure the app connects
@@ -11,8 +9,19 @@ import { withServiceRls } from '@/lib/db/rls-service';
 // every inbound call event is silently dropped. This locks both in.
 const maybe = process.env.DATABASE_URL_TEST ? describe : describe.skip;
 
+// Patch DATABASE_URL before lib/db/client creates its Pool (lazy dynamic imports
+// below ensure the module loads only after this assignment).
+beforeAll(() => {
+  if (process.env.DATABASE_URL_TEST) {
+    process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
+  }
+});
+
 maybe('dialler AMD RLS (webhook discovery + writes)', () => {
   it('discovers an attempt org-blind via the definer, writes org-scoped, and denies the bare org-blind read', async () => {
+    const { db } = await import('@/lib/db/client');
+    const { withServiceRls } = await import('@/lib/db/rls-service');
+
     const cc = `cc-rls-test-${Date.now()}`;
     const email = `amd-rls-${Date.now()}@test.local`;
 

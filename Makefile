@@ -32,10 +32,9 @@ build:  ## Production build
 	@pnpm build
 
 db-reset:  ## Reset the local DB: recreate the Postgres volume, then re-apply migrations
-	@docker compose -f docker-compose.dev.yml rm -sfv postgres
-	@docker volume rm outreach-hub_outreach-pgdata 2>/dev/null || true
+	@docker compose -f docker-compose.dev.yml down -v 2>/dev/null || true
 	@docker compose -f docker-compose.dev.yml up -d postgres
-	@bash -c 'for _ in $$(seq 1 30); do docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U postgres -d outreach >/dev/null 2>&1 && break; sleep 1; done'
+	@bash -c 'for _ in $$(seq 1 30); do docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U postgres -d outreach >/dev/null 2>&1 && break; sleep 1; done; docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U postgres -d outreach >/dev/null 2>&1 || { echo "ERROR: Postgres did not become ready." >&2; exit 1; }'
 	@bash -c '. scripts/lib/load-dotenv.sh && load_dotenv .env.local && node scripts/migrate.mjs'
 
 db-migrate:  ## Apply SQL migrations to the target DB (DATABASE_URL_ADMIN)

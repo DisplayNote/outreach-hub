@@ -21,6 +21,8 @@ for ($i = 0; $i -lt 30; $i++) {
   if ($LASTEXITCODE -eq 0) { break }
   Start-Sleep -Seconds 1
 }
+docker compose -f docker-compose.dev.yml exec -T postgres pg_isready -U postgres -d outreach *> $null
+if ($LASTEXITCODE -ne 0) { throw "Postgres did not become ready after 30 s. Check: docker compose logs postgres." }
 
 Write-Host '[2/3] Applying migrations (scripts/migrate.mjs)...'
 node scripts/migrate.mjs
