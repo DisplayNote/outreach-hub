@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { withRls } from '@/lib/db/rls';
 import { requireSession, rlsCtxFromSession } from '@/lib/auth/session';
 import { contacts as contactsTable } from '@/lib/db/schema';
-import { escapeLike } from '@/lib/supabase/like';
+import { escapeLike } from '@/lib/db/like';
 
 // --- Inputs -------------------------------------------------------------------
 

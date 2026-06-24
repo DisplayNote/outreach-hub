@@ -21,7 +21,7 @@ import { getServerEnv } from '@/lib/env';
 import { withServiceRls } from '@/lib/db/rls-service';
 import { contacts, suppressions } from '@/lib/db/schema';
 import { verifyUnsubscribeToken } from '@/lib/email/unsubscribe';
-import { escapeLike } from '@/lib/supabase/like';
+import { escapeLike } from '@/lib/db/like';
 
 export const runtime = 'nodejs';
 

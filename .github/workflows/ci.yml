@@ -44,8 +44,15 @@ jobs:
 
       - name: Build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder' }}
+          # Placeholder env so `next build` compiles without real credentials.
+          # getServerEnv() is only evaluated at runtime in the container (where
+          # ACA injects the real values from Key Vault); these just satisfy the
+          # schema during static analysis / page data collection.
+          DATABASE_URL: postgres://app_user:placeholder@localhost:5432/outreach
+          AUTH_SECRET: build-placeholder
+          AZURE_AD_CLIENT_ID: build-placeholder
+          AZURE_AD_CLIENT_SECRET: build-placeholder
+          AZURE_AD_TENANT_ID: '11111111-1111-1111-1111-111111111111'
         run: pnpm build
 
   e2e:
@@ -54,6 +61,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: build-and-test
+
+    # A throwaway Postgres so the dev server (playwright webServer = `pnpm dev`)
+    # boots with a real DATABASE_URL. Migrations run before the suite.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: outreach
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://app_user:apppw@localhost:5433/outreach
+      DATABASE_URL_ADMIN: postgres://postgres:postgres@localhost:5433/outreach
+      APP_USER_PASSWORD: apppw
+      PGSSL: disable
+      APP_BASE_URL: http://localhost:3000
+      AUTH_MOCK_ENABLED: 'true'
 
     steps:
       - name: Checkout
@@ -73,13 +105,13 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
+      - name: Apply migrations
+        run: node scripts/migrate.mjs
+
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run Playwright
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder' }}
         run: pnpm test:e2e
 
       - name: Upload Playwright report

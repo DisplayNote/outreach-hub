@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeLike } from '@/lib/supabase/like';
+import { escapeLike } from '@/lib/db/like';
 
 describe('escapeLike', () => {
   it('leaves ordinary values untouched', () => {

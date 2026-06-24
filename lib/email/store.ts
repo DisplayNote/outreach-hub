@@ -16,7 +16,7 @@ import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import type { Contact, OrgSettings } from '@/lib/types/domain';
 import type { DrizzleTx } from '@/lib/db/rls';
 import { resolveStatusEffect } from '@/lib/dialler/outcomes';
-import { escapeLike } from '@/lib/supabase/like';
+import { escapeLike } from '@/lib/db/like';
 import { isSystemSender } from '@/lib/email/classify';
 import type { SentRef, InboundMessage } from '@/lib/email/types';
 import { toContact, type ContactRow } from '@/lib/db/contact-row';

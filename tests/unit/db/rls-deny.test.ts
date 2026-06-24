@@ -34,8 +34,6 @@ beforeAll(async () => {
   if (!process.env.DATABASE_URL_TEST) return;
   // The db client reads server env at import time; point it at the test DB.
   process.env.DATABASE_URL = process.env.DATABASE_URL_TEST;
-  process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'http://localhost:54321';
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= 'anon-key';
 
   const c = adminClient();
   await c.connect();

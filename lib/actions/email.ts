@@ -27,7 +27,7 @@ import { EmailDriverError } from '@/lib/email/types';
 import { businessDayAdd } from '@/lib/email/schedule';
 import { buildSimulatedReply, buildSimulatedBounce } from '@/lib/email/mock';
 import { pushDevInbound } from '@/lib/email/dev-inbox';
-import { escapeLike } from '@/lib/supabase/like';
+import { escapeLike } from '@/lib/db/like';
 import { isEmailMockEnabled } from '@/lib/env';
 import type { SuppressionReason } from '@/lib/email/types';
 import type { OrgSettings } from '@/lib/types/domain';

@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Generates `infra/envs/prod.tfvars` (the single cloud environment) from
-# `.env.bootstrap`. Idempotent. Run this only when deploying the prod cloud
+# `.env.bootstrap`. Idempotent. Run this only when deploying the prod Azure
 # infrastructure — local development (`make bootstrap` + `make dev`) needs none
 # of these values.
+#
+# AUTH_SECRET / CRON_SECRET / UNSUBSCRIBE_SECRET are NOT generated here: Terraform
+# creates them (random_password) and stores them in Key Vault.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,9 +28,10 @@ require() {
   fi
 }
 
-for v in GITHUB_REPO SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD \
-         VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID \
-         MS_CLIENT_ID MS_CLIENT_SECRET TF_STATE_KEY; do
+for v in AZURE_SUBSCRIPTION_ID AZURE_TENANT_ID \
+         PG_ADMIN_LOGIN PG_ADMIN_PASSWORD \
+         AZURE_AD_CLIENT_ID AZURE_AD_CLIENT_SECRET AZURE_AD_TENANT_ID \
+         CRON_ORG_ID CRON_SENDER_EMAIL; do
   require "$v"
 done
 
@@ -36,19 +40,22 @@ mkdir -p "$ROOT/infra/envs"
 cat > "$ROOT/infra/envs/prod.tfvars" <<EOF
 env = "prod"
 
-supabase_access_token = "$SUPABASE_ACCESS_TOKEN"
-supabase_project_ref  = "$SUPABASE_PROJECT_REF"
-supabase_db_password  = "$SUPABASE_DB_PASSWORD"
-supabase_region       = "eu-west-2"
+azure_subscription_id = "$AZURE_SUBSCRIPTION_ID"
+azure_tenant_id       = "$AZURE_TENANT_ID"
+azure_location        = "${AZURE_LOCATION:-uksouth}"
 
-vercel_token      = "$VERCEL_TOKEN"
-vercel_org_id     = "$VERCEL_ORG_ID"
-vercel_project_id = "$VERCEL_PROJECT_ID"
+pg_admin_login    = "$PG_ADMIN_LOGIN"
+pg_admin_password = "$PG_ADMIN_PASSWORD"
 
-app_subdomain = "outreach"
+app_subdomain = "${APP_SUBDOMAIN:-outreach}"
 
-ms_client_id     = "$MS_CLIENT_ID"
-ms_client_secret = "$MS_CLIENT_SECRET"
+azure_ad_client_id     = "$AZURE_AD_CLIENT_ID"
+azure_ad_client_secret = "$AZURE_AD_CLIENT_SECRET"
+azure_ad_tenant_id     = "$AZURE_AD_TENANT_ID"
+
+admin_email_allowlist = "${ADMIN_EMAIL_ALLOWLIST:-}"
+cron_org_id           = "$CRON_ORG_ID"
+cron_sender_email     = "$CRON_SENDER_EMAIL"
 EOF
 echo "✓ wrote infra/envs/prod.tfvars"
 echo
