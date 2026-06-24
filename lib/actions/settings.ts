@@ -10,8 +10,11 @@
  * RLS additionally scopes it to the caller's own org.
  */
 import { revalidatePath } from 'next/cache';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { withRls } from '@/lib/db/rls';
+import { rlsCtxFromSession } from '@/lib/auth/session';
+import { organizations } from '@/lib/db/schema';
 import { getCurrentOrgId } from '@/lib/auth/org';
 import { requireAdmin } from '@/lib/auth/admin';
 import { normaliseCallingCode } from '@/lib/dialler/normalise';
@@ -63,47 +66,51 @@ export async function updateOrgSettings(patch: UpdateOrgSettingsInput): Promise<
   // page wrapper already gates rendering, but this 'use server' action is its own
   // RPC entry point — re-assert admin here so a non-admin member can't invoke it
   // directly (RLS only scopes it to the org, not to admins). notFound() on miss.
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = orgSettingsPatchSchema.parse(patch);
   const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
 
-  // Read-merge-write: load the current settings, shallow-merge the patch, write
-  // the whole object back. Postgres has no portable partial-jsonb-merge via
-  // PostgREST, so we merge in JS. RLS scopes both the read and the write.
-  const { data: current, error: readError } = await supabase
-    .from('organizations')
-    .select('settings')
-    .eq('id', orgId)
-    .single();
+  // Read-merge-write inside one RLS-scoped transaction: load the current
+  // settings, shallow-merge the patch, write the whole object back. Postgres has
+  // no portable single-statement partial-jsonb merge for our case, so we merge in
+  // JS. The session GUCs set by withRls scope both the read and the write to the
+  // caller's org; the explicit `id = orgId` predicate targets the single row.
+  const settings = await withRls(
+    rlsCtxFromSession({
+      userId: admin.id,
+      email: admin.email,
+      orgId: admin.orgId,
+      role: admin.role,
+    }),
+    async (tx) => {
+      const [current] = await tx
+        .select({ settings: organizations.settings })
+        .from(organizations)
+        .where(eq(organizations.id, orgId));
 
-  if (readError) {
-    throw new Error(
-      `updateOrgSettings: failed to load settings for org ${orgId}: ${readError.message}`,
-    );
-  }
+      if (!current) {
+        throw new Error(`updateOrgSettings: failed to load settings for org ${orgId}: not found`);
+      }
 
-  const existing = ((current as { settings: Record<string, unknown> | null } | null)?.settings ??
-    {}) as Record<string, unknown>;
-  // Skip `undefined` patch values so blank form fields mean "no change" rather
-  // than deleting the stored value — see mergeOrgSettingsPatch for the why.
-  const merged = mergeOrgSettingsPatch(existing, parsed);
+      const existing = (current.settings ?? {}) as Record<string, unknown>;
+      // Skip `undefined` patch values so blank form fields mean "no change" rather
+      // than deleting the stored value — see mergeOrgSettingsPatch for the why.
+      const merged = mergeOrgSettingsPatch(existing, parsed);
 
-  const { data, error } = await supabase
-    .from('organizations')
-    .update({ settings: merged })
-    .eq('id', orgId)
-    .select('settings')
-    .single();
+      const [updated] = await tx
+        .update(organizations)
+        .set({ settings: merged as OrgSettings })
+        .where(eq(organizations.id, orgId))
+        .returning({ settings: organizations.settings });
 
-  if (error) {
-    throw new Error(
-      `updateOrgSettings: failed to update settings for org ${orgId}: ${error.message}`,
-    );
-  }
+      if (!updated) {
+        throw new Error(`updateOrgSettings: failed to update settings for org ${orgId}: no row`);
+      }
 
-  const settings = ((data as { settings: Record<string, unknown> | null } | null)?.settings ??
-    {}) as OrgSettings;
+      return (updated.settings ?? {}) as OrgSettings;
+    },
+  );
+
   revalidatePath('/settings');
   return settings;
 }
