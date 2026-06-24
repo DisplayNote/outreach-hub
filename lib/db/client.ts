@@ -10,6 +10,13 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 // test files that merely import the db (e.g. DATABASE_URL_TEST-gated suites that
 // then skip) from failing to load in CI. getServerEnv still validates
 // DATABASE_URL as required for the app's normal server boot.
+//
+// Exception: fail fast in production so a misconfigured deploy surfaces
+// immediately at startup rather than at the first DB query.
+if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required in production');
+}
+
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.PGPOOL_MAX ?? 10),

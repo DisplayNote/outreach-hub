@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation';
 import { inArray, desc } from 'drizzle-orm';
-import { getSession } from '@/lib/auth/session';
+import { getSession, rlsCtxFromSession } from '@/lib/auth/session';
 import { withRls } from '@/lib/db/rls';
-import { rlsCtxFromSession } from '@/lib/auth/session';
 import { touchpoints } from '@/lib/db/schema';
 import { getTodayContacts } from '@/lib/db/queries';
 import type { Contact, TouchpointChannel } from '@/lib/types/domain';
