@@ -15,7 +15,7 @@ export type EmailDriverName = 'mock' | 'mailpit' | GraphEnvironment;
  *     (which would send every org/user from one mailbox and cross-apply inbound).
  * With neither token, Graph send/fetch throw GRAPH_NO_TOKEN rather than no-op.
  */
-export function getEmailDriver(opts: { accessToken?: string } = {}): EmailDriver {
+export function getEmailDriver(opts: { accessToken?: string; mailbox?: string } = {}): EmailDriver {
   const driver = process.env.EMAIL_DRIVER as EmailDriverName | undefined;
 
   switch (driver) {
@@ -38,7 +38,11 @@ export function getEmailDriver(opts: { accessToken?: string } = {}): EmailDriver
     case 'graph-dev':
     case 'graph-prod': {
       const accessToken = opts.accessToken ?? process.env.GRAPH_ACCESS_TOKEN;
-      return new GraphDriver(driver, accessToken ? { accessToken } : {});
+      return new GraphDriver(driver, {
+        ...(accessToken ? { accessToken } : {}),
+        // mailbox set → app-only path (/users/{mailbox}); absent → delegated (/me).
+        ...(opts.mailbox ? { mailbox: opts.mailbox } : {}),
+      });
     }
     default:
       throw new Error(`Unknown EMAIL_DRIVER: ${driver as string}`);

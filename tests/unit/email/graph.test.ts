@@ -267,3 +267,23 @@ describe('GraphDriver auth + headers + DSN recovery', () => {
     expect(replies[0]!.failedRecipient).toBe('erin@corp.com');
   });
 });
+
+describe('GraphDriver mailbox addressing (app-only vs delegated)', () => {
+  it('targets /users/{mailbox} when a mailbox is set (app-only cron token)', async () => {
+    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) => resp({}, true, 202));
+    const driver = new GraphDriver('graph-prod', {
+      accessToken: 'APPONLY',
+      mailbox: 'sender@displaynote.com',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await driver.send({ from: 'sender@displaynote.com', to: ['a@x'], subject: 's' });
+    expect(String(fetchImpl.mock.calls[0]![0])).toContain('/users/sender%40displaynote.com/sendMail');
+  });
+
+  it('targets /me when no mailbox is set (delegated user token)', async () => {
+    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) => resp({}, true, 202));
+    const driver = new GraphDriver('graph-prod', { accessToken: 'TOK', fetchImpl: fetchImpl as unknown as typeof fetch });
+    await driver.send({ from: 'm@x', to: ['a@x'], subject: 's' });
+    expect(String(fetchImpl.mock.calls[0]![0])).toContain('/me/sendMail');
+  });
+});

@@ -1,11 +1,13 @@
 /**
  * Scheduled inbox-scan trigger (PHASE_5_SPEC §1). CRON_SECRET-gated; driven by
  * Vercel Cron (scheduled in vercel.json — every 30 min, 07:00–18:00 UTC on
- * weekdays; Vercel sends GET + `Authorization: Bearer $CRON_SECRET` when that
- * env var is set). Scans the single configured org's inbox (CRON_ORG_ID) for
- * replies/bounces via the service-role client — one global driver/token is one
- * mailbox, so this does NOT fan out across orgs (no-op when CRON_ORG_ID is
- * unset). Local dev uses the "Scan inbox now" Server Action instead.
+ * weekdays). Driven by an Azure Container Apps Job (infra/azure_apps.tf) that
+ * POSTs this route at the env-internal ingress URL with `Authorization: Bearer
+ * $CRON_SECRET` every 30 minutes between 07:00–18:00 UTC on weekdays. Scans the single configured
+ * org's inbox (CRON_ORG_ID) for replies/bounces via withServiceRls + the
+ * app-only Graph token — one mailbox, so this does NOT fan out across orgs
+ * (no-op when CRON_ORG_ID is unset). Local dev uses the "Scan inbox now" Server
+ * Action instead. (vercel.json is gone — cron is Azure-native now.)
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';

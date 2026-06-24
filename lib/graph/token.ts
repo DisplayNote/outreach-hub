@@ -117,11 +117,17 @@ export async function delegatedGraphToken(): Promise<string | null> {
   if (resolved.kind === 'current') return resolved.accessToken;
   if (resolved.kind === 'reauth') return null;
 
-  // Persist the rotated tokens, then return the new access token.
-  await storeGraphTokens(ctx, {
-    accessToken: resolved.tokens.accessToken,
-    refreshToken: resolved.tokens.refreshToken,
-    expiresAt: resolved.tokens.expiresAt,
-  });
+  // Persist the rotated tokens — best-effort: a transient DB write failure must
+  // not fail an in-flight request that already holds a valid fresh token (the
+  // next request just refreshes again).
+  try {
+    await storeGraphTokens(ctx, {
+      accessToken: resolved.tokens.accessToken,
+      refreshToken: resolved.tokens.refreshToken,
+      expiresAt: resolved.tokens.expiresAt,
+    });
+  } catch (err) {
+    console.error('delegatedGraphToken: failed to persist refreshed token (continuing)', err);
+  }
   return resolved.tokens.accessToken;
 }

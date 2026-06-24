@@ -65,6 +65,12 @@ function htmlToText(content: string): string {
 interface GraphDriverOptions {
   /** Delegated access token (Mail.Send / Mail.Read). Deploy-time wiring. */
   accessToken?: string;
+  /**
+   * Target mailbox for an APP-ONLY (client-credentials) token, which has no
+   * user context: requests go to `/users/{mailbox}` instead of `/me`. Omit for
+   * a DELEGATED token (the signed-in user's own mailbox, addressed via `/me`).
+   */
+  mailbox?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -82,7 +88,9 @@ interface GraphMessage {
 }
 
 /**
- * Microsoft Graph email driver (PHASE_5_SPEC §9). `send` → `POST /me/sendMail`;
+ * Microsoft Graph email driver (PHASE_5_SPEC §9). `send` → `POST {base}/sendMail`
+ * where {base} is `/me` for a delegated token (manual path) or `/users/{mailbox}`
+ * for an app-only token (cron path, no user context — see base());
  * `fetchReplies` → a `receivedDateTime ge <since>` query on the Inbox. The
  * delegated token is injected (from the user's Supabase Azure session at
  * deploy time); this path is structurally complete but not exercised in
@@ -96,11 +104,13 @@ interface GraphMessage {
 export class GraphDriver implements EmailDriver {
   readonly name: GraphEnvironment;
   private readonly accessToken: string | undefined;
+  private readonly mailbox: string | undefined;
   private readonly fetchImpl: typeof fetch;
 
   constructor(env: GraphEnvironment, opts: GraphDriverOptions = {}) {
     this.name = env;
     this.accessToken = opts.accessToken;
+    this.mailbox = opts.mailbox;
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
@@ -109,6 +119,15 @@ export class GraphDriver implements EmailDriver {
       throw new EmailDriverError('GraphDriver: no delegated access token configured', undefined, 'GRAPH_NO_TOKEN');
     }
     return this.accessToken;
+  }
+
+  /**
+   * Graph resource root. An APP-ONLY token has no user context, so it must
+   * address a specific mailbox: `/users/{mailbox}`. A DELEGATED token acts as
+   * the signed-in user, addressed via `/me`. Set by whether a mailbox was given.
+   */
+  private base(): string {
+    return this.mailbox ? `/users/${encodeURIComponent(this.mailbox)}` : '/me';
   }
 
   async send(message: OutboundMessage): Promise<SentRef> {
@@ -134,14 +153,14 @@ export class GraphDriver implements EmailDriver {
         'GRAPH_UNAUTHORIZED',
       );
 
-    let resp = await this.call('POST', '/me/sendMail', payload(true));
+    let resp = await this.call('POST', `${this.base()}/sendMail`, payload(true));
     if (resp.status === 401) throw unauthorized();
     // Graceful degradation: some tenants reject non-`x-` internetMessageHeaders
     // (e.g. List-Unsubscribe) with a 4xx. Retry once WITHOUT the headers so the
     // email — including its visible footer unsubscribe link — still goes out,
     // rather than failing the whole send over an optional header.
     if (!resp.ok && internetMessageHeaders.length > 0) {
-      resp = await this.call('POST', '/me/sendMail', payload(false));
+      resp = await this.call('POST', `${this.base()}/sendMail`, payload(false));
       if (resp.status === 401) throw unauthorized();
     }
     if (!resp.ok) {
@@ -166,7 +185,7 @@ export class GraphDriver implements EmailDriver {
     // would let the scanner advance its high-water mark while later pages (e.g.
     // many messages sharing one receivedDateTime) go unprocessed forever.
     const out: InboundMessage[] = [];
-    let resp = await this.call('GET', `/me/mailFolders/Inbox/messages?${params.toString()}`);
+    let resp = await this.call('GET', `${this.base()}/mailFolders/Inbox/messages?${params.toString()}`);
     for (;;) {
       if (resp.status === 401) {
         throw new EmailDriverError(
@@ -205,7 +224,7 @@ export class GraphDriver implements EmailDriver {
    */
   private async recoverFailedRecipientFromMime(messageId: string): Promise<string | undefined> {
     try {
-      const resp = await this.call('GET', `/me/messages/${encodeURIComponent(messageId)}/$value`);
+      const resp = await this.call('GET', `${this.base()}/messages/${encodeURIComponent(messageId)}/$value`);
       if (!resp.ok) return undefined;
       // STRICT: trust only the authoritative RFC 3464 Final/Original-Recipient
       // line here, NOT parseFailedRecipient's "first non-system address" fallback

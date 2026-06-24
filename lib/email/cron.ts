@@ -63,10 +63,13 @@ async function orgs(): Promise<{ id: string; settings: OrgSettings }[]> {
  * signed-in user, so it acquires an APPLICATION (client-credentials) Graph token
  * for the configured mailbox; mock/mailpit need no token.
  */
-async function cronDriver() {
+async function cronDriver(mailbox: string) {
   const name = process.env.EMAIL_DRIVER;
   if (name === 'graph-dev' || name === 'graph-prod') {
-    return getEmailDriver({ accessToken: await appOnlyGraphToken() });
+    // The app-only (client-credentials) token has NO user context, so the driver
+    // must address this org's mailbox via /users/{mailbox} — not /me. The token
+    // is cached in-module, so calling per-org is cheap.
+    return getEmailDriver({ accessToken: await appOnlyGraphToken(), mailbox });
   }
   return getEmailDriver();
 }
@@ -83,7 +86,6 @@ export async function runSenderAllOrgs(): Promise<{
   skipped: number;
   errors: number;
 }> {
-  const driver = await cronDriver();
   const fallbackFrom = getServerEnv().CRON_SENDER_EMAIL;
   const unsubscribe = getUnsubscribeConfig();
   if (!unsubscribe && process.env.NODE_ENV === 'production') {
@@ -107,6 +109,7 @@ export async function runSenderAllOrgs(): Promise<{
       console.warn(`cron runSender: org ${org.id} has no senderEmail and CRON_SENDER_EMAIL is unset — skipped`);
       continue;
     }
+    const driver = await cronDriver(from);
     const store = storeFor(org.id, driver.name, org.settings);
     const res = await runSender(
       { store, driver, settings: org.settings, from, unsubscribe, now: () => new Date().toISOString() },
@@ -130,7 +133,6 @@ export async function scanInboxAllOrgs(): Promise<{
   bounces: number;
   skipped: number;
 }> {
-  const driver = await cronDriver();
   const fallbackFrom = getServerEnv().CRON_SENDER_EMAIL;
   let replies = 0;
   let bounces = 0;
@@ -151,6 +153,7 @@ export async function scanInboxAllOrgs(): Promise<{
       continue;
     }
     scanned += 1;
+    const driver = await cronDriver(mailbox);
     const store = storeFor(org.id, driver.name, org.settings);
     const res = await scanInbox({ store, driver, orgId: org.id, mailbox }, {});
     replies += res.replies;

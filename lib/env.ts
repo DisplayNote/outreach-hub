@@ -131,6 +131,16 @@ export function getAdminEmails(env: EnvRecord = process.env): string[] {
 }
 
 /**
+ * True when `email` is in the `ADMIN_EMAIL_ALLOWLIST` (case-insensitive). Lives
+ * here (a pure module) rather than lib/auth/admin so it's unit-testable without
+ * importing the Auth.js/next-auth chain; lib/auth/admin re-exports it.
+ */
+export function isAdminEmail(email: string | null | undefined, env: EnvRecord = process.env): boolean {
+  if (!email) return false;
+  return getAdminEmails(env).includes(email.toLowerCase());
+}
+
+/**
  * Loopback hosts that identify the local Supabase dev stack. Includes both the
  * bracketed and bare IPv6 loopback forms: the WHATWG URL parser used by Node
  * yields `[::1]` for `URL.hostname`, but bare `::1` is included too so the gate

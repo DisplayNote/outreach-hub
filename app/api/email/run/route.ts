@@ -1,11 +1,12 @@
 /**
- * Scheduled send trigger (PHASE_5_SPEC §1). CRON_SECRET-gated; driven by Vercel
- * Cron in prod (scheduled in vercel.json — weekdays 09:15 UTC; Vercel sends
- * GET + `Authorization: Bearer $CRON_SECRET` when that env var is set). Runs the
- * sender for the single configured org (CRON_ORG_ID) via the service-role
- * client — one global driver/token is one mailbox, so this does NOT fan out
- * across orgs (no-op when CRON_ORG_ID is unset). Local dev uses the "Run sender
- * now" Server Action instead.
+ * Scheduled send trigger (PHASE_5_SPEC §1). CRON_SECRET-gated; driven by an
+ * Azure Container Apps Job (infra/azure_apps.tf) that POSTs this route at the
+ * env-internal ingress URL with `Authorization: Bearer $CRON_SECRET` on the
+ * `15 9 * * 1-5` schedule (curl -fsS, so a non-2xx fails the job loudly). Runs
+ * the sender for the single configured org (CRON_ORG_ID) via withServiceRls +
+ * the app-only Graph token — one mailbox, so this does NOT fan out across orgs
+ * (no-op when CRON_ORG_ID is unset). Local dev uses the "Run sender now" Server
+ * Action instead. (vercel.json is gone — cron is Azure-native now.)
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';
