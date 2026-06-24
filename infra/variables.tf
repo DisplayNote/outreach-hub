@@ -49,3 +49,22 @@ variable "app_subdomain" {
   type        = string
   default     = ""
 }
+
+# ─── Cron jobs (ACA Jobs) ─────────────────────────────────────────────────────
+# The scheduled email send/scan jobs curl the app's CRON_SECRET-gated routes
+# against its environment-internal ingress URL. Supplied as variables (rather
+# than read from the Phase-6 azurerm_container_app) so this config validates and
+# plans before the app resource exists; Phase 6 wires app_internal_url to the
+# app's ingress FQDN.
+variable "app_internal_url" {
+  description = "App's Container Apps environment-internal base URL the cron jobs curl (e.g. https://app.internal.<env-domain>). Set in Phase 6 from the app's ingress FQDN."
+  type        = string
+  default     = "https://app.internal.localhost"
+}
+
+variable "cron_secret" {
+  description = "Bearer secret the cron jobs send to the CRON_SECRET-gated routes; must match the app's CRON_SECRET."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
