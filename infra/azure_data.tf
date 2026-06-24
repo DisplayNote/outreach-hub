@@ -49,3 +49,42 @@ resource "azurerm_key_vault_secret" "app_user_password" {
   value        = random_password.app_user.result
   key_vault_id = azurerm_key_vault.this.id
 }
+
+# ─── App-generated secrets (never hand-set) ───────────────────────────────────
+# AUTH_SECRET signs the Auth.js session JWT (the RLS-trusted identity), CRON_SECRET
+# gates the scheduled email routes, and UNSUBSCRIBE_SECRET signs one-click
+# unsubscribe links (HMAC). All three are generated here, stored in Key Vault, and
+# referenced by the app + cron job secrets — they are never committed to git or a
+# tfvars file. Rotate any of them by tainting its random_password resource.
+resource "random_password" "auth_secret" {
+  length  = 48
+  special = false
+}
+
+resource "azurerm_key_vault_secret" "auth_secret" {
+  name         = "auth-secret"
+  value        = random_password.auth_secret.result
+  key_vault_id = azurerm_key_vault.this.id
+}
+
+resource "random_password" "cron_secret" {
+  length  = 48
+  special = false
+}
+
+resource "azurerm_key_vault_secret" "cron_secret" {
+  name         = "cron-secret"
+  value        = random_password.cron_secret.result
+  key_vault_id = azurerm_key_vault.this.id
+}
+
+resource "random_password" "unsubscribe_secret" {
+  length  = 48
+  special = false
+}
+
+resource "azurerm_key_vault_secret" "unsubscribe_secret" {
+  name         = "unsubscribe-secret"
+  value        = random_password.unsubscribe_secret.result
+  key_vault_id = azurerm_key_vault.this.id
+}

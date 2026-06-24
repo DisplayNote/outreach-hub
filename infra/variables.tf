@@ -50,21 +50,82 @@ variable "app_subdomain" {
   default     = ""
 }
 
-# ─── Cron jobs (ACA Jobs) ─────────────────────────────────────────────────────
-# The scheduled email send/scan jobs curl the app's CRON_SECRET-gated routes
-# against its environment-internal ingress URL. Supplied as variables (rather
-# than read from the Phase-6 azurerm_container_app) so this config validates and
-# plans before the app resource exists; Phase 6 wires app_internal_url to the
-# app's ingress FQDN.
-variable "app_internal_url" {
-  description = "App's Container Apps environment-internal base URL the cron jobs curl (e.g. https://app.internal.<env-domain>). Set in Phase 6 from the app's ingress FQDN."
+# The fully-qualified image (registry/repo:tag or @digest) the Container App and
+# the cron jobs run. CI overrides this with the freshly-built ACR digest on every
+# deploy; the default lets a first apply stand the app up on a placeholder until
+# the first image is pushed.
+variable "container_image" {
+  description = "Container image (with tag or digest) for the app + cron jobs, e.g. acroutreachprod.azurecr.io/outreach-hub:latest."
   type        = string
-  default     = "https://app.internal.localhost"
+  default     = "acroutreachprod.azurecr.io/outreach-hub:latest"
 }
 
-variable "cron_secret" {
-  description = "Bearer secret the cron jobs send to the CRON_SECRET-gated routes; must match the app's CRON_SECRET."
+# APP_BASE_URL — the app's PUBLIC origin, used to build absolute one-click
+# unsubscribe links at send time. Distinct from the internal ingress FQDN the
+# cron jobs curl (that is derived from the app resource, not set here). Defaults
+# to the configured subdomain under displaynote.com.
+variable "app_base_url" {
+  description = "Public origin of the app (https://...), used to build absolute unsubscribe links. Defaults to https://<app_subdomain>.displaynote.com."
+  type        = string
+  default     = ""
+}
+
+# ─── Entra (Auth.js OAuth provider + cron app-only Graph) ─────────────────────
+variable "azure_ad_client_id" {
+  description = "Entra app-registration client id (Auth.js sign-in + cron app-only Graph)."
+  type        = string
+}
+
+variable "azure_ad_client_secret" {
+  description = "Entra app-registration client secret."
   type        = string
   sensitive   = true
+}
+
+variable "azure_ad_tenant_id" {
+  description = "Entra tenant id the app authenticates against (issuer is tenant-pinned)."
+  type        = string
+}
+
+# ─── Email / cron behaviour ───────────────────────────────────────────────────
+variable "admin_email_allowlist" {
+  description = "Comma-separated email allowlist gating the /admin panel. Empty => nobody is an admin."
+  type        = string
+  default     = ""
+}
+
+variable "cron_org_id" {
+  description = "The single org id the scheduled sender/scanner serves (one global Graph mailbox)."
+  type        = string
+}
+
+variable "cron_sender_email" {
+  description = "Mailbox the scheduled sender sends FROM when an org has not set settings.senderEmail."
+  type        = string
+}
+
+# ─── Telnyx (AMD dialler, Mode B) ─────────────────────────────────────────────
+variable "telnyx_api_key" {
+  description = "Telnyx API key (AMD dialler). Empty disables the live telephony path."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "telnyx_connection_id" {
+  description = "Telnyx connection id used to originate calls."
+  type        = string
+  default     = ""
+}
+
+variable "telnyx_public_key" {
+  description = "Telnyx public key used to verify inbound webhook signatures."
+  type        = string
+  default     = ""
+}
+
+variable "bridge_sip_username" {
+  description = "SIP username the AMD bridge dials the agent leg at."
+  type        = string
   default     = ""
 }

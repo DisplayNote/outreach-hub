@@ -36,13 +36,18 @@ resource "azurerm_container_app_environment" "this" {
 # triggering / debugging. The job image is a stock curl image, not the app image
 # — the app does the work; the job only kicks it.
 #
-# var.app_internal_url is the app's environment-internal FQDN
-# (e.g. https://app.internal.<env-default-domain>). It is supplied as a variable
-# rather than read from the (Phase-6) azurerm_container_app resource so this file
-# validates and plans before the app resource exists. Phase 6 wires the app and
-# can set this from the app's ingress FQDN.
+# app_internal_url is now WIRED to the app's ingress FQDN (azurerm_container_app.app,
+# defined in azure_app.tf) — no longer a localhost-placeholder variable. The
+# Phase-4 deferral (a stand-in default before the app existed) is closed: the URL
+# is derived, and the precondition on the email_send job below refuses any apply
+# where it would resolve to a loopback host, so a prod apply can't curl localhost.
 
 locals {
+  # The app's public ingress FQDN. Cron jobs in the same environment reach the
+  # app through it; ACA routes the request back into the app. https:// because
+  # ACA ingress terminates TLS at the env edge.
+  app_internal_url = "https://${azurerm_container_app.app.ingress[0].fqdn}"
+
   # Fail fast inside the container if the curl gets a non-2xx (e.g. 401/500),
   # so a misconfigured secret or a failing send surfaces as a failed job run
   # instead of a green no-op.
@@ -82,7 +87,7 @@ resource "azurerm_container_app_job" "email_send" {
 
       env {
         name  = "APP_INTERNAL_URL"
-        value = var.app_internal_url
+        value = local.app_internal_url
       }
       env {
         name        = "CRON_SECRET"
@@ -93,7 +98,17 @@ resource "azurerm_container_app_job" "email_send" {
 
   secret {
     name  = "cron-secret"
-    value = var.cron_secret
+    value = random_password.cron_secret.result
+  }
+
+  # Closes the Phase-4 deferral: refuse to apply if the cron target ever resolves
+  # to a loopback host. A prod apply curling localhost would silently no-op the
+  # scheduled send/scan; fail the apply instead.
+  lifecycle {
+    precondition {
+      condition     = !can(regex("(?i)//(localhost|127\\.0\\.0\\.1|\\[::1\\]|::1)([:/]|$)", local.app_internal_url))
+      error_message = "app_internal_url must be the app's real ingress FQDN, not a loopback host (got: ${local.app_internal_url})."
+    }
   }
 }
 
@@ -123,7 +138,7 @@ resource "azurerm_container_app_job" "email_scan" {
 
       env {
         name  = "APP_INTERNAL_URL"
-        value = var.app_internal_url
+        value = local.app_internal_url
       }
       env {
         name        = "CRON_SECRET"
@@ -134,6 +149,6 @@ resource "azurerm_container_app_job" "email_scan" {
 
   secret {
     name  = "cron-secret"
-    value = var.cron_secret
+    value = random_password.cron_secret.result
   }
 }
