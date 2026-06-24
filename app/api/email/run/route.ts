@@ -6,7 +6,7 @@
  * the sender for the single configured org (CRON_ORG_ID) via withServiceRls +
  * the app-only Graph token — one mailbox, so this does NOT fan out across orgs
  * (no-op when CRON_ORG_ID is unset). Local dev uses the "Run sender now" Server
- * Action instead. (vercel.json is gone — cron is Azure-native now.)
+ * Action instead.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';

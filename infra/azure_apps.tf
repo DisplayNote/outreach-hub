@@ -48,6 +48,12 @@ locals {
   # ACA ingress terminates TLS at the env edge.
   app_internal_url = "https://${azurerm_container_app.app.ingress[0].fqdn}"
 
+  # Pinned image for both cron job containers. The jobs only run curl + sh, so
+  # azure-cli is used for its bundled curl. Pin to a specific patch version to
+  # prevent :latest pulling a breaking change underneath a scheduled run.
+  # Update this tag when the CLI release notes are reviewed.
+  cron_image = "mcr.microsoft.com/azure-cli:2.68.0"
+
   # Fail fast inside the container if the curl gets a non-2xx (e.g. 401/500),
   # so a misconfigured secret or a failing send surfaces as a failed job run
   # instead of a green no-op.
@@ -84,7 +90,7 @@ resource "azurerm_container_app_job" "email_send" {
   template {
     container {
       name    = "email-send"
-      image   = "mcr.microsoft.com/azure-cli:latest"
+      image   = local.cron_image
       cpu     = 0.25
       memory  = "0.5Gi"
       command = local.cron_send_command
@@ -140,7 +146,7 @@ resource "azurerm_container_app_job" "email_scan" {
   template {
     container {
       name    = "email-scan"
-      image   = "mcr.microsoft.com/azure-cli:latest"
+      image   = local.cron_image
       cpu     = 0.25
       memory  = "0.5Gi"
       command = local.cron_scan_command
