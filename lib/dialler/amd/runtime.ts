@@ -17,6 +17,7 @@
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { getServerEnv, isDiallerMockEnabled } from '@/lib/env';
+import { db } from '@/lib/db/client';
 import { withServiceRls } from '@/lib/db/rls-service';
 import { callAttempts, callEvents, touchpoints } from '@/lib/db/schema';
 import type { AmdStore, AttemptPatch } from '@/lib/dialler/amd/apply';
@@ -41,44 +42,27 @@ export interface AmdRuntime {
  * subsequent write derives `org_id` from the returned attempt. Returns the
  * mapped {@link CallAttempt}, or null when no row matches.
  */
-async function loadAttemptWhere(predicate: ReturnType<typeof eq>): Promise<CallAttempt | null> {
-  return withServiceRls('', async (tx) => {
-    const [row] = await tx
-      .select({
-        id: callAttempts.id,
-        org_id: callAttempts.orgId,
-        run_id: callAttempts.runId,
-        contact_id: callAttempts.contactId,
-        to_number: callAttempts.toNumber,
-        from_number: callAttempts.fromNumber,
-        provider: callAttempts.provider,
-        call_control_id: callAttempts.callControlId,
-        state: callAttempts.state,
-        amd_result: callAttempts.amdResult,
-        disposition: callAttempts.disposition,
-        hangup_cause: callAttempts.hangupCause,
-        error: callAttempts.error,
-        actuated_at: callAttempts.actuatedAt,
-        started_at: callAttempts.startedAt,
-        ended_at: callAttempts.endedAt,
-        created_at: callAttempts.createdAt,
-        updated_at: callAttempts.updatedAt,
-      })
-      .from(callAttempts)
-      .where(predicate)
-      .limit(1);
-    return row ? toCallAttempt(row as CallAttemptRow) : null;
-  });
+async function loadAttempt(by: { callControlId?: string; id?: string }): Promise<CallAttempt | null> {
+  // Cross-org discovery: the inbound webhook doesn't know the org yet, so an
+  // org-scoped SELECT (current_org_id() is NULL with no GUC set) would match
+  // nothing. The find_call_attempt SECURITY DEFINER function bypasses RLS for
+  // this single read (returns the full call_attempts row); every subsequent
+  // write derives org_id from it and runs org-scoped via withServiceRls.
+  const result = await db.execute(
+    sql`select * from public.find_call_attempt(${by.callControlId ?? null}, ${by.id ?? null})`,
+  );
+  const row = result.rows[0];
+  return row ? toCallAttempt(row as unknown as CallAttemptRow) : null;
 }
 
 /** Load the attempt a webhook/mock event belongs to, by its Telnyx call_control_id. */
 function loadAttemptByCallControlId(callControlId: string): Promise<CallAttempt | null> {
-  return loadAttemptWhere(eq(callAttempts.callControlId, callControlId));
+  return loadAttempt({ callControlId });
 }
 
 /** Load an attempt by its id — fallback correlation when call_control_id isn't persisted yet. */
 function loadAttemptById(attemptId: string): Promise<CallAttempt | null> {
-  return loadAttemptWhere(eq(callAttempts.id, attemptId));
+  return loadAttempt({ id: attemptId });
 }
 
 /** Map the camelCase {@link AttemptPatch} to the `call_attempts` column set Drizzle updates. */
