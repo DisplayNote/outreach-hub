@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { resolveDelegatedToken } from '@/lib/graph/token';
+import { resolveDelegatedToken } from '@/lib/graph/refresh';
 
 const cfg = {
   tenantId: '11111111-1111-1111-1111-111111111111',
