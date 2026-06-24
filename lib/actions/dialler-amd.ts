@@ -320,11 +320,17 @@ export async function setRunStatus(runId: string, status: z.infer<typeof runStat
   const id = uuid.parse(runId);
   const nextStatus = runStatusSchema.parse(status);
   const orgId = await getCurrentOrgId();
-  await withServiceRls(orgId, (tx) =>
+  // Assert a row was affected (like cancelAttempt/hangupAttempt) so a stale or
+  // cross-org runId surfaces as an explicit error rather than a silent no-op.
+  const rows = await withServiceRls(orgId, (tx) =>
     tx
       .update(callRuns)
       .set({ status: nextStatus })
-      .where(and(eq(callRuns.id, id), eq(callRuns.orgId, orgId))),
+      .where(and(eq(callRuns.id, id), eq(callRuns.orgId, orgId)))
+      .returning({ id: callRuns.id }),
   );
+  if (rows.length === 0) {
+    throw new Error('setRunStatus: run not found for this org');
+  }
   revalidatePath('/dialler');
 }
