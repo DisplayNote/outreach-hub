@@ -16,8 +16,10 @@
  * Idempotent: re-unsubscribing is a no-op upsert.
  */
 import { NextResponse, type NextRequest } from 'next/server';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { getServerEnv } from '@/lib/env';
-import { createServiceClient } from '@/lib/supabase/service';
+import { withServiceRls } from '@/lib/db/rls-service';
+import { contacts, suppressions } from '@/lib/db/schema';
 import { verifyUnsubscribeToken } from '@/lib/email/unsubscribe';
 import { escapeLike } from '@/lib/supabase/like';
 
@@ -25,7 +27,7 @@ export const runtime = 'nodejs';
 
 // Statuses the sender's anti-join already treats as terminal; we never overwrite
 // a stronger pipeline state (a booked meeting, a hard bounce) with the opt-out.
-const TERMINAL_STATUSES = '(notinterested,bounced,meeting)';
+const TERMINAL_STATUSES = ['notinterested', 'bounced', 'meeting'] as const;
 
 function escapeHtml(text: string): string {
   return text
@@ -62,25 +64,42 @@ function claimFrom(request: NextRequest): { secret: string; claim: { orgId: stri
 /** Record the suppression and stop the contact's sequence. Returns ok. */
 async function applyUnsubscribe(claim: { orgId: string; email: string }): Promise<boolean> {
   const email = claim.email.toLowerCase();
-  const supabase = createServiceClient();
-  const { error } = await supabase
-    .from('suppressions')
-    .upsert({ org_id: claim.orgId, email, reason: 'unsubscribed' }, { onConflict: 'org_id,email', ignoreDuplicates: true });
-  if (error) {
+  // The org comes from the HMAC-signed token (trusted), so withServiceRls scopes
+  // the writes to that org's rows.
+  try {
+    await withServiceRls(claim.orgId, async (tx) => {
+      // ON CONFLICT (org_id,email) DO NOTHING — re-unsubscribing is idempotent.
+      await tx
+        .insert(suppressions)
+        // suppressions.createdAt is NOT NULL with a DB-side `default now()`; the
+        // schema omits the Drizzle default, so supply it explicitly.
+        .values({ orgId: claim.orgId, email, reason: 'unsubscribed', createdAt: sql`now()` })
+        .onConflictDoNothing({ target: [suppressions.orgId, suppressions.email] });
+
+      // Address-level suppression alone would silently stop matching if the
+      // contact's email is later edited — so also mark the matching contact(s)
+      // terminal so the opt-out survives an address change. Non-fatal: the
+      // suppression is the primary guard. Never overwrite an already-terminal/
+      // stronger status.
+      try {
+        await tx
+          .update(contacts)
+          .set({ status: 'notinterested' })
+          .where(
+            and(
+              eq(contacts.orgId, claim.orgId),
+              sql`${contacts.email} ilike ${escapeLike(email)}`,
+              notInArray(contacts.status, [...TERMINAL_STATUSES]),
+            ),
+          );
+      } catch (contactError) {
+        console.error('unsubscribe: failed to stop contact sequence', contactError);
+      }
+    });
+  } catch (error) {
     console.error('unsubscribe: failed to record suppression', error);
     return false;
   }
-  // Address-level suppression alone would silently stop matching if the contact's
-  // email is later edited — so also mark the matching contact(s) terminal so the
-  // opt-out survives an address change. Non-fatal: the suppression is the primary
-  // guard. Never overwrite an already-terminal/stronger status.
-  const { error: contactError } = await supabase
-    .from('contacts')
-    .update({ status: 'notinterested' })
-    .eq('org_id', claim.orgId)
-    .ilike('email', escapeLike(email))
-    .not('status', 'in', TERMINAL_STATUSES);
-  if (contactError) console.error('unsubscribe: failed to stop contact sequence', contactError);
   return true;
 }
 

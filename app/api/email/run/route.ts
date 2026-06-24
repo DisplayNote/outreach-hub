@@ -9,7 +9,6 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';
-import { createServiceClient } from '@/lib/supabase/service';
 import { runSenderAllOrgs } from '@/lib/email/cron';
 import { authorizeCron } from '@/lib/cron-auth';
 
@@ -21,7 +20,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     return new NextResponse('unauthorized', { status: 401 });
   }
   try {
-    const result = await runSenderAllOrgs(createServiceClient());
+    const result = await runSenderAllOrgs();
     // Surface per-contact send failures as a non-2xx so monitoring alerts: a
     // deploy misconfiguration (e.g. a missing Graph token) can make every send
     // fail while the route would otherwise look healthy with { ok: true }.

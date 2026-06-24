@@ -9,7 +9,6 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';
-import { createServiceClient } from '@/lib/supabase/service';
 import { scanInboxAllOrgs } from '@/lib/email/cron';
 import { authorizeCron } from '@/lib/cron-auth';
 
@@ -21,7 +20,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     return new NextResponse('unauthorized', { status: 401 });
   }
   try {
-    const result = await scanInboxAllOrgs(createServiceClient());
+    const result = await scanInboxAllOrgs();
     // A configured org that couldn't be scanned (no mailbox resolved) is a
     // deploy misconfiguration, not a healthy run: surface it as non-2xx so
     // monitoring alerts. Otherwise replies/bounces silently stop processing and
