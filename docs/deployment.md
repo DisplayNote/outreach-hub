@@ -90,6 +90,14 @@ federated credential) — no stored cloud password. Required repo secrets:
 `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` (plus the `TF_VAR_*`
 and migrate secrets for `infra.yml` / `db-migrate.yml`).
 
+> **Ordering — migrate before a schema-affecting deploy.** `deploy.yml` rolls the
+> app image immediately on push to `main`, but migrations are a separate
+> manual/`workflow_dispatch` job (`db-migrate.yml`). When a change depends on a
+> new migration, run **DB Migrate first** (or in the same window), then let the
+> deploy land — otherwise the new code briefly runs against the old schema. The
+> cron Jobs are **not** re-imaged by deploy (Terraform owns their stock curl
+> image); they only POST the app's routes.
+
 ## 4. Microsoft Entra ID app registration
 
 One app registration backs both interactive sign-in (Auth.js delegated) and the

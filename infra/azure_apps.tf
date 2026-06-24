@@ -151,4 +151,12 @@ resource "azurerm_container_app_job" "email_scan" {
     name  = "cron-secret"
     value = random_password.cron_secret.result
   }
+
+  # Same guard as email_send: refuse to apply against a loopback app URL.
+  lifecycle {
+    precondition {
+      condition     = !can(regex("(?i)//(localhost|127\\.0\\.0\\.1|\\[::1\\]|::1)([:/]|$)", local.app_internal_url))
+      error_message = "app_internal_url must be the app's real ingress FQDN, not a loopback host (got: ${local.app_internal_url})."
+    }
+  }
 }

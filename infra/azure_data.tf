@@ -88,3 +88,20 @@ resource "azurerm_key_vault_secret" "unsubscribe_secret" {
   value        = random_password.unsubscribe_secret.result
   key_vault_id = azurerm_key_vault.this.id
 }
+
+# ─── Operator-provided secrets (from tfvars) → Key Vault ──────────────────────
+# Stored in Key Vault and referenced by the app via its managed identity (the
+# same pattern as the generated secrets above), rather than injected by value
+# through the Container App revision — so the Entra/Telnyx secrets aren't baked
+# into the app's revision config and rotate via Key Vault.
+resource "azurerm_key_vault_secret" "azure_ad_client_secret" {
+  name         = "azure-ad-client-secret"
+  value        = var.azure_ad_client_secret
+  key_vault_id = azurerm_key_vault.this.id
+}
+
+resource "azurerm_key_vault_secret" "telnyx_api_key" {
+  name         = "telnyx-api-key"
+  value        = var.telnyx_api_key
+  key_vault_id = azurerm_key_vault.this.id
+}

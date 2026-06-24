@@ -26,8 +26,6 @@ env:
   ACR_NAME: acroutreachprod
   IMAGE_REPO: outreach-hub
   APP_NAME: ca-outreach-app-prod
-  JOB_SEND: caj-outreach-email-send-prod
-  JOB_SCAN: caj-outreach-email-scan-prod
 
 jobs:
   build-and-deploy:
@@ -73,12 +71,7 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --image "${{ steps.build.outputs.image }}"
 
-      - name: Update cron Jobs to new image
-        run: |
-          set -euo pipefail
-          for job in "$JOB_SEND" "$JOB_SCAN"; do
-            az containerapp job update \
-              --name "$job" \
-              --resource-group "$RESOURCE_GROUP" \
-              --image "${{ steps.build.outputs.image }}"
-          done
+      # NOTE: the cron Jobs are deliberately NOT re-imaged here. They run a stock
+      # azure-cli/curl image (Terraform-owned) and only POST the app's routes —
+      # they do not run the app code. Pointing them at the Next image (which has
+      # no curl) would break every scheduled run and fight `terraform apply`.

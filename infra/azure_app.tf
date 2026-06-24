@@ -49,8 +49,9 @@ resource "azurerm_container_app" "app" {
     key_vault_secret_id = azurerm_key_vault_secret.auth_secret.id
   }
   secret {
-    name  = "azure-ad-client-secret"
-    value = var.azure_ad_client_secret
+    name                = "azure-ad-client-secret"
+    identity            = "System"
+    key_vault_secret_id = azurerm_key_vault_secret.azure_ad_client_secret.id
   }
   secret {
     name                = "cron-secret"
@@ -63,8 +64,9 @@ resource "azurerm_container_app" "app" {
     key_vault_secret_id = azurerm_key_vault_secret.unsubscribe_secret.id
   }
   secret {
-    name  = "telnyx-api-key"
-    value = var.telnyx_api_key
+    name                = "telnyx-api-key"
+    identity            = "System"
+    key_vault_secret_id = azurerm_key_vault_secret.telnyx_api_key.id
   }
 
   ingress {
