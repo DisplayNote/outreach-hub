@@ -101,7 +101,7 @@ make help                              # list targets
 make bootstrap                         # LOCAL dev: populate .env.local from .env.bootstrap (needs only MS_* values)
 make bootstrap-prod                    # PROD: populate infra/envs/prod.tfvars from .env.bootstrap (needs Azure creds)
 make dev                               # docker Postgres + Mailpit → migrate → next dev
-make dev-stop                          # tear down (pass nothing; `dev-stop` then `-v` wipes the pg volume)
+make dev-stop                          # tear down the local stack (to also wipe the DB: bash scripts/teardown.sh -v, or make db-reset)
 make typecheck                         # tsc --noEmit
 make lint                              # eslint .
 make test                              # vitest
