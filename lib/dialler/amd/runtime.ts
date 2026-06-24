@@ -21,7 +21,7 @@ import { db } from '@/lib/db/client';
 import { withServiceRls } from '@/lib/db/rls-service';
 import { callAttempts, callEvents, touchpoints } from '@/lib/db/schema';
 import type { AmdStore, AttemptPatch } from '@/lib/dialler/amd/apply';
-import { toCallAttempt, type CallAttemptRow } from '@/lib/dialler/amd/row';
+import { drizzleRowToCallAttempt } from '@/lib/dialler/amd/row';
 import { processEvent, type ProcessDeps } from '@/lib/dialler/amd/process';
 import { MockTelnyxBackend } from '@/lib/dialler/amd/mock-backend';
 import { TelnyxAmdBackend } from '@/lib/dialler/amd/telnyx-backend';
@@ -43,16 +43,24 @@ export interface AmdRuntime {
  * mapped {@link CallAttempt}, or null when no row matches.
  */
 async function loadAttempt(by: { callControlId?: string; id?: string }): Promise<CallAttempt | null> {
-  // Cross-org discovery: the inbound webhook doesn't know the org yet, so an
-  // org-scoped SELECT (current_org_id() is NULL with no GUC set) would match
-  // nothing. The find_call_attempt SECURITY DEFINER function bypasses RLS for
-  // this single read (returns the full call_attempts row); every subsequent
-  // write derives org_id from it and runs org-scoped via withServiceRls.
-  const result = await db.execute(
-    sql`select * from public.find_call_attempt(${by.callControlId ?? null}, ${by.id ?? null})`,
+  // Cross-org discovery: find_call_attempt (SECURITY DEFINER) returns only (id, org_id) —
+  // the minimum needed to identify the owning org without an RLS GUC. After that, fetch
+  // the full row via a normal org-scoped Drizzle query under withServiceRls so the
+  // SECURITY DEFINER path is limited to the two discovery columns only.
+  const disc = await db.execute(
+    sql`select id, org_id from public.find_call_attempt(${by.callControlId ?? null}, ${by.id ?? null})`,
   );
-  const row = result.rows[0];
-  return row ? toCallAttempt(row as unknown as CallAttemptRow) : null;
+  const found = disc.rows[0] as { id: string; org_id: string } | undefined;
+  if (!found) return null;
+
+  const rows = await withServiceRls(found.org_id, (tx) =>
+    tx
+      .select()
+      .from(callAttempts)
+      .where(and(eq(callAttempts.id, found.id), eq(callAttempts.orgId, found.org_id)))
+      .limit(1),
+  );
+  return rows[0] ? drizzleRowToCallAttempt(rows[0]) : null;
 }
 
 /** Load the attempt a webhook/mock event belongs to, by its Telnyx call_control_id. */

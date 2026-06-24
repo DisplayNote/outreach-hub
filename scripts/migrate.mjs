@@ -50,7 +50,7 @@ try {
     } catch (e) {
       await client.query('rollback');
       console.error(`migration ${name} failed`, e);
-      process.exit(1);
+      throw e; // let the outer finally unlock + disconnect before the process exits
     }
     console.log(`applied ${name}`);
   }
@@ -79,8 +79,7 @@ try {
   if (appPw) {
     await client.query(`alter role app_user with password ${client.escapeLiteral(appPw)}`);
   } else if (process.env.NODE_ENV === 'production') {
-    console.error('migrate: APP_USER_PASSWORD is required in production (set it from Key Vault).');
-    process.exit(1);
+    throw new Error('migrate: APP_USER_PASSWORD is required in production (set it from Key Vault).');
   } else {
     console.warn('migrate: APP_USER_PASSWORD unset — app_user has no password (local dev: set APP_USER_PASSWORD).');
   }
