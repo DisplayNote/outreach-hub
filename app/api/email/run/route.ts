@@ -4,9 +4,9 @@
  * env-internal ingress URL with `Authorization: Bearer $CRON_SECRET` on the
  * `15 9 * * 1-5` schedule (curl -fsS, so a non-2xx fails the job loudly). Runs
  * the sender for the single configured org (CRON_ORG_ID) via withServiceRls +
- * the app-only Graph token — one mailbox, so this does NOT fan out across orgs
- * (no-op when CRON_ORG_ID is unset). Local dev uses the "Run sender now" Server
- * Action instead.
+ * the app-only Graph token — one mailbox, so this does NOT fan out across orgs.
+ * CRON_ORG_ID unset: no-op (returns 0 orgs) in dev; throws and fails the job in
+ * production. Local dev uses the "Run sender now" Server Action instead.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';

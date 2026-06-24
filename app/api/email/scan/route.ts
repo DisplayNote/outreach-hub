@@ -4,9 +4,9 @@
  * env-internal ingress URL with `Authorization: Bearer $CRON_SECRET` every
  * 30 minutes between 07:00–18:00 UTC on weekdays. Scans the single configured
  * org's inbox (CRON_ORG_ID) for replies/bounces via withServiceRls + the
- * app-only Graph token — one mailbox, so this does NOT fan out across orgs
- * (no-op when CRON_ORG_ID is unset). Local dev uses the "Scan inbox now" Server
- * Action instead.
+ * app-only Graph token — one mailbox, so this does NOT fan out across orgs.
+ * CRON_ORG_ID unset: no-op (returns 0 orgs) in dev; throws and fails the job in
+ * production. Local dev uses the "Scan inbox now" Server Action instead.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';
