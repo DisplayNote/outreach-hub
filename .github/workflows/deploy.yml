@@ -1,0 +1,84 @@
+name: Deploy
+
+# On push to main: build the app image in ACR and roll the Container App + the
+# two cron Jobs onto the new digest. Authenticates with Azure via OIDC (no
+# long-lived credentials) using a federated credential on the app registration.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'infra/**'
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # required for azure/login OIDC
+  contents: read
+
+env:
+  # These are environment-specific; keep them in sync with infra/ resource names.
+  RESOURCE_GROUP: rg-outreach-prod
+  ACR_NAME: acroutreachprod
+  IMAGE_REPO: outreach-hub
+  APP_NAME: ca-outreach-app-prod
+  JOB_SEND: caj-outreach-email-send-prod
+  JOB_SCAN: caj-outreach-email-scan-prod
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build & push image to ACR
+        id: build
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_SHA::12}"
+          # az acr build runs the Dockerfile build inside ACR Tasks (no local
+          # docker daemon, no registry login needed) and pushes the tag.
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "$IMAGE_REPO:$TAG" \
+            --image "$IMAGE_REPO:latest" \
+            --file Dockerfile .
+          # Resolve the immutable digest so the app pins exactly what we built.
+          DIGEST="$(az acr repository show \
+            --name "$ACR_NAME" \
+            --image "$IMAGE_REPO:$TAG" \
+            --query 'digest' -o tsv)"
+          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}@${DIGEST}"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Built $IMAGE"
+
+      - name: Update Container App to new image
+        run: |
+          set -euo pipefail
+          az containerapp update \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "${{ steps.build.outputs.image }}"
+
+      - name: Update cron Jobs to new image
+        run: |
+          set -euo pipefail
+          for job in "$JOB_SEND" "$JOB_SCAN"; do
+            az containerapp job update \
+              --name "$job" \
+              --resource-group "$RESOURCE_GROUP" \
+              --image "${{ steps.build.outputs.image }}"
+          done
