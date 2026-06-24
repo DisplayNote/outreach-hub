@@ -5,26 +5,28 @@
 ```
                      ┌───────────────────────────┐
                      │       Microsoft Entra     │
-                     │  (OAuth multi-tenant app) │
+                     │  (OAuth app registration) │
                      └─────────────┬─────────────┘
-                                   │ OIDC
+                                   │ OIDC (Auth.js v5)
                                    ▼
-   ┌────────┐    HTTPS    ┌────────────────┐    Postgres    ┌──────────────┐
-   │ Vercel │ ◀──────────▶│   Next.js 15   │ ◀────────────▶ │   Supabase   │
-   │        │             │  (App Router)  │   RLS + Auth   │  (Postgres,  │
-   │        │             │                │    cookies     │   Realtime,  │
-   │        │             │  Server Comps  │                │   Vault,     │
-   │        │             │  Route Handlrs │                │   Storage,   │
-   │        │             │  Middleware    │                │   Edge Fns)  │
-   └────────┘             └───────┬────────┘                └──────┬───────┘
-                                  │                                │
-                                  │ EmailDriver                    │
-                                  ▼                                ▼
-                          ┌──────────────┐                ┌──────────────┐
-                          │ MS Graph API │                │   Telnyx     │
-                          │ Mail.Send /  │                │  Call Ctrl   │
-                          │ Mail.Read    │                │   + AMD      │
-                          └──────────────┘                └──────────────┘
+   ┌─────────────┐  HTTPS   ┌────────────────┐   Postgres    ┌──────────────────┐
+   │ Azure       │ ◀───────▶│   Next.js 15   │ ◀───────────▶ │ Postgres Flexible│
+   │ Container   │          │  (App Router,  │  pg + Drizzle │ Server           │
+   │ App         │          │   standalone)  │  withRls() tx │ (RLS via session │
+   │ (ACR image, │          │  Server Comps  │  app_user     │  GUCs app.*)     │
+   │  MI → KV)   │          │  Route Handlrs │  role         │                  │
+   └──────┬──────┘          │  Middleware    │               └──────────────────┘
+          │                 └───────┬────────┘
+          │ curl /api/email/*       │ EmailDriver
+          ▼ (CRON_SECRET)           ▼
+   ┌──────────────┐         ┌──────────────┐                 ┌──────────────┐
+   │ ACA Jobs     │         │ MS Graph API │                 │   Telnyx     │
+   │ send / scan  │         │ Mail.Send /  │                 │  Call Ctrl   │
+   │ (cron)       │         │ Mail.Read    │                 │   + AMD      │
+   └──────────────┘         └──────────────┘                 └──────────────┘
+
+  Key Vault holds AUTH_SECRET / CRON_SECRET / UNSUBSCRIBE_SECRET / app_user
+  password (all Terraform-generated); the app reads them via its managed identity.
 ```
 
 ## Decisions cerradas
@@ -32,28 +34,31 @@
 | Decision | Why |
 |---|---|
 | Next.js App Router | Server Components reduce client JS; Server Actions remove an API layer. |
-| Supabase | Postgres + Auth + Realtime + RLS + Vault on one plane — multi-tenancy "near free". |
+| Azure Container Apps | Runs the standalone Next server with managed-identity access to ACR + Key Vault; scale-to-few, no VM ops. |
+| Postgres Flexible Server | Plain managed Postgres — the schema, RLS policies and plpgsql RPCs port verbatim. |
+| `pg` + Drizzle behind `withRls(ctx, fn)` | A per-request transaction sets `SET LOCAL app.user_id/app.org_id`; the RLS readers `current_user_id()`/`current_org_id()` resolve from those GUCs, so isolation holds without a Supabase auth schema. |
+| Auth.js v5 + Microsoft Entra | One app registration backs both interactive login and the app-only Graph cron token; the signed JWT feeds the RLS context. |
 | Microsoft OAuth as the only IdP | We need the app registration for Mail anyway; reusing it for login removes a system. |
-| pnpm | Faster, disk-efficient; deterministic lockfile. |
-| Vitest + Playwright | Vite-native unit speed; multi-browser e2e on CI. |
-| Terraform | Mature providers for Supabase and Vercel. (DNS is managed manually, outside Terraform.) |
-| `EmailDriver` interface | Lets us iterate UI without Graph for weeks; switching providers is type-safe. |
-| Supabase CLI owns local Supabase | Avoids maintaining a fragile custom Compose copy of Supabase's internal service graph. |
-| Single-file dev (`PaulsOutreachHub.html`) → migration target | Battle-tested domain model is preserved — only the platform layer changes. |
+| ACA Jobs for cron | Two scheduled jobs curl the app's CRON_SECRET-gated routes — one source of truth for the runner, no second build artifact. |
+| Polling (no Realtime) | The dialler polls a server action; removes the Supabase Realtime dependency. |
+| pnpm / Vitest + Playwright / Terraform (`azurerm`) | Deterministic installs; fast unit + multi-browser e2e; mature Azure provider. DNS is manual. |
+| `EmailDriver` interface | Lets us iterate UI without Graph; switching providers is type-safe (`mock`/`mailpit`/`graph-dev`/`graph-prod`). |
+| Single-file dev (`PaulsOutreachHub.html`) → migration target | Battle-tested domain model is preserved — only the platform layer changed. |
 
 ## Module map
 
-- `lib/env.ts` — single source of truth for env validation (Zod). Server- vs browser-safe split.
-- `lib/supabase/{client,server,middleware}.ts` — three SSR entry points per
-  [supabase docs](https://supabase.com/docs/guides/auth/server-side/nextjs).
-- `lib/email/` — `EmailDriver` interface and its three real / one stub implementations.
-- `middleware.ts` — refreshes Supabase session cookies on every page request.
-- `supabase/config.toml` — declarative config for the local stack (auth providers, ports, etc.).
-- `supabase/migrations/*.sql` — schema lives here; the live DB is recreated from these.
-- `Dockerfile` / `docker-compose.full.yml` — production-style local app container plus Mailpit.
-  Supabase is still started by the CLI, and app-container server calls use `SUPABASE_INTERNAL_URL`.
+- `lib/env.ts` — single source of truth for env validation (Zod, server-side). The dev mock gates key off an `APP_BASE_URL` loopback check.
+- `lib/db/{client,rls,rls-service,schema,like}.ts` — the `pg` pool + Drizzle, the `withRls`/`withServiceRls` transaction wrappers, the table defs, and `escapeLike`.
+- `lib/auth/{config,session,org,admin,provision,graph-tokens}.ts` — Auth.js wiring, session→RLS-context helpers, first-login provisioning, the admin allowlist, and stored Graph tokens.
+- `lib/email/` — the `EmailDriver` interface + implementations, the store, and the cron sender/scanner cores.
+- `lib/graph/token.ts` — delegated (session) + app-only (MSAL client-credentials) Graph tokens.
+- `middleware.ts` — Auth.js middleware (`export { auth as middleware }`); gates everything but the public allowlist.
+- `supabase/migrations/*.sql` — schema + RLS + RPCs; the live DB is built from these by `scripts/migrate.mjs`. (Directory name is legacy; the Supabase stack is gone.)
+- `Dockerfile` — the standalone Next.js production image (built in ACR by CI).
+- `docker-compose.dev.yml` — local Postgres 16 + Mailpit for `make dev`.
+- `infra/` — Terraform (`azurerm`): RG, ACR, Postgres, Key Vault, the Container App, and the cron Jobs.
 
 ## Phase boundaries
 
-See [OUTREACH_HUB_EXECUTION_PLAN.md](./OUTREACH_HUB_EXECUTION_PLAN.md) §3 for the full roadmap.
-Phase 0 ships the platform skeleton; Phase 1 onwards layers the domain (campaigns → contacts → touchpoints).
+The original phased roadmap lives in [OUTREACH_HUB_EXECUTION_PLAN.md](./OUTREACH_HUB_EXECUTION_PLAN.md);
+the Azure migration is tracked in [superpowers/plans/2026-06-23-azure-migration.md](./superpowers/plans/2026-06-23-azure-migration.md).

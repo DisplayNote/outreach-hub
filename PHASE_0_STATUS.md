@@ -2,8 +2,11 @@
 
 > ⚠️ **SUPERSEDED — historical only.** This file tracked the Phase 0 bootstrap.
 > The project has since shipped Phases 1–5 (domain model, campaigns/contacts,
-> dialler, settings/admin, and the email runner). It is **no longer the source of
-> truth** and is kept only for the bootstrap audit trail.
+> dialler, settings/admin, and the email runner) **and then migrated off Supabase
+> + Vercel onto an Azure-native stack** (Container Apps + Postgres Flexible Server
+> + Auth.js/Entra + ACA Jobs cron). Every mention of Supabase, Vercel, the local
+> Supabase CLI, or their CI secrets below is therefore **stale**. It is **no
+> longer the source of truth** and is kept only for the bootstrap audit trail.
 >
 > For current state use, in order: `git log --oneline`, the open PRs, and
 > **[docs/deployment.md](docs/deployment.md)** for how to ship to production.
