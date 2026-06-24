@@ -4,41 +4,51 @@
  * Phase 2 write-layer Server Actions for email templates.
  *
  * Inputs are zod-validated and mapped from camelCase action shapes to the
- * snake_case Postgres columns. Mutations run through the RLS-scoped server
- * client (`@/lib/supabase/server`): INSERT sets `org_id` explicitly (via
- * `getCurrentOrgId`) so the RLS WITH CHECK passes; UPDATE/DELETE are implicitly
- * org-filtered and target by `id` only. Affected routes are revalidated after
- * success.
+ * Drizzle `templates` table columns. Mutations run inside withRls (the RLS
+ * boundary): INSERT sets `org_id` explicitly (via `getCurrentOrgId`) so the RLS
+ * WITH CHECK passes; UPDATE/DELETE are implicitly org-filtered by RLS and target
+ * by `id` only. Affected routes are revalidated after success.
  */
 import { revalidatePath } from 'next/cache';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { withRls } from '@/lib/db/rls';
+import { rlsCtxFromSession, requireSession } from '@/lib/auth/session';
+import { templates } from '@/lib/db/schema';
 import { getCurrentOrgId } from '@/lib/auth/org';
 import type { Template } from '@/lib/types/domain';
 
-// --- Raw row shape (snake_case, exactly as returned by PostgREST) ------------
+// --- Row → domain mapping -----------------------------------------------------
 
-interface TemplateRow {
+// The Drizzle column set selected back from `templates`, matching the domain
+// `Template` shape exactly (camelCase keys, same nullability as the columns).
+const TEMPLATE_COLUMNS = {
+  id: templates.id,
+  orgId: templates.orgId,
+  name: templates.name,
+  subject: templates.subject,
+  body: templates.body,
+  createdAt: templates.createdAt,
+  updatedAt: templates.updatedAt,
+} as const;
+
+function toTemplate(row: {
   id: string;
-  org_id: string;
+  orgId: string;
   name: string;
   subject: string | null;
   body: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-const TEMPLATE_SELECT = 'id, org_id, name, subject, body, created_at, updated_at';
-
-function toTemplate(row: TemplateRow): Template {
+  createdAt: string;
+  updatedAt: string;
+}): Template {
   return {
     id: row.id,
-    orgId: row.org_id,
+    orgId: row.orgId,
     name: row.name,
     subject: row.subject,
     body: row.body,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -83,26 +93,30 @@ export type UpdateTemplateInput = z.input<typeof updateTemplateSchema>;
 export async function createTemplate(input: CreateTemplateInput): Promise<Template> {
   const parsed = createTemplateSchema.parse(input);
   const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
 
-  const row: Record<string, unknown> = {
-    org_id: orgId,
-    name: parsed.name,
-    subject: parsed.subject ?? null,
-    body: parsed.body ?? null,
-  };
+  // INSERT sets `org_id` explicitly so the RLS WITH CHECK (org_id =
+  // current_org_id()) passes; withRls scopes the transaction to the caller's org.
+  const template = await withRls(
+    rlsCtxFromSession(await requireSession()),
+    async (tx) => {
+      const [inserted] = await tx
+        .insert(templates)
+        .values({
+          orgId,
+          name: parsed.name,
+          subject: parsed.subject ?? null,
+          body: parsed.body ?? null,
+        })
+        .returning(TEMPLATE_COLUMNS);
 
-  const { data, error } = await supabase
-    .from('templates')
-    .insert(row)
-    .select(TEMPLATE_SELECT)
-    .single();
+      if (!inserted) {
+        throw new Error('createTemplate: failed to insert template: no row returned');
+      }
 
-  if (error) {
-    throw new Error(`createTemplate: failed to insert template: ${error.message}`);
-  }
+      return toTemplate(inserted);
+    },
+  );
 
-  const template = toTemplate(data as TemplateRow);
   revalidateTemplateRoutes();
   return template;
 }
@@ -113,53 +127,61 @@ export async function updateTemplate(
 ): Promise<Template> {
   const templateId = uuid.parse(id);
   const parsed = updateTemplateSchema.parse(input);
-  const supabase = await createClient();
 
-  const patch: Record<string, unknown> = {};
+  const patch: { name?: string; subject?: string | null; body?: string | null } = {};
   if (parsed.name !== undefined) {
-    patch['name'] = parsed.name;
+    patch.name = parsed.name;
   }
   if (parsed.subject !== undefined) {
-    patch['subject'] = parsed.subject;
+    patch.subject = parsed.subject;
   }
   if (parsed.body !== undefined) {
-    patch['body'] = parsed.body;
+    patch.body = parsed.body;
   }
 
   if (Object.keys(patch).length === 0) {
     throw new Error('updateTemplate: no fields to update');
   }
 
-  const { data, error } = await supabase
-    .from('templates')
-    .update(patch)
-    .eq('id', templateId)
-    .select(TEMPLATE_SELECT)
-    .single();
+  // UPDATE targets by id only; RLS implicitly scopes it to the caller's org.
+  const template = await withRls(
+    rlsCtxFromSession(await requireSession()),
+    async (tx) => {
+      const [updated] = await tx
+        .update(templates)
+        .set(patch)
+        .where(eq(templates.id, templateId))
+        .returning(TEMPLATE_COLUMNS);
 
-  if (error) {
-    throw new Error(`updateTemplate: failed to update template ${templateId}: ${error.message}`);
-  }
+      if (!updated) {
+        throw new Error(`updateTemplate: failed to update template ${templateId}: no row`);
+      }
 
-  const template = toTemplate(data as TemplateRow);
+      return toTemplate(updated);
+    },
+  );
+
   revalidateTemplateRoutes();
   return template;
 }
 
 export async function deleteTemplate(id: string): Promise<{ id: string }> {
   const templateId = uuid.parse(id);
-  const supabase = await createClient();
 
   // Require a returned row so a no-match (stale id, or another org's template
   // hidden by RLS) is a clear error rather than a false success confirmation.
-  const { data, error } = await supabase.from('templates').delete().eq('id', templateId).select('id');
+  await withRls(rlsCtxFromSession(await requireSession()), async (tx) => {
+    const deleted = await tx
+      .delete(templates)
+      .where(eq(templates.id, templateId))
+      .returning({ id: templates.id });
 
-  if (error) {
-    throw new Error(`deleteTemplate: failed to delete template ${templateId}: ${error.message}`);
-  }
-  if (!data || data.length === 0) {
-    throw new Error(`deleteTemplate: template ${templateId} not found (or not in your org).`);
-  }
+    if (deleted.length === 0) {
+      throw new Error(
+        `deleteTemplate: template ${templateId} not found (or not in your org).`,
+      );
+    }
+  });
 
   revalidateTemplateRoutes();
   return { id: templateId };

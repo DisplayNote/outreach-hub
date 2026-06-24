@@ -17,9 +17,11 @@
  * inferred as a conflict arbiter — so this is an explicit select-then-write.
  */
 import { revalidatePath } from 'next/cache';
+import { and, eq, ilike } from 'drizzle-orm';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/auth/org';
+import { withRls } from '@/lib/db/rls';
+import { requireSession, rlsCtxFromSession } from '@/lib/auth/session';
+import { contacts as contactsTable } from '@/lib/db/schema';
 import { escapeLike } from '@/lib/supabase/like';
 
 // --- Inputs -------------------------------------------------------------------
@@ -73,6 +75,26 @@ const COLUMN_BY_HEADER: Record<string, string> = {
 
 /** Contact columns that accept a recognised CSV value. */
 const RECOGNISED_COLUMNS = new Set(Object.values(COLUMN_BY_HEADER));
+
+/**
+ * Map the recognised DB column names (the values in COLUMN_BY_HEADER, e.g.
+ * `first_name`) to the corresponding Drizzle schema field on `contacts`. Used
+ * to translate the `mapped` payload (keyed by DB column name) into the
+ * camelCased keys Drizzle's insert/update expect, without losing the
+ * "recognised column" guard that drives which values are written.
+ */
+const DRIZZLE_FIELD_BY_COLUMN = {
+  first_name: 'firstName',
+  last_name: 'lastName',
+  email: 'email',
+  company: 'company',
+  phone: 'phone',
+  mobile: 'mobile',
+  job_title: 'jobTitle',
+  seniority: 'seniority',
+  country: 'country',
+  linkedin: 'linkedin',
+} as const satisfies Record<string, keyof typeof contactsTable.$inferInsert>;
 
 function normaliseHeader(header: string): string {
   return header.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -187,126 +209,121 @@ export async function importApolloCsv(input: ImportApolloCsvInput): Promise<Impo
   const header = rows[0] as string[];
   const headerKeys = header.map(normaliseHeader);
 
-  const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
+  const ctx = rlsCtxFromSession(await requireSession());
+  const orgId = ctx.orgId;
 
-  let inserted = 0;
-  let updated = 0;
-  let skipped = 0;
+  // Run the whole import in one RLS-scoped transaction: the session GUCs set by
+  // withRls scope every lookup/insert/update to the caller's org, and RLS's
+  // WITH CHECK enforces org_id on insert. We still set org_id explicitly so the
+  // NOT NULL column is satisfied and the WITH-CHECK predicate passes.
+  const { inserted, updated, skipped } = await withRls(ctx, async (tx) => {
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
 
-  for (let r = 1; r < rows.length; r += 1) {
-    const cells = rows[r] as string[];
+    for (let r = 1; r < rows.length; r += 1) {
+      const cells = rows[r] as string[];
 
-    // Build the recognised-column values + the metadata map for this row.
-    // `metadata` is keyed by raw CSV headers (user-controlled), so use a
-    // null-prototype map: a header literally named `__proto__`/`constructor`
-    // is then stored as ordinary data instead of mutating Object.prototype.
-    const mapped: Record<string, string | null> = {};
-    const metadata: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+      // Build the recognised-column values + the metadata map for this row.
+      // `metadata` is keyed by raw CSV headers (user-controlled), so use a
+      // null-prototype map: a header literally named `__proto__`/`constructor`
+      // is then stored as ordinary data instead of mutating Object.prototype.
+      const mapped: Record<string, string | null> = {};
+      const metadata: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
 
-    for (let c = 0; c < headerKeys.length; c += 1) {
-      const key = headerKeys[c] as string;
-      const raw = c < cells.length ? (cells[c] as string) : '';
-      const column = COLUMN_BY_HEADER[key];
+      for (let c = 0; c < headerKeys.length; c += 1) {
+        const key = headerKeys[c] as string;
+        const raw = c < cells.length ? (cells[c] as string) : '';
+        const column = COLUMN_BY_HEADER[key];
 
-      if (column !== undefined && RECOGNISED_COLUMNS.has(column)) {
-        // First recognised header wins for a given column; do not overwrite a
-        // populated value with a later blank duplicate column.
+        if (column !== undefined && RECOGNISED_COLUMNS.has(column)) {
+          // First recognised header wins for a given column; do not overwrite a
+          // populated value with a later blank duplicate column.
+          const value = blankToNull(raw);
+          if (mapped[column] === undefined || (mapped[column] === null && value !== null)) {
+            mapped[column] = value;
+          }
+          continue;
+        }
+
+        // Unrecognised column -> metadata, keyed by the ORIGINAL header text.
+        const originalHeader = (header[c] as string).trim();
         const value = blankToNull(raw);
-        if (mapped[column] === undefined || (mapped[column] === null && value !== null)) {
-          mapped[column] = value;
+        if (originalHeader !== '' && value !== null) {
+          metadata[originalHeader] = value;
         }
+      }
+
+      const email = mapped['email'] ?? null;
+      if (email === null) {
+        skipped += 1;
         continue;
       }
 
-      // Unrecognised column -> metadata, keyed by the ORIGINAL header text.
-      const originalHeader = (header[c] as string).trim();
-      const value = blankToNull(raw);
-      if (originalHeader !== '' && value !== null) {
-        metadata[originalHeader] = value;
+      // Dedupe on (org_id, lower(email)) via explicit lookup. LIKE
+      // metacharacters are escaped so `ilike` behaves as case-insensitive
+      // equality, never a wildcard match against another contact. RLS already
+      // scopes the query to the caller's org via the session GUCs.
+      const existingRows = await tx
+        .select({ id: contactsTable.id, metadata: contactsTable.metadata })
+        .from(contactsTable)
+        .where(
+          and(
+            eq(contactsTable.orgId, orgId),
+            ilike(contactsTable.email, escapeLike(email)),
+          ),
+        )
+        .limit(1);
+
+      const existing = existingRows[0];
+
+      if (existing) {
+        // UPDATE: merge metadata into the existing map, overwrite recognised
+        // columns with the non-null values present in this row.
+        const mergedMetadata: Record<string, unknown> = {
+          ...(existing.metadata ?? {}),
+          ...metadata,
+        };
+
+        const patch: Record<string, unknown> = { metadata: mergedMetadata };
+        for (const column of RECOGNISED_COLUMNS) {
+          const value = mapped[column];
+          if (value !== undefined && value !== null) {
+            patch[DRIZZLE_FIELD_BY_COLUMN[column as keyof typeof DRIZZLE_FIELD_BY_COLUMN]] = value;
+          }
+        }
+
+        await tx
+          .update(contactsTable)
+          .set(patch)
+          .where(eq(contactsTable.id, existing.id));
+        updated += 1;
+        continue;
       }
-    }
 
-    const email = mapped['email'] ?? null;
-    if (email === null) {
-      skipped += 1;
-      continue;
-    }
-
-    // Dedupe on (org_id, lower(email)) via explicit lookup. LIKE metacharacters
-    // are escaped so `ilike` behaves as case-insensitive equality, never a
-    // wildcard match against another contact.
-    const { data: existingRows, error: lookupError } = await supabase
-      .from('contacts')
-      .select('id, metadata')
-      .eq('org_id', orgId)
-      .ilike('email', escapeLike(email))
-      .limit(1);
-
-    if (lookupError) {
-      throw new Error(
-        `importApolloCsv: lookup failed for email "${email}" (row ${r + 1}): ${lookupError.message}`,
-      );
-    }
-
-    const existing = (existingRows as { id: string; metadata: Record<string, unknown> | null }[] | null)?.[0];
-
-    if (existing) {
-      // UPDATE: merge metadata into the existing map, overwrite recognised
-      // columns with the non-null values present in this row.
-      const mergedMetadata: Record<string, unknown> = {
-        ...(existing.metadata ?? {}),
-        ...metadata,
+      // INSERT: org_id from the caller (RLS WITH CHECK), campaign_id from input.
+      const row: Record<string, unknown> = {
+        orgId,
+        campaignId,
+        email,
+        metadata,
       };
-
-      const patch: Record<string, unknown> = { metadata: mergedMetadata };
       for (const column of RECOGNISED_COLUMNS) {
+        if (column === 'email') {
+          continue;
+        }
         const value = mapped[column];
-        if (value !== undefined && value !== null) {
-          patch[column] = value;
+        if (value !== undefined) {
+          row[DRIZZLE_FIELD_BY_COLUMN[column as keyof typeof DRIZZLE_FIELD_BY_COLUMN]] = value;
         }
       }
 
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update(patch)
-        .eq('id', existing.id);
-
-      if (updateError) {
-        throw new Error(
-          `importApolloCsv: failed to update contact ${existing.id} (row ${r + 1}): ${updateError.message}`,
-        );
-      }
-      updated += 1;
-      continue;
+      await tx.insert(contactsTable).values(row as typeof contactsTable.$inferInsert);
+      inserted += 1;
     }
 
-    // INSERT: org_id from the caller (RLS WITH CHECK), campaign_id from input.
-    const row: Record<string, unknown> = {
-      org_id: orgId,
-      campaign_id: campaignId,
-      email,
-      metadata,
-    };
-    for (const column of RECOGNISED_COLUMNS) {
-      if (column === 'email') {
-        continue;
-      }
-      const value = mapped[column];
-      if (value !== undefined) {
-        row[column] = value;
-      }
-    }
-
-    const { error: insertError } = await supabase.from('contacts').insert(row);
-
-    if (insertError) {
-      throw new Error(
-        `importApolloCsv: failed to insert contact for email "${email}" (row ${r + 1}): ${insertError.message}`,
-      );
-    }
-    inserted += 1;
-  }
+    return { inserted, updated, skipped };
+  });
 
   revalidatePath('/contacts');
   revalidatePath('/pipeline');

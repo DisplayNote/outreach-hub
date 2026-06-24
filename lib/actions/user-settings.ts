@@ -12,8 +12,10 @@
  * row to the caller's org.
  */
 import { revalidatePath } from 'next/cache';
+import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { withRls } from '@/lib/db/rls';
+import { userSettings } from '@/lib/db/schema';
 import { getCurrentUser } from '@/lib/auth/org';
 // mergeOrgSettingsPatch is generic over any jsonb settings blob (it just skips
 // `undefined` values onto a null-prototype target) — reuse it for user settings.
@@ -52,42 +54,52 @@ export type UpdateUserSettingsInput = z.input<typeof userSettingsPatchSchema>;
 export async function updateUserSettings(patch: UpdateUserSettingsInput): Promise<UserSettings> {
   const parsed = userSettingsPatchSchema.parse(patch);
   const { id: userId, orgId } = await getCurrentUser();
-  const supabase = await createClient();
 
-  // Read-merge-write: load the caller's current settings (RLS-scoped to their
-  // own row), shallow-merge the patch (skipping `undefined` so blank fields are
-  // a no-op), then upsert the whole object back. Postgres has no portable
-  // partial-jsonb-merge via PostgREST, so we merge in JS.
-  const { data: current, error: readError } = await supabase
-    .from('user_settings')
-    .select('settings')
-    .eq('user_id', userId)
-    .maybeSingle();
+  // Read-merge-write inside one RLS-scoped transaction: load the caller's
+  // current settings (RLS-scoped to their own row), shallow-merge the patch
+  // (skipping `undefined` so blank fields are a no-op), then upsert the whole
+  // object back. Postgres has no portable single-statement partial-jsonb merge
+  // for our case, so we merge in JS. The session GUCs set by withRls scope both
+  // the read and the write to the caller's user/org; the `org_id` carried on the
+  // insert satisfies the INSERT/UPDATE WITH CHECK that pins the row to the org.
+  const settings = await withRls({ userId, orgId }, async (tx) => {
+    const [current] = await tx
+      .select({ settings: userSettings.settings })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId));
 
-  if (readError) {
-    throw new Error(
-      `updateUserSettings: failed to load settings for user ${userId}: ${readError.message}`,
-    );
-  }
+    const existing = (current?.settings ?? {}) as Record<string, unknown>;
+    const merged = mergeOrgSettingsPatch(existing, parsed);
 
-  const existing = ((current as { settings: Record<string, unknown> | null } | null)?.settings ??
-    {}) as Record<string, unknown>;
-  const merged = mergeOrgSettingsPatch(existing, parsed);
+    // `created_at`/`updated_at` carry DB-side `default now()`, but the schema
+    // types them notNull without a Drizzle default, so supply them explicitly
+    // via `now()` on insert. On the conflict path we only set `settings` (the
+    // updated_at trigger refreshes it); leaving `org_id` untouched keeps the
+    // row pinned to its original org, satisfying the UPDATE WITH CHECK.
+    const [upserted] = await tx
+      .insert(userSettings)
+      .values({
+        userId,
+        orgId,
+        settings: merged,
+        createdAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .onConflictDoUpdate({
+        target: userSettings.userId,
+        set: { settings: merged },
+      })
+      .returning({ settings: userSettings.settings });
 
-  const { data, error } = await supabase
-    .from('user_settings')
-    .upsert({ user_id: userId, org_id: orgId, settings: merged }, { onConflict: 'user_id' })
-    .select('settings')
-    .single();
+    if (!upserted) {
+      throw new Error(
+        `updateUserSettings: failed to upsert settings for user ${userId}: no row`,
+      );
+    }
 
-  if (error) {
-    throw new Error(
-      `updateUserSettings: failed to upsert settings for user ${userId}: ${error.message}`,
-    );
-  }
+    return (upserted.settings ?? {}) as UserSettings;
+  });
 
-  const settings = ((data as { settings: Record<string, unknown> | null } | null)?.settings ??
-    {}) as UserSettings;
   revalidatePath('/settings');
   return settings;
 }

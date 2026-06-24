@@ -9,14 +9,18 @@
  * in the same flow.
  *
  * Mirrors the conventions in `@/lib/actions/contacts.ts`: zod-validated inputs,
- * camelCase action shapes mapped to snake_case columns, mutations run through
- * the RLS-scoped server client, INSERTs carry `org_id` explicitly (via
- * `getCurrentOrgId`) so the RLS WITH CHECK passes, and every affected route is
- * revalidated after a successful mutation.
+ * camelCase action shapes mapped to snake_case columns, mutations run inside an
+ * RLS-scoped transaction (`withRls` sets the app.org_id/app.user_id GUCs the
+ * policies read), INSERTs carry `org_id` explicitly (via `getCurrentOrgId`) so
+ * the RLS WITH CHECK passes, and every affected route is revalidated after a
+ * successful mutation.
  */
 import { revalidatePath } from 'next/cache';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { withRls } from '@/lib/db/rls';
+import { rlsCtxFromSession, requireSession } from '@/lib/auth/session';
+import { contacts, touchpoints } from '@/lib/db/schema';
 import { getCurrentOrgId } from '@/lib/auth/org';
 import {
   CALL_OUTCOME_KEYS,
@@ -32,35 +36,6 @@ import type { Contact, Touchpoint } from '@/lib/types/domain';
 // type-only re-export inside a 'use server' file and emits a runtime reference
 // to the (non-existent) binding, crashing the route with a ReferenceError.
 // Importers get CallOutcomeKey straight from '@/lib/dialler/types'.
-
-// --- Raw row shape (snake_case, exactly as returned by PostgREST) -------------
-
-interface TouchpointRow {
-  id: string;
-  org_id: string;
-  contact_id: string;
-  channel: Touchpoint['channel'];
-  note: string | null;
-  occurred_at: string;
-  legacy_id: string | null;
-  created_at: string;
-}
-
-const TOUCHPOINT_SELECT =
-  'id, org_id, contact_id, channel, note, occurred_at, legacy_id, created_at';
-
-function toTouchpoint(row: TouchpointRow): Touchpoint {
-  return {
-    id: row.id,
-    orgId: row.org_id,
-    contactId: row.contact_id,
-    channel: row.channel,
-    note: row.note,
-    occurredAt: row.occurred_at,
-    legacyId: row.legacy_id,
-    createdAt: row.created_at,
-  };
-}
 
 // --- Revalidation -------------------------------------------------------------
 
@@ -119,103 +94,113 @@ export async function logCallOutcome(
   const parsed = logCallOutcomeSchema.parse(input);
   const outcome = getOutcomeDef(parsed.outcome);
   const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
+  const ctx = rlsCtxFromSession(await requireSession());
 
-  // 1. Append the phone touchpoint (occurred now), mirroring logTouchpoint.
-  const touchpointRow: Record<string, unknown> = {
-    org_id: orgId,
-    contact_id: id,
-    channel: 'phone',
-    note: parsed.note ?? outcome.defaultNote,
-    occurred_at: new Date().toISOString(),
-  };
-
-  const { data: tpData, error: tpError } = await supabase
-    .from('touchpoints')
-    .insert(touchpointRow)
-    .select(TOUCHPOINT_SELECT)
-    .single();
-
-  if (tpError) {
-    throw new Error(
-      `logCallOutcome: failed to log touchpoint for contact ${id}: ${tpError.message}`,
-    );
-  }
-
-  const touchpoint = toTouchpoint(tpData as TouchpointRow);
-
-  // 2. Apply the contact-level effects:
-  //    - status, with precedence (never downgrade a stronger terminal state); and
-  //    - a next-day follow-up for callback-requested, so it resurfaces in /today.
-  let status: Contact['status'] | null = null;
   const schedulesCallback = outcomeSchedulesCallback(parsed.outcome);
-  const followUpPatch = { follow_up: tomorrowDate() };
-  let followUpApplied = false;
+  const followUp = tomorrowDate();
 
-  if (outcome.statusEffect !== 'none') {
-    // CAS-with-retry (mirrors recordInbound in the email store): a blind
-    // read-then-write would let a concurrent reply-scan or another rep's outcome
-    // — landing between our read and write — be clobbered, e.g. downgrading a
-    // `meeting` booked via an inbound reply. Re-evaluate precedence against the
-    // LIVE status and only write when it hasn't moved since the read.
-    let settled = false;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const { data: currentRow, error: readError } = await supabase
-        .from('contacts')
-        .select('status')
-        .eq('id', id)
-        .eq('org_id', orgId)
-        .maybeSingle();
-      if (readError) {
-        throw new Error(`logCallOutcome: failed to read contact ${id}: ${readError.message}`);
-      }
-      if (!currentRow) {
-        settled = true; // contact gone — nothing to apply
-        break;
-      }
-      const observed = (currentRow as { status: Contact['status'] }).status;
-      const next = resolveStatusEffect(observed, outcome.statusEffect);
-      if (next === null || next === observed) {
-        status = next === null ? null : observed; // already at/over target — no write
-        settled = true;
-        break;
-      }
-      const { data: changed, error: updateError } = await supabase
-        .from('contacts')
-        .update({ status: next, ...(schedulesCallback ? followUpPatch : {}) })
-        .eq('id', id)
-        .eq('org_id', orgId)
-        .eq('status', observed) // CAS guard: only if status hasn't moved
-        .select('id');
-      if (updateError) {
-        throw new Error(`logCallOutcome: failed to update contact ${id}: ${updateError.message}`);
-      }
-      if ((changed?.length ?? 0) > 0) {
-        status = next;
-        followUpApplied = schedulesCallback; // written atomically with the status
-        settled = true;
-        break;
-      }
-      // Lost the CAS (status moved under us) — loop re-reads and recomputes.
-    }
-    if (!settled) {
-      throw new Error(`logCallOutcome: lost compare-and-set on status for contact ${id} after retries`);
-    }
-  }
+  return withRls(ctx, async (tx) => {
+    // 1. Append the phone touchpoint (occurred now), mirroring logTouchpoint.
+    //    org_id is set explicitly so the RLS WITH CHECK passes.
+    const [tpRow] = await tx
+      .insert(touchpoints)
+      .values({
+        orgId,
+        contactId: id,
+        channel: 'phone',
+        note: parsed.note ?? outcome.defaultNote,
+        occurredAt: new Date().toISOString(),
+      })
+      .returning({
+        id: touchpoints.id,
+        orgId: touchpoints.orgId,
+        contactId: touchpoints.contactId,
+        channel: touchpoints.channel,
+        note: touchpoints.note,
+        occurredAt: touchpoints.occurredAt,
+        legacyId: touchpoints.legacyId,
+        createdAt: touchpoints.createdAt,
+      });
 
-  // Apply the callback follow-up when it wasn't already written alongside a
-  // status change above (no status effect, or precedence left status untouched).
-  if (schedulesCallback && !followUpApplied) {
-    const { error: followUpError } = await supabase
-      .from('contacts')
-      .update(followUpPatch)
-      .eq('id', id)
-      .eq('org_id', orgId);
-    if (followUpError) {
-      throw new Error(`logCallOutcome: failed to set follow-up for contact ${id}: ${followUpError.message}`);
+    if (!tpRow) {
+      throw new Error(`logCallOutcome: failed to log touchpoint for contact ${id}: no row`);
     }
-  }
 
-  revalidateDiallerRoutes(id);
-  return { touchpoint, status };
+    const touchpoint: Touchpoint = {
+      id: tpRow.id,
+      orgId: tpRow.orgId,
+      contactId: tpRow.contactId,
+      channel: tpRow.channel,
+      note: tpRow.note,
+      occurredAt: tpRow.occurredAt,
+      legacyId: tpRow.legacyId,
+      createdAt: tpRow.createdAt,
+    };
+
+    // 2. Apply the contact-level effects:
+    //    - status, with precedence (never downgrade a stronger terminal state); and
+    //    - a next-day follow-up for callback-requested, so it resurfaces in /today.
+    let status: Contact['status'] | null = null;
+    let followUpApplied = false;
+
+    if (outcome.statusEffect !== 'none') {
+      // CAS-with-retry (mirrors recordInbound in the email store): a blind
+      // read-then-write would let a concurrent reply-scan or another rep's outcome
+      // — landing between our read and write — be clobbered, e.g. downgrading a
+      // `meeting` booked via an inbound reply. Re-evaluate precedence against the
+      // LIVE status and only write when it hasn't moved since the read.
+      let settled = false;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const [currentRow] = await tx
+          .select({ status: contacts.status })
+          .from(contacts)
+          .where(and(eq(contacts.id, id), eq(contacts.orgId, orgId)))
+          .limit(1);
+        if (!currentRow) {
+          settled = true; // contact gone — nothing to apply
+          break;
+        }
+        const observed = currentRow.status;
+        const next = resolveStatusEffect(observed, outcome.statusEffect);
+        if (next === null || next === observed) {
+          status = next === null ? null : observed; // already at/over target — no write
+          settled = true;
+          break;
+        }
+        const changed = await tx
+          .update(contacts)
+          .set({ status: next, ...(schedulesCallback ? { followUp } : {}) })
+          .where(
+            and(
+              eq(contacts.id, id),
+              eq(contacts.orgId, orgId),
+              eq(contacts.status, observed), // CAS guard: only if status hasn't moved
+            ),
+          )
+          .returning({ id: contacts.id });
+        if (changed.length > 0) {
+          status = next;
+          followUpApplied = schedulesCallback; // written atomically with the status
+          settled = true;
+          break;
+        }
+        // Lost the CAS (status moved under us) — loop re-reads and recomputes.
+      }
+      if (!settled) {
+        throw new Error(`logCallOutcome: lost compare-and-set on status for contact ${id} after retries`);
+      }
+    }
+
+    // Apply the callback follow-up when it wasn't already written alongside a
+    // status change above (no status effect, or precedence left status untouched).
+    if (schedulesCallback && !followUpApplied) {
+      await tx
+        .update(contacts)
+        .set({ followUp })
+        .where(and(eq(contacts.id, id), eq(contacts.orgId, orgId)));
+    }
+
+    revalidateDiallerRoutes(id);
+    return { touchpoint, status };
+  });
 }

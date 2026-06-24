@@ -5,18 +5,29 @@
  *
  * These are the app-initiated control-plane entry points: start a run, place an
  * AMD call, hang up / cancel an attempt, pause-stop a run. All call-table writes
- * go through the service role (createAmdRuntime → client), with org membership
- * resolved from the caller's session (getCurrentOrgId) and every row scoped to
- * that org — so the browser never mutates call state directly (DECISION 4.1).
+ * run as a TRUSTED SERVICE PATH (withServiceRls) — the same privilege the legacy
+ * service-role client carried — with org membership resolved from the caller's
+ * session (getCurrentOrgId) and every row scoped to that org, so the browser
+ * never mutates call state directly (DECISION 4.1).
+ *
+ * withServiceRls sets app.org_id only (userId = null): the org-scoped RLS
+ * policies on call_runs / call_attempts / contacts apply for the resolved org,
+ * which is why each query still carries an explicit `org_id` predicate — that is
+ * the cross-org IDOR guard, not a duplicate of RLS. The call provider itself
+ * (place / hangup) still comes from createAmdRuntime().backend; only the DB
+ * access moved off the Supabase client to Drizzle.
  *
  * The lifecycle itself (ringing → answered → AMD → hangup) is driven by inbound
  * events via the webhook route / mock backend, not here.
  */
 import { revalidatePath } from 'next/cache';
+import { and, count, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { getCurrentOrgId } from '@/lib/auth/org';
-import { createClient } from '@/lib/supabase/server';
-import { getOrgSettings, getUserSettings } from '@/lib/supabase/queries';
+import { requireSession } from '@/lib/auth/session';
+import { withServiceRls } from '@/lib/db/rls-service';
+import { callAttempts, callRuns, contacts } from '@/lib/db/schema';
+import { getOrgSettings, getUserSettings } from '@/lib/db/queries';
 import { createAmdRuntime } from '@/lib/dialler/amd/runtime';
 import { pickDialNumber } from '@/lib/dialler/normalise';
 import type { AmdScenario, CallAttemptState } from '@/lib/dialler/amd/types';
@@ -36,22 +47,23 @@ const NON_TERMINAL: CallAttemptState[] = [
 /** Start a new AMD run owned by the caller. Returns the run id. */
 export async function startAmdRun(): Promise<{ id: string }> {
   const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('startAmdRun: not authenticated');
+  // Identity comes from the Auth.js session (replaces supabase.auth.getUser());
+  // requireSession throws if unauthenticated, so `created_by` is always a real
+  // user id.
+  const session = await requireSession();
 
-  const { client } = createAmdRuntime();
-  const { data, error } = await client
-    .from('call_runs')
-    .insert({ org_id: orgId, mode: 'amd', status: 'active', created_by: user.id })
-    .select('id')
-    .single();
-  if (error) throw new Error(`startAmdRun: ${error.message}`);
+  const id = await withServiceRls(orgId, async (tx) => {
+    const [row] = await tx
+      .insert(callRuns)
+      // org_id satisfies the INSERT WITH CHECK that pins the run to the org.
+      .values({ orgId, mode: 'amd', status: 'active', createdBy: session.userId })
+      .returning({ id: callRuns.id });
+    if (!row) throw new Error('startAmdRun: failed to create run: no row');
+    return row.id;
+  });
 
   revalidatePath('/dialler');
-  return { id: (data as { id: string }).id };
+  return { id };
 }
 
 const placeAmdCallSchema = z.object({
@@ -71,7 +83,6 @@ export type PlaceAmdCallInput = z.input<typeof placeAmdCallSchema>;
 export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptId: string }> {
   const { runId, contactId, scenario } = placeAmdCallSchema.parse(input);
   const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
 
   // Number normalisation uses the org-wide default calling code; the outbound
   // caller ID is per-user (each rep dials from their own number / credential
@@ -80,77 +91,95 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
   const defaultCc = orgSettings.defaultCountryCode ?? '+44';
   const fromNumber = typeof userSettings.txCallerId === 'string' ? userSettings.txCallerId : '';
 
-  const { data: contactRow, error: contactErr } = await supabase
-    .from('contacts')
-    .select('id, phone, mobile')
-    .eq('id', contactId)
-    .single();
-  if (contactErr) throw new Error(`placeAmdCall: failed to load contact ${contactId}: ${contactErr.message}`);
+  // The backend is the call provider (place/hangup); only DB access moved to
+  // Drizzle. Resolving it before the DB work also surfaces a misconfigured real
+  // backend (missing Telnyx env) early, exactly as before.
+  const { backend } = createAmdRuntime();
 
-  const toNumber = pickDialNumber(contactRow as { phone: string | null; mobile: string | null }, defaultCc);
-  if (toNumber === null) {
-    throw new Error(`placeAmdCall: contact ${contactId} has no dialable number`);
-  }
+  // Set-up reads + the queue insert all run in one service transaction so the
+  // org_id GUC is set once and the sequential-invariant count + insert see a
+  // consistent snapshot. The resolved dial number is returned alongside the new
+  // attempt id so the backend.placeCall below uses the SAME value the row was
+  // created with — no second contact read.
+  const { attemptId, toNumber } = await withServiceRls(orgId, async (tx) => {
+    const [contactRow] = await tx
+      .select({ phone: contacts.phone, mobile: contacts.mobile })
+      .from(contacts)
+      .where(and(eq(contacts.id, contactId), eq(contacts.orgId, orgId)));
+    // A missing/cross-org contact yields no row; the original surfaced any
+    // load failure as a throw — keep contact-not-found explicit.
+    if (!contactRow) {
+      throw new Error(`placeAmdCall: failed to load contact ${contactId}: not found`);
+    }
 
-  const { backend, client } = createAmdRuntime();
+    const dialNumber = pickDialNumber(contactRow, defaultCc);
+    if (dialNumber === null) {
+      throw new Error(`placeAmdCall: contact ${contactId} has no dialable number`);
+    }
 
-  // Authorize the run: it must belong to the caller's org. The service-role
-  // client bypasses RLS, so without this an attacker could attach attempts to
-  // another org's run by guessing its UUID (cross-org IDOR).
-  const { data: runRow, error: runErr } = await client
-    .from('call_runs')
-    .select('id')
-    .eq('id', runId)
-    .eq('org_id', orgId)
-    .maybeSingle();
-  if (runErr) throw new Error(`placeAmdCall: ${runErr.message}`);
-  if (!runRow) throw new Error('placeAmdCall: run not found for this org');
+    // Authorize the run: it must belong to the caller's org. The service path
+    // is org-scoped, but the explicit org_id predicate is the cross-org IDOR
+    // guard so a guessed run UUID can't attach attempts to another org's run.
+    const [runRow] = await tx
+      .select({ id: callRuns.id })
+      .from(callRuns)
+      .where(and(eq(callRuns.id, runId), eq(callRuns.orgId, orgId)));
+    if (!runRow) throw new Error('placeAmdCall: run not found for this org');
 
-  // The real backend needs a caller ID; an empty `from` would fail opaquely at
-  // the Telnyx API. The mock ignores `from`, so mock runs still proceed.
-  if (backend.name !== 'mock' && !fromNumber) {
-    throw new Error('placeAmdCall: no outbound caller ID configured (set your outbound CLI in Settings)');
-  }
+    // The real backend needs a caller ID; an empty `from` would fail opaquely at
+    // the Telnyx API. The mock ignores `from`, so mock runs still proceed.
+    if (backend.name !== 'mock' && !fromNumber) {
+      throw new Error('placeAmdCall: no outbound caller ID configured (set your outbound CLI in Settings)');
+    }
 
-  // Sequential invariant: refuse a second live attempt in the same run.
-  const { count, error: countErr } = await client
-    .from('call_attempts')
-    .select('id', { count: 'exact', head: true })
-    .eq('org_id', orgId)
-    .eq('run_id', runId)
-    .in('state', NON_TERMINAL);
-  if (countErr) throw new Error(`placeAmdCall: ${countErr.message}`);
-  if ((count ?? 0) > 0) {
-    throw new Error('placeAmdCall: a call is already in progress for this run');
-  }
+    // Sequential invariant: refuse a second live attempt in the same run.
+    const [{ value: liveCount } = { value: 0 }] = await tx
+      .select({ value: count() })
+      .from(callAttempts)
+      .where(
+        and(
+          eq(callAttempts.orgId, orgId),
+          eq(callAttempts.runId, runId),
+          inArray(callAttempts.state, NON_TERMINAL),
+        ),
+      );
+    if (liveCount > 0) {
+      throw new Error('placeAmdCall: a call is already in progress for this run');
+    }
 
-  const { data: attempt, error: insErr } = await client
-    .from('call_attempts')
-    .insert({
-      org_id: orgId,
-      run_id: runId,
-      contact_id: contactId,
-      to_number: toNumber,
-      from_number: fromNumber || null,
-      provider: backend.name,
+    let inserted;
+    try {
       // Insert as 'queued': the first provider webhook (call.initiated) then
       // transitions it to 'dialing' and is captured in the event log. started_at
       // is stamped by applyEvent on that call.initiated.
-      state: 'queued',
-    })
-    .select('id')
-    .single();
-  if (insErr) {
-    // 23505 = unique violation on call_attempts_one_live_per_run_uidx: a
-    // concurrent placeAmdCall already created a live attempt for this run (the
-    // DB backstop for the count check above, which can race). Surface the same
-    // friendly message rather than a raw constraint error.
-    if ((insErr as { code?: string }).code === '23505') {
-      throw new Error('placeAmdCall: a call is already in progress for this run');
+      [inserted] = await tx
+        .insert(callAttempts)
+        .values({
+          orgId,
+          runId,
+          contactId,
+          toNumber: dialNumber,
+          fromNumber: fromNumber || null,
+          provider: backend.name,
+          state: 'queued',
+        })
+        .returning({ id: callAttempts.id });
+    } catch (cause) {
+      // 23505 = unique violation on call_attempts_one_live_per_run_uidx: a
+      // concurrent placeAmdCall already created a live attempt for this run (the
+      // DB backstop for the count check above, which can race). Surface the same
+      // friendly message rather than a raw constraint error.
+      if ((cause as { code?: string }).code === '23505') {
+        throw new Error('placeAmdCall: a call is already in progress for this run');
+      }
+      const message = cause instanceof Error ? cause.message : 'insert failed';
+      throw new Error(`placeAmdCall: failed to create attempt: ${message}`);
     }
-    throw new Error(`placeAmdCall: failed to create attempt: ${insErr.message}`);
-  }
-  const attemptId = (attempt as { id: string }).id;
+    if (!inserted) {
+      throw new Error('placeAmdCall: failed to create attempt: no row');
+    }
+    return { attemptId: inserted.id, toNumber: dialNumber };
+  });
 
   try {
     const { callControlId } = await backend.placeCall({
@@ -166,26 +195,41 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
     // it, or the write fails, we can no longer correlate this call — so we
     // best-effort hang it up rather than leak a live Telnyx call, and never
     // overwrite a terminal/cancelled attempt.
-    const { data: correlated, error: ccErr } = await client
-      .from('call_attempts')
-      .update({ call_control_id: callControlId })
-      .eq('id', attemptId)
-      .eq('org_id', orgId)
-      .in('state', NON_TERMINAL)
-      .select('id');
-    if (ccErr) {
+    let correlated: { id: string }[];
+    try {
+      correlated = await withServiceRls(orgId, (tx) =>
+        tx
+          .update(callAttempts)
+          .set({ callControlId })
+          .where(
+            and(
+              eq(callAttempts.id, attemptId),
+              eq(callAttempts.orgId, orgId),
+              inArray(callAttempts.state, NON_TERMINAL),
+            ),
+          )
+          .returning({ id: callAttempts.id }),
+      );
+    } catch (ccCause) {
+      const ccMessage = ccCause instanceof Error ? ccCause.message : 'update failed';
       // Scope to non-terminal so a concurrent cancel/end isn't overwritten
       // (cancelled → failed would corrupt the finalised disposition).
-      await client
-        .from('call_attempts')
-        .update({ state: 'failed', error: ccErr.message })
-        .eq('id', attemptId)
-        .eq('org_id', orgId)
-        .in('state', NON_TERMINAL);
+      await withServiceRls(orgId, (tx) =>
+        tx
+          .update(callAttempts)
+          .set({ state: 'failed', error: ccMessage })
+          .where(
+            and(
+              eq(callAttempts.id, attemptId),
+              eq(callAttempts.orgId, orgId),
+              inArray(callAttempts.state, NON_TERMINAL),
+            ),
+          ),
+      );
       await backend.hangup(callControlId).catch(() => undefined);
-      throw new Error(`placeAmdCall: failed to persist call_control_id: ${ccErr.message}`);
+      throw new Error(`placeAmdCall: failed to persist call_control_id: ${ccMessage}`);
     }
-    if (!correlated || correlated.length === 0) {
+    if (correlated.length === 0) {
       await backend.hangup(callControlId).catch(() => undefined);
       throw new Error('placeAmdCall: attempt no longer active; hung up the placed call');
     }
@@ -196,12 +240,18 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
     const message = cause instanceof Error ? cause.message : 'dial failed';
     // Only mark failed while still non-terminal — never clobber a concurrently
     // finalised attempt (cancelled / webhook-driven ended).
-    await client
-      .from('call_attempts')
-      .update({ state: 'failed', error: message })
-      .eq('id', attemptId)
-      .eq('org_id', orgId)
-      .in('state', NON_TERMINAL);
+    await withServiceRls(orgId, (tx) =>
+      tx
+        .update(callAttempts)
+        .set({ state: 'failed', error: message })
+        .where(
+          and(
+            eq(callAttempts.id, attemptId),
+            eq(callAttempts.orgId, orgId),
+            inArray(callAttempts.state, NON_TERMINAL),
+          ),
+        ),
+    );
     throw cause;
   }
 
@@ -213,19 +263,19 @@ export async function placeAmdCall(input: PlaceAmdCallInput): Promise<{ attemptI
 export async function hangupAttempt(attemptId: string): Promise<void> {
   const id = uuid.parse(attemptId);
   const orgId = await getCurrentOrgId();
-  const { backend, client } = createAmdRuntime();
+  const { backend } = createAmdRuntime();
 
-  // Scope by org_id: the service-role client bypasses RLS, so a guessed attempt
-  // UUID must not let one org hang up another org's call.
-  const { data, error } = await client
-    .from('call_attempts')
-    .select('call_control_id')
-    .eq('id', id)
-    .eq('org_id', orgId)
-    .maybeSingle();
-  if (error) throw new Error(`hangupAttempt: ${error.message}`);
-  if (!data) throw new Error('hangupAttempt: attempt not found for this org');
-  const callControlId = (data as { call_control_id: string | null }).call_control_id;
+  // Scope by org_id: the service path is org-scoped, and the explicit predicate
+  // is the cross-org IDOR guard so a guessed attempt UUID can't let one org hang
+  // up another org's call.
+  const callControlId = await withServiceRls(orgId, async (tx) => {
+    const [row] = await tx
+      .select({ callControlId: callAttempts.callControlId })
+      .from(callAttempts)
+      .where(and(eq(callAttempts.id, id), eq(callAttempts.orgId, orgId)));
+    if (!row) throw new Error('hangupAttempt: attempt not found for this org');
+    return row.callControlId;
+  });
   if (callControlId) await backend.hangup(callControlId);
 
   revalidatePath('/dialler');
@@ -240,20 +290,24 @@ export async function hangupAttempt(attemptId: string): Promise<void> {
 export async function cancelAttempt(attemptId: string): Promise<void> {
   const id = uuid.parse(attemptId);
   const orgId = await getCurrentOrgId();
-  const { client } = createAmdRuntime();
-  const { data, error } = await client
-    .from('call_attempts')
-    .update({ state: 'ended', disposition: 'cancelled', ended_at: new Date().toISOString() })
-    .eq('id', id)
-    .eq('org_id', orgId)
-    .is('call_control_id', null)
-    .in('state', ['queued', 'dialing'])
-    .select('id');
-  if (error) throw new Error(`cancelAttempt: ${error.message}`);
+  const cancelled = await withServiceRls(orgId, (tx) =>
+    tx
+      .update(callAttempts)
+      .set({ state: 'ended', disposition: 'cancelled', endedAt: new Date().toISOString() })
+      .where(
+        and(
+          eq(callAttempts.id, id),
+          eq(callAttempts.orgId, orgId),
+          isNull(callAttempts.callControlId),
+          inArray(callAttempts.state, ['queued', 'dialing']),
+        ),
+      )
+      .returning({ id: callAttempts.id }),
+  );
   // 0 rows = already correlated / progressed / terminal / wrong org. Throw so the
   // UI keeps the contact (and the rep can hang up instead) rather than advancing
   // past a still-live attempt.
-  if (!data || data.length !== 1) {
+  if (cancelled.length !== 1) {
     throw new Error('cancelAttempt: attempt not cancellable (already live or terminal)');
   }
   revalidatePath('/dialler');
@@ -266,12 +320,11 @@ export async function setRunStatus(runId: string, status: z.infer<typeof runStat
   const id = uuid.parse(runId);
   const nextStatus = runStatusSchema.parse(status);
   const orgId = await getCurrentOrgId();
-  const { client } = createAmdRuntime();
-  const { error } = await client
-    .from('call_runs')
-    .update({ status: nextStatus })
-    .eq('id', id)
-    .eq('org_id', orgId);
-  if (error) throw new Error(`setRunStatus: ${error.message}`);
+  await withServiceRls(orgId, (tx) =>
+    tx
+      .update(callRuns)
+      .set({ status: nextStatus })
+      .where(and(eq(callRuns.id, id), eq(callRuns.orgId, orgId))),
+  );
   revalidatePath('/dialler');
 }
