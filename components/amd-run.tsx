@@ -84,10 +84,12 @@ export default function AmdRun({ queue, callDelayMs = 3000 }: AmdRunProps) {
   const [skipping, setSkipping] = useState(false);
 
   const placedForIndex = useRef<number>(-1);
-  const { attempts } = useAmdRun(runId);
+  const done = runId !== null && index >= total;
+  // Poll while the run is in progress; stop once done (the hook keeps the final
+  // snapshot, so the completion card's tally still renders).
+  const { attempts } = useAmdRun(runId, !done);
 
   const current = index < total ? queue[index] : undefined;
-  const done = runId !== null && index >= total;
   const currentAttempt = currentAttemptId ? attempts[currentAttemptId] : undefined;
 
   // A human bridge needs the rep to log an outcome. Derived (not stored) so it

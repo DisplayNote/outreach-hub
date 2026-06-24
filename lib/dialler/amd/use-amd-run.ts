@@ -17,8 +17,13 @@
  * the consumer tears it down: the run completing unmounts the component (or it
  * flips `runId`), which is the "run is done" signal in practice.
  *
- * The map is cleared on `runId` change / unmount, and no state is written after
- * unmount (the unmount-safety the realtime version carried).
+ * Polling runs while `enabled` is true (default) and a `runId` is set. It does
+ * NOT stop on "every *current* attempt is terminal" (mid-run that's normal and a
+ * permanent stop would deadlock the run); instead the CONSUMER passes
+ * `enabled=false` once the whole run is done, stopping the polling without
+ * clearing the final snapshot the completion screen shows. The map is cleared
+ * only on `runId` change / unmount (NOT when `enabled` toggles), and no state is
+ * written after unmount (the unmount-safety the realtime version carried).
  */
 import { useEffect, useState } from 'react';
 import { getAmdRunAttempts } from '@/lib/actions/amd-status';
@@ -32,11 +37,21 @@ export interface UseAmdRunResult {
   attempts: Record<string, CallAttempt>;
 }
 
-export function useAmdRun(runId: string | null): UseAmdRunResult {
+export function useAmdRun(runId: string | null, enabled = true): UseAmdRunResult {
   const [attempts, setAttempts] = useState<Record<string, CallAttempt>>({});
 
+  // Clear the map when the RUN changes (or on unmount) — keyed on runId ONLY, so
+  // toggling `enabled` (the run completing) does not wipe the final snapshot the
+  // completion screen still renders.
   useEffect(() => {
-    if (!runId) return;
+    return () => setAttempts({});
+  }, [runId]);
+
+  // Poll while there's a live run AND polling is enabled. When `enabled` flips
+  // false (run done), this effect's cleanup cancels the timer WITHOUT clearing
+  // the map, so polling stops but the last snapshot is retained.
+  useEffect(() => {
+    if (!runId || !enabled) return;
 
     let active = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -71,12 +86,10 @@ export function useAmdRun(runId: string | null): UseAmdRunResult {
     return () => {
       active = false;
       if (timer) clearTimeout(timer);
-      // Clear on teardown (runId change / unmount) so a new / non-null run never
-      // shows the previous run's attempts. Done in cleanup, not the effect body,
-      // to avoid a synchronous setState-in-effect.
-      setAttempts({});
+      // NOTE: no setAttempts({}) here — clearing is the runId-only effect's job,
+      // so stopping polling on run-completion (enabled→false) keeps the snapshot.
     };
-  }, [runId]);
+  }, [runId, enabled]);
 
   return { attempts };
 }
