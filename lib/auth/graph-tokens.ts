@@ -45,3 +45,29 @@ export async function readGraphAccessToken(ctx: RlsContext): Promise<string | nu
     return row.access_token;
   });
 }
+
+/**
+ * The full stored token row (access + refresh + expiry), WITHOUT the expiry
+ * filter that {@link readGraphAccessToken} applies. The Phase 4 refresh path
+ * (lib/graph/token.ts) needs the refresh token even when the access token is
+ * expired, so it can exchange it. Returns null when no row exists.
+ */
+export async function readGraphTokenRow(
+  ctx: RlsContext,
+): Promise<{ accessToken: string | null; refreshToken: string | null; expiresAtMs: number | null } | null> {
+  if (!ctx.userId) return null;
+  return withRls(ctx, async (tx) => {
+    const result = await tx.execute(
+      sql`select access_token, refresh_token, expires_at from public.user_graph_tokens where user_id = ${ctx.userId}`,
+    );
+    const row = result.rows[0] as
+      | { access_token: string | null; refresh_token: string | null; expires_at: string | null }
+      | undefined;
+    if (!row) return null;
+    return {
+      accessToken: row.access_token,
+      refreshToken: row.refresh_token,
+      expiresAtMs: row.expires_at ? Date.parse(row.expires_at) : null,
+    };
+  });
+}

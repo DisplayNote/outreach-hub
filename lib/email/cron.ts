@@ -10,6 +10,7 @@ import { withServiceRls } from '@/lib/db/rls-service';
 import type { DrizzleTx } from '@/lib/db/rls';
 import { organizations } from '@/lib/db/schema';
 import { getEmailDriver } from '@/lib/email/index';
+import { appOnlyGraphToken } from '@/lib/graph/token';
 import { drizzleEmailStore } from '@/lib/email/store';
 import { runSender } from '@/lib/email/runner';
 import { scanInbox } from '@/lib/email/scanner';
@@ -57,6 +58,19 @@ async function orgs(): Promise<{ id: string; settings: OrgSettings }[]> {
   return list;
 }
 
+/**
+ * Build the cron's EmailDriver. For the Graph drivers the unattended cron has no
+ * signed-in user, so it acquires an APPLICATION (client-credentials) Graph token
+ * for the configured mailbox; mock/mailpit need no token.
+ */
+async function cronDriver() {
+  const name = process.env.EMAIL_DRIVER;
+  if (name === 'graph-dev' || name === 'graph-prod') {
+    return getEmailDriver({ accessToken: await appOnlyGraphToken() });
+  }
+  return getEmailDriver();
+}
+
 /** Build a Drizzle store bound to a single org via withServiceRls. */
 function storeFor(orgId: string, provider: string, settings: OrgSettings) {
   const runTx = <T,>(fn: (tx: DrizzleTx) => Promise<T>): Promise<T> => withServiceRls(orgId, fn);
@@ -69,7 +83,7 @@ export async function runSenderAllOrgs(): Promise<{
   skipped: number;
   errors: number;
 }> {
-  const driver = getEmailDriver();
+  const driver = await cronDriver();
   const fallbackFrom = getServerEnv().CRON_SENDER_EMAIL;
   const unsubscribe = getUnsubscribeConfig();
   if (!unsubscribe && process.env.NODE_ENV === 'production') {
@@ -116,7 +130,7 @@ export async function scanInboxAllOrgs(): Promise<{
   bounces: number;
   skipped: number;
 }> {
-  const driver = getEmailDriver();
+  const driver = await cronDriver();
   const fallbackFrom = getServerEnv().CRON_SENDER_EMAIL;
   let replies = 0;
   let bounces = 0;

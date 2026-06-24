@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@auth/core": "^0.34.3",
+    "@azure/msal-node": "^5.2.5",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.1",
     "drizzle-orm": "^0.45.2",
