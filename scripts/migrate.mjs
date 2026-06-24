@@ -71,6 +71,9 @@ try {
   // id/created_at. Applied after the blanket grant so it wins.
   await client.query('revoke update on public.organizations from app_user');
   await client.query('grant update (settings) on public.organizations to app_user');
+  // The migration ledger is internal infrastructure; the runtime role must not
+  // read or mutate it (blast-radius + auditability).
+  await client.query('revoke all on public._migrations from app_user');
 
   // Set/rotate the app_user password from APP_USER_PASSWORD (local dev) or the
   // Key Vault secret the deploy injects (Azure). escapeLiteral prevents injection;
