@@ -7,9 +7,8 @@ import { withRls, type RlsContext } from '@/lib/db/rls';
  * projected onto the Auth.js Session or returned to the browser. Written at
  * login by the jwt callback; read server-side by lib/graph/token.ts.
  *
- * INTERIM (Phase 4 adds refresh): we store the refresh token + expiry here so
- * Phase 4 can refresh on expiry; for now an expired access token reads back as
- * null and the caller surfaces the re-auth prompt.
+ * We store the refresh token + expiry here so lib/graph/token.ts can refresh
+ * on expiry without a full re-auth round-trip.
  */
 export async function storeGraphTokens(
   ctx: RlsContext,
@@ -40,7 +39,7 @@ export async function readGraphAccessToken(ctx: RlsContext): Promise<string | nu
     );
     const row = result.rows[0] as { access_token: string | null; expires_at: string | null } | undefined;
     if (!row?.access_token) return null;
-    // Expired → treat as absent so the caller prompts re-auth (Phase 4 refreshes).
+    // Expired → treat as absent; lib/graph/token.ts will refresh via readGraphTokenRow.
     if (row.expires_at && Date.parse(row.expires_at) <= Date.now()) return null;
     return row.access_token;
   });
@@ -48,9 +47,9 @@ export async function readGraphAccessToken(ctx: RlsContext): Promise<string | nu
 
 /**
  * The full stored token row (access + refresh + expiry), WITHOUT the expiry
- * filter that {@link readGraphAccessToken} applies. The Phase 4 refresh path
- * (lib/graph/token.ts) needs the refresh token even when the access token is
- * expired, so it can exchange it. Returns null when no row exists.
+ * filter that {@link readGraphAccessToken} applies. lib/graph/token.ts uses
+ * this to obtain the refresh token when the access token is expired.
+ * Returns null when no row exists.
  */
 export async function readGraphTokenRow(
   ctx: RlsContext,

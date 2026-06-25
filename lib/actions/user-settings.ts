@@ -12,7 +12,7 @@
  * row to the caller's org.
  */
 import { revalidatePath } from 'next/cache';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { withRls } from '@/lib/db/rls';
 import { userSettings } from '@/lib/db/schema';
@@ -71,20 +71,12 @@ export async function updateUserSettings(patch: UpdateUserSettingsInput): Promis
     const existing = (current?.settings ?? {}) as Record<string, unknown>;
     const merged = mergeOrgSettingsPatch(existing, parsed);
 
-    // `created_at`/`updated_at` carry DB-side `default now()`, but the schema
-    // types them notNull without a Drizzle default, so supply them explicitly
-    // via `now()` on insert. On the conflict path we only set `settings` (the
-    // updated_at trigger refreshes it); leaving `org_id` untouched keeps the
-    // row pinned to its original org, satisfying the UPDATE WITH CHECK.
+    // On the conflict path we only set `settings` (the updated_at trigger
+    // refreshes it); leaving `org_id` untouched keeps the row pinned to its
+    // original org, satisfying the UPDATE WITH CHECK.
     const [upserted] = await tx
       .insert(userSettings)
-      .values({
-        userId,
-        orgId,
-        settings: merged,
-        createdAt: sql`now()`,
-        updatedAt: sql`now()`,
-      })
+      .values({ userId, orgId, settings: merged })
       .onConflictDoUpdate({
         target: userSettings.userId,
         set: { settings: merged },
