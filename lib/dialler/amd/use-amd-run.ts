@@ -77,7 +77,7 @@ export function useAmdRun(runId: string | null, enabled = true): UseAmdRunResult
         // Keep polling for the life of the run; teardown (runId change / unmount)
         // is the stop signal. See the file header for why we don't stop on
         // "all current attempts terminal".
-        schedule();
+        if (active) schedule();
       })();
     };
 

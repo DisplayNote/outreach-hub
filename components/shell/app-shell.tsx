@@ -19,7 +19,7 @@ export default async function AppShell({ children }: { children: ReactNode }) {
   // shell on every page — but we log any error so an RLS misconfig is findable.
   let org = 'Outreach Hub';
   try {
-    org = (await getCurrentOrgName()) ?? 'Outreach Hub';
+    org = (await getCurrentOrgName(session)) ?? 'Outreach Hub';
   } catch (orgError) {
     console.error('AppShell: failed to load org name', orgError);
   }

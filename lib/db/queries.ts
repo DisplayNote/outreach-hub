@@ -15,7 +15,7 @@
  */
 import { and, asc, count, desc, eq, gte, isNotNull, lte } from 'drizzle-orm';
 import { withRls } from '@/lib/db/rls';
-import { rlsCtxFromSession, requireSession } from '@/lib/auth/session';
+import { rlsCtxFromSession, requireSession, type AppSession } from '@/lib/auth/session';
 import {
   campaigns,
   contacts,
@@ -297,10 +297,12 @@ export async function getOrgSettings(): Promise<OrgSettings> {
 /**
  * The caller's org display name (RLS scopes `organizations` to the single
  * visible row). Returns null when no row is visible; callers decide the
- * fallback. Used by the app shell to label the chrome.
+ * fallback. Pass an already-resolved `session` to avoid a redundant
+ * `requireSession()` call (e.g. in server components that already hold one).
  */
-export async function getCurrentOrgName(): Promise<string | null> {
-  return withSession(async (tx) => {
+export async function getCurrentOrgName(session?: AppSession): Promise<string | null> {
+  const ctx = session ? rlsCtxFromSession(session) : rlsCtxFromSession(await requireSession());
+  return withRls(ctx, async (tx) => {
     const [row] = await tx.select({ name: organizations.name }).from(organizations).limit(1);
     return row?.name ?? null;
   });
