@@ -71,9 +71,7 @@ async function applyUnsubscribe(claim: { orgId: string; email: string }): Promis
       // ON CONFLICT (org_id,email) DO NOTHING — re-unsubscribing is idempotent.
       await tx
         .insert(suppressions)
-        // suppressions.createdAt is NOT NULL with a DB-side `default now()`; the
-        // schema omits the Drizzle default, so supply it explicitly.
-        .values({ orgId: claim.orgId, email, reason: 'unsubscribed', createdAt: sql`now()` })
+        .values({ orgId: claim.orgId, email, reason: 'unsubscribed' })
         .onConflictDoNothing({ target: [suppressions.orgId, suppressions.email] });
 
       // Address-level suppression alone would silently stop matching if the

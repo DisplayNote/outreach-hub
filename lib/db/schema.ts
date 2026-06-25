@@ -239,9 +239,9 @@ export const emailEvents = pgTable('email_events', {
   inReplyTo: text('in_reply_to'),
   subject: text('subject'),
   sequenceDay: integer('sequence_day'),
-  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
-  occurredAt: tstz('occurred_at').notNull(),
-  createdAt: tstz('created_at').notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
+  occurredAt: tstzNow('occurred_at').notNull(),
+  createdAt: tstzNow('created_at').notNull(),
 });
 
 /** public.suppressions — address-level do-not-send (Phase 5). email is normalised. */
@@ -251,16 +251,16 @@ export const suppressions = pgTable('suppressions', {
   email: text('email').notNull(),
   reason: text('reason').notNull(),
   contactId: uuid('contact_id'),
-  createdAt: tstz('created_at').notNull(),
+  createdAt: tstzNow('created_at').notNull(),
 });
 
 /** public.user_settings — per-user settings blob, self-scoped by RLS. */
 export const userSettings = pgTable('user_settings', {
   userId: uuid('user_id').primaryKey(),
   orgId: uuid('org_id').notNull(),
-  settings: jsonb('settings').$type<Record<string, unknown>>().notNull(),
-  createdAt: tstz('created_at').notNull(),
-  updatedAt: tstz('updated_at').notNull(),
+  settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: tstzNow('created_at').notNull(),
+  updatedAt: tstzNow('updated_at').notNull(),
 });
 
 /** public.user_graph_tokens — server-only delegated Graph tokens, RLS self-scoped. */
@@ -269,5 +269,5 @@ export const userGraphTokens = pgTable('user_graph_tokens', {
   accessToken: text('access_token'),
   refreshToken: text('refresh_token'),
   expiresAt: tstz('expires_at'),
-  updatedAt: tstz('updated_at').notNull(),
+  updatedAt: tstzNow('updated_at').notNull(),
 });

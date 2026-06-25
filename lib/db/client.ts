@@ -19,7 +19,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) {
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: Number(process.env.PGPOOL_MAX ?? 10),
+  max: parseInt(process.env.PGPOOL_MAX ?? '', 10) || 10,
   // TLS is conditional: a local Docker Postgres has no TLS (PGSSL=disable in
   // NON-production), while Azure Postgres Flexible Server presents a DigiCert
   // Global Root G2 cert (in Node's default CA store) which we VERIFY. The
