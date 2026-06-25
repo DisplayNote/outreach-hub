@@ -15,7 +15,6 @@ import { z } from 'zod';
 import { withRls } from '@/lib/db/rls';
 import { rlsCtxFromSession } from '@/lib/auth/session';
 import { organizations } from '@/lib/db/schema';
-import { getCurrentOrgId } from '@/lib/auth/org';
 import { requireAdmin } from '@/lib/auth/admin';
 import { normaliseCallingCode } from '@/lib/dialler/normalise';
 import { mergeOrgSettingsPatch } from '@/lib/org-settings';
@@ -68,7 +67,7 @@ export async function updateOrgSettings(patch: UpdateOrgSettingsInput): Promise<
   // directly (RLS only scopes it to the org, not to admins). notFound() on miss.
   const admin = await requireAdmin();
   const parsed = orgSettingsPatchSchema.parse(patch);
-  const orgId = await getCurrentOrgId();
+  const orgId = admin.orgId;
 
   // Read-merge-write inside one RLS-scoped transaction: load the current
   // settings, shallow-merge the patch, write the whole object back. Postgres has

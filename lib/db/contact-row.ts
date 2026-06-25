@@ -8,8 +8,10 @@ import type { Contact, ContactStatus } from '@/lib/types/domain';
 
 /**
  * The contacts row shape as returned by a raw snake_case read (e.g. one
- * lib/email/store.ts performs itself via an RPC). Drizzle's inferred select
- * matches it field-for-field; this explicit type backs the `toContact` mapper.
+ * lib/email/store.ts performs itself via an RPC). Differs from Drizzle's
+ * inferred select in that `metadata` is typed as nullable so that projections
+ * which omit it are handled defensively by the mapper. This explicit type
+ * backs the `toContact` mapper.
  */
 export interface ContactRow {
   id: string;
