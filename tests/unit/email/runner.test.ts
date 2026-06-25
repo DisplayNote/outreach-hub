@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { runSender } from '@/lib/email/runner';
 import { MockDriver } from '@/lib/email/mock';
+import { EmailDriverError } from '@/lib/email/types';
+import { verifyUnsubscribeToken } from '@/lib/email/unsubscribe';
 import type { DueContact, EmailStore, RecordSentInput } from '@/lib/email/store';
 import type { Contact, OrgSettings } from '@/lib/types/domain';
 
@@ -210,5 +212,97 @@ describe('runSender', () => {
     const res = await runSender(deps(rec, driver), { today: '2026-05-30' }); // Saturday
     expect(res.sent).toBe(0);
     expect(driver.sent).toHaveLength(0);
+    expect(res.suppressed).toBe('weekend');
+  });
+
+  // --- Send window (UK wall-clock hours, [from, to), opt-in) -----------------
+  // 2026-05-29 is BST (UTC+1), so a UTC instant maps to UK = UTC + 1h.
+  const windowDeps = (rec: Rec, driver: MockDriver, nowIso: string, window: Partial<OrgSettings>) => ({
+    store: fakeStore(rec),
+    driver,
+    settings: { ...settings, ...window } as OrgSettings,
+    from: 'paul@displaynote.com',
+    now: () => nowIso,
+  });
+
+  it('sends inside the send window', async () => {
+    rec.dueList = [due('a')];
+    // UTC 09:00 → UK 10:00, inside [8, 18).
+    const res = await runSender(windowDeps(rec, driver, '2026-05-29T09:00:00.000Z', { seqSendWindowFrom: 8, seqSendWindowTo: 18 }), { today: '2026-05-29' });
+    expect(res.sent).toBe(1);
+  });
+
+  it('is a no-op before the send window opens', async () => {
+    rec.dueList = [due('a')];
+    // UTC 06:00 → UK 07:00, before [8, 18).
+    const res = await runSender(windowDeps(rec, driver, '2026-05-29T06:00:00.000Z', { seqSendWindowFrom: 8, seqSendWindowTo: 18 }), { today: '2026-05-29' });
+    expect(res.sent).toBe(0);
+    expect(driver.sent).toHaveLength(0);
+    expect(res.suppressed).toBe('window');
+  });
+
+  it('is a no-op after the send window closes (upper bound exclusive)', async () => {
+    rec.dueList = [due('a')];
+    // UTC 09:00 → UK 10:00; window [8, 10) excludes hour 10.
+    const res = await runSender(windowDeps(rec, driver, '2026-05-29T09:00:00.000Z', { seqSendWindowFrom: 8, seqSendWindowTo: 10 }), { today: '2026-05-29' });
+    expect(res.sent).toBe(0);
+  });
+
+  it('sends at the lower bound (inclusive)', async () => {
+    rec.dueList = [due('a')];
+    // UTC 09:00 → UK 10:00; window [10, 18) includes hour 10.
+    const res = await runSender(windowDeps(rec, driver, '2026-05-29T09:00:00.000Z', { seqSendWindowFrom: 10, seqSendWindowTo: 18 }), { today: '2026-05-29' });
+    expect(res.sent).toBe(1);
+  });
+
+  it('ignores an unset or invalid (from >= to) window and sends regardless of hour', async () => {
+    rec.dueList = [due('a')];
+    // 23:00 with no window configured → sends (window is opt-in).
+    const res1 = await runSender(windowDeps(rec, driver, '2026-05-29T23:00:00.000Z', {}), { today: '2026-05-29' });
+    expect(res1.sent).toBe(1);
+
+    rec = { sent: [], sentToday: 0, dueList: [due('b')] };
+    driver = new MockDriver();
+    // from >= to is treated as no window, not an all-day block.
+    const res2 = await runSender(windowDeps(rec, driver, '2026-05-29T23:00:00.000Z', { seqSendWindowFrom: 18, seqSendWindowTo: 8 }), { today: '2026-05-29' });
+    expect(res2.sent).toBe(1);
+  });
+
+  // --- Unsubscribe (opt-in via deps.unsubscribe) -----------------------------
+  it('adds an unsubscribe footer + List-Unsubscribe header when configured', async () => {
+    rec.dueList = [due('a')];
+    await runSender(
+      { ...deps(rec, driver), unsubscribe: { baseUrl: 'https://app.test', secret: 's3cr3t' } },
+      { today: '2026-05-29' },
+    );
+    const msg = driver.sent[0]!.message;
+    const header = msg.headers?.['List-Unsubscribe'];
+    expect(header).toMatch(/^<https:\/\/app\.test\/api\/unsubscribe\?token=.+>$/);
+    expect(msg.headers?.['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+    expect(msg.bodyText).toContain('unsubscribe here: https://app.test/api/unsubscribe?token=');
+    expect(msg.bodyHtml).toContain('<a href="https://app.test/api/unsubscribe?token=');
+    // The link's token verifies back to this recipient (keyed per contact).
+    const token = decodeURIComponent(header!.replace(/^<.*token=/, '').replace(/>$/, ''));
+    expect(verifyUnsubscribeToken(token, 's3cr3t')).toEqual({ orgId: 'o1', email: 'a@example.com' });
+  });
+
+  it('omits all unsubscribe wiring when not configured', async () => {
+    rec.dueList = [due('a')];
+    await runSender(deps(rec, driver), { today: '2026-05-29' });
+    const msg = driver.sent[0]!.message;
+    expect(msg.headers).toBeUndefined();
+    expect(msg.bodyText).not.toMatch(/unsubscribe/i);
+  });
+
+  it('captures the driver error code (GRAPH_UNAUTHORIZED) on a send failure', async () => {
+    rec.dueList = [due('a')];
+    const failing = new MockDriver();
+    failing.send = async () => {
+      throw new EmailDriverError('token expired', undefined, 'GRAPH_UNAUTHORIZED');
+    };
+    const res = await runSender(deps(rec, failing), { today: '2026-05-29' });
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]?.stage).toBe('send');
+    expect(res.errors[0]?.code).toBe('GRAPH_UNAUTHORIZED');
   });
 });

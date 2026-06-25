@@ -1,7 +1,27 @@
-# Local dev services that live outside Supabase's own stack (managed by `supabase start`).
-# Only Mailpit today; more services may join here as Phase 1+ work lands.
+# Local dev services for the Azure-native stack: a Postgres 16 (mirrors Azure
+# Database for PostgreSQL Flexible Server) and Mailpit (the local SMTP sink for
+# the `mailpit` EmailDriver). `make dev` brings these up, applies migrations with
+# scripts/migrate.mjs, then runs `next dev`. The Supabase CLI stack is gone.
 
 services:
+  postgres:
+    image: postgres:16
+    container_name: outreach-pg
+    restart: unless-stopped
+    ports:
+      - '5433:5432' # 5433 on the host to avoid clashing with a system Postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: outreach
+    volumes:
+      - outreach-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d outreach']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   mailpit:
     image: axllent/mailpit:v1.30.1
     container_name: outreach-mailpit
@@ -13,3 +33,6 @@ services:
       MP_MAX_MESSAGES: '5000'
       MP_SMTP_AUTH_ACCEPT_ANY: '1'
       MP_SMTP_AUTH_ALLOW_INSECURE: '1'
+
+volumes:
+  outreach-pgdata:

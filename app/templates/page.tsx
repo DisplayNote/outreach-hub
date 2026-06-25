@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { listTemplates } from '@/lib/supabase/queries';
+import { getSession } from '@/lib/auth/session';
+import { listTemplates } from '@/lib/db/queries';
 import { deleteTemplate } from '@/lib/actions/templates';
 import type { Template } from '@/lib/types/domain';
 import { Button, Card, EmptyState, Icon } from '@/components/ui';
@@ -32,12 +32,8 @@ function preview(body: string | null): string {
 // --- Page --------------------------------------------------------------------
 
 export default async function TemplatesPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

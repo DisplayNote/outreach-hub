@@ -13,6 +13,8 @@ import type { OutboundMessage } from '@/lib/email/types';
 import type { DueContact, EmailStore } from '@/lib/email/store';
 import { renderTemplate } from '@/lib/email/render';
 import { businessDayAdd } from '@/lib/email/schedule';
+import { buildUnsubscribe, type UnsubscribeConfig } from '@/lib/email/unsubscribe';
+import { EmailDriverError } from '@/lib/email/types';
 import type { OrgSettings } from '@/lib/types/domain';
 
 const DEFAULT_DAILY_GOAL = 30;
@@ -26,12 +28,23 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** Like {@link escapeHtml} but also safe inside a double-quoted attribute (href). */
+function escapeAttr(text: string): string {
+  return escapeHtml(text).replace(/"/g, '&quot;');
+}
+
 export interface RunSenderDeps {
   store: EmailStore;
   driver: EmailDriver;
   settings: OrgSettings;
   /** Sending mailbox (the authenticated user's / org address). */
   from: string;
+  /**
+   * When set, every send gets a one-click unsubscribe footer + List-Unsubscribe
+   * header keyed to the recipient. Null/absent → no unsubscribe wiring (the
+   * caller resolves this from env; unconfigured local/test runs omit it).
+   */
+  unsubscribe?: UnsubscribeConfig | null;
   now(): string;
 }
 
@@ -58,14 +71,48 @@ export interface RunSenderResult {
    *    retry may re-send, since the contact wasn't advanced).
    *  - absent     — a surfaced non-send issue (e.g. a step with no template).
    */
-  errors: { contactId: string; message: string; stage?: 'send' | 'record' }[];
+  errors: { contactId: string; message: string; stage?: 'send' | 'record'; code?: string }[];
   /** Eligible contacts left unsent because the daily cap was exhausted. */
   remaining: number;
+  /**
+   * Set when the run was a no-op because sending is time-gated (not because the
+   * queue was empty), so the UI can say "outside send window" / "weekend" rather
+   * than a misleading "nothing to send".
+   */
+  suppressed?: 'weekend' | 'window';
 }
 
 function isWeekend(today: string): boolean {
   const dow = new Date(`${today}T00:00:00.000Z`).getUTCDay();
   return dow === 0 || dow === 6;
+}
+
+/** Hour (0–23) in UK wall-clock time for an ISO instant (BST/GMT via the IANA zone). */
+function ukHour(nowIso: string): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/London',
+      hourCycle: 'h23',
+      hour: 'numeric',
+    }).format(new Date(nowIso)),
+  );
+}
+
+/**
+ * Outside the org's configured send window? The window is [from, to) in UK
+ * wall-clock hours — send when from <= hour < to. It's OPT-IN: an unset bound
+ * means "no window" (never restrict), so existing orgs are unaffected until an
+ * admin sets it. A reversed/empty window (from >= to) is treated as "no window"
+ * rather than an all-day block, so a fat-fingered setting can't silently stop
+ * all sending. Applies to BOTH the cron and the manual "Run sender now" path,
+ * mirroring how the daily cap and weekend skip already apply to both.
+ */
+function isOutsideSendWindow(nowIso: string, settings: OrgSettings): boolean {
+  const from = settings.seqSendWindowFrom;
+  const to = settings.seqSendWindowTo;
+  if (from === undefined || to === undefined || from >= to) return false;
+  const hour = ukHour(nowIso);
+  return hour < from || hour >= to;
 }
 
 /** Most-overdue first, then earliest sequence step (DECISION 5.1). */
@@ -79,7 +126,12 @@ function order(a: DueContact, b: DueContact): number {
 export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Promise<RunSenderResult> {
   const empty: RunSenderResult = { planned: [], sent: 0, skipped: 0, errors: [], remaining: 0 };
   const skipWeekends = deps.settings.seqSkipWeekends ?? true;
-  if (skipWeekends && isWeekend(opts.today)) return empty;
+  if (skipWeekends && isWeekend(opts.today)) return { ...empty, suppressed: 'weekend' };
+
+  // Outside the configured send window (UK hours) → no-op, like the weekend
+  // skip. Dry runs are gated too: planning a send the runner wouldn't make
+  // would misreport what "Run sender now" is about to do.
+  if (isOutsideSendWindow(deps.now(), deps.settings)) return { ...empty, suppressed: 'window' };
 
   // Daily send cap is an ACCOUNT-tier setting: the cron sender is org-scoped
   // (one configured mailbox, no per-user context), so it reads the org's
@@ -141,12 +193,22 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
       continue;
     }
 
+    // Per-recipient unsubscribe (compliance): a visible footer link (works in
+    // every client) plus the List-Unsubscribe header (one-click in supporting
+    // clients). Keyed to THIS recipient so the public route knows who/which org.
+    const unsub = deps.unsubscribe ? buildUnsubscribe(contact.orgId, claimedEmail, deps.unsubscribe) : null;
+    const bodyHtmlBase = escapeHtml(rendered.body).replace(/\n/g, '<br>');
     const message: OutboundMessage = {
       from: deps.from,
       to: [claimedEmail],
       subject: rendered.subject,
-      bodyText: rendered.body,
-      bodyHtml: escapeHtml(rendered.body).replace(/\n/g, '<br>'),
+      bodyText: unsub
+        ? `${rendered.body}\n\n—\nTo stop receiving these emails, unsubscribe here: ${unsub.url}`
+        : rendered.body,
+      bodyHtml: unsub
+        ? `${bodyHtmlBase}<br><br>—<br><a href="${escapeAttr(unsub.url)}" style="color:#888">Unsubscribe from these emails</a>`
+        : bodyHtmlBase,
+      ...(unsub ? { headers: unsub.headers } : {}),
     };
 
     // Transport failure: nothing left the building — RELEASE the claim so the
@@ -167,6 +229,10 @@ export async function runSender(deps: RunSenderDeps, opts: RunSenderOptions): Pr
         contactId: contact.id,
         message: `send: ${cause instanceof Error ? cause.message : 'failed'}`,
         stage: 'send', // nothing left the system — safe retry
+        // Surface the driver error code (e.g. GRAPH_UNAUTHORIZED) so the manual
+        // path can turn an expired token into a single "re-authenticate" message
+        // instead of N opaque per-contact failures.
+        ...(cause instanceof EmailDriverError && cause.code !== undefined ? { code: cause.code } : {}),
       });
       continue;
     }

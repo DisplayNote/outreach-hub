@@ -1,9 +1,9 @@
 import { notFound, redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth/session';
 import CampaignForm from '@/components/campaign-form';
 import { updateCampaign } from '@/lib/actions/campaigns';
 import type { UpdateCampaignInput } from '@/lib/actions/campaigns';
-import { createClient } from '@/lib/supabase/server';
-import { listCampaigns, listSequences } from '@/lib/supabase/queries';
+import { listCampaigns, listSequences } from '@/lib/db/queries';
 import { Card } from '@/components/ui';
 
 // Auth state + campaign data change per request; never prerender (ADR 004).
@@ -16,12 +16,8 @@ export default async function EditCampaignPage({
 }) {
   const { id } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

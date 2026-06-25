@@ -1,9 +1,10 @@
 name: DB Migrate
 
-# There is a single cloud Supabase project (production); development uses the
-# local Supabase CLI stack. Schema changes are tested locally (`supabase db
-# reset` / `db diff`) and applied to prod manually here — never automatically on
-# a main push — to guard against accidental prod schema deploys.
+# Applies SQL migrations to the PRODUCTION Azure Postgres Flexible Server via the
+# node runner (scripts/migrate.mjs), which tracks applied files in public._migrations
+# and (re)asserts app_user grants + password. Manual-only (never on a main push) to
+# guard against accidental prod schema deploys. Connects as the server admin
+# (DATABASE_URL_ADMIN); APP_USER_PASSWORD is the Key-Vault-generated app_user password.
 on:
   workflow_dispatch:
     inputs:
@@ -20,15 +21,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
         with:
-          version: latest
+          version: 11.2.2
 
-      - name: Push migrations to prod
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations to prod
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-          supabase db push
+          NODE_ENV: production
+          # Admin (server owner) connection so migrations can manage roles/policies.
+          DATABASE_URL_ADMIN: ${{ secrets.DATABASE_URL_ADMIN }}
+          # The app_user runtime password (Key-Vault-generated) the runner sets.
+          APP_USER_PASSWORD: ${{ secrets.APP_USER_PASSWORD }}
+        run: node scripts/migrate.mjs

@@ -1,5 +1,5 @@
 # Terraform manages the production cloud environment only. Development runs
-# entirely against the local Supabase CLI stack (`supabase start`), which is not
+# entirely against a local Docker Postgres + `make db-migrate`, which is not
 # managed here — so there is no cloud "dev" project to provision or pay for.
 variable "env" {
   description = "Environment name. Only \"prod\" is managed by Terraform; dev is local-only."
@@ -11,71 +11,121 @@ variable "env" {
   }
 }
 
-# ─── Supabase ───────────────────────────────────────────────────────────────────
-variable "supabase_access_token" {
-  description = "Supabase Personal Access Token (account-level). Treat as sensitive."
+# ─── Azure ──────────────────────────────────────────────────────────────────────
+variable "azure_subscription_id" {
+  description = "Azure subscription id the stack is provisioned into."
+  type        = string
+}
+
+variable "azure_location" {
+  description = "Azure region for all resources."
+  type        = string
+  default     = "uksouth"
+}
+
+variable "azure_tenant_id" {
+  description = "Entra tenant id (used for Key Vault RBAC)."
+  type        = string
+}
+
+# ─── Postgres Flexible Server ─────────────────────────────────────────────────
+variable "pg_admin_login" {
+  description = "Administrator login for the Azure Postgres Flexible Server."
+  type        = string
+}
+
+variable "pg_admin_password" {
+  description = "Administrator password for the Azure Postgres Flexible Server."
   type        = string
   sensitive   = true
-}
-
-variable "supabase_project_ref" {
-  description = "Existing Supabase project reference (e.g. abcdefghijklmnopqrst)."
-  type        = string
-}
-
-variable "supabase_db_password" {
-  description = "Database password for the Supabase project."
-  type        = string
-  sensitive   = true
-}
-
-variable "supabase_region" {
-  description = "Supabase region (e.g. eu-west-2)."
-  type        = string
-  default     = "eu-west-2"
-}
-
-# ─── Vercel ─────────────────────────────────────────────────────────────────────
-variable "vercel_token" {
-  description = "Vercel API token."
-  type        = string
-  sensitive   = true
-}
-
-variable "vercel_org_id" {
-  description = "Vercel team/org id."
-  type        = string
-}
-
-variable "vercel_project_id" {
-  description = "Vercel project id."
-  type        = string
-}
-
-variable "vercel_git_repo" {
-  description = "GitHub repo slug (org/name) for the Vercel project."
-  type        = string
-  default     = "DisplayNote/outreach-hub"
 }
 
 # ─── App hosting ──────────────────────────────────────────────────────────────
-# DNS is managed manually (outside Terraform). After Vercel is provisioned,
-# create a CNAME for this subdomain pointing at `cname.vercel-dns.com`, and the
-# Phase 5 mail records (SPF / DKIM / DMARC), by hand in the DNS provider.
+# DNS is managed manually (outside Terraform). After the app host is provisioned,
+# create the CNAME for this subdomain and the mail records (SPF / DKIM / DMARC)
+# by hand in the DNS provider.
 variable "app_subdomain" {
-  description = "Subdomain (without the zone) where the app is hosted. Filled in Phase 2+. DNS record is created manually."
+  description = "Subdomain (without the zone) where the app is hosted. DNS record is created manually."
   type        = string
   default     = ""
 }
 
-# ─── Microsoft OAuth (consumed by Supabase auth configuration) ──────────────────
-variable "ms_client_id" {
-  description = "Microsoft Entra application (client) id."
+# The fully-qualified image (registry/repo:tag or @digest) the Container App and
+# the cron jobs run. CI overrides this with the freshly-built ACR digest on every
+# deploy; the default lets a first apply stand the app up on a placeholder until
+# the first image is pushed.
+variable "container_image" {
+  description = "Container image (with tag or digest) for the app + cron jobs, e.g. acroutreachprod.azurecr.io/outreach-hub:latest."
+  type        = string
+  default     = "acroutreachprod.azurecr.io/outreach-hub:latest"
+}
+
+# APP_BASE_URL — the app's PUBLIC origin, used to build absolute one-click
+# unsubscribe links at send time. Distinct from the internal ingress FQDN the
+# cron jobs curl (that is derived from the app resource, not set here). Defaults
+# to the configured subdomain under displaynote.com.
+variable "app_base_url" {
+  description = "Public origin of the app (https://...), used to build absolute unsubscribe links. Defaults to https://<app_subdomain>.displaynote.com."
+  type        = string
+  default     = ""
+}
+
+# ─── Entra (Auth.js OAuth provider + cron app-only Graph) ─────────────────────
+variable "azure_ad_client_id" {
+  description = "Entra app-registration client id (Auth.js sign-in + cron app-only Graph)."
   type        = string
 }
 
-variable "ms_client_secret" {
-  description = "Microsoft Entra application client secret."
+variable "azure_ad_client_secret" {
+  description = "Entra app-registration client secret."
   type        = string
   sensitive   = true
+}
+
+variable "azure_ad_tenant_id" {
+  description = "Entra tenant id the app authenticates against (issuer is tenant-pinned)."
+  type        = string
+}
+
+# ─── Email / cron behaviour ───────────────────────────────────────────────────
+variable "admin_email_allowlist" {
+  description = "Comma-separated email allowlist gating the /admin panel. Empty => nobody is an admin."
+  type        = string
+  default     = ""
+}
+
+variable "cron_org_id" {
+  description = "The single org id the scheduled sender/scanner serves (one global Graph mailbox)."
+  type        = string
+}
+
+variable "cron_sender_email" {
+  description = "Mailbox the scheduled sender sends FROM when an org has not set settings.senderEmail."
+  type        = string
+}
+
+# ─── Telnyx (AMD dialler, Mode B) ─────────────────────────────────────────────
+variable "telnyx_api_key" {
+  description = "Telnyx API key (AMD dialler). Empty disables the live telephony path."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "telnyx_connection_id" {
+  description = "Telnyx connection id used to originate calls."
+  type        = string
+  default     = ""
+}
+
+variable "telnyx_public_key" {
+  description = "Telnyx public key used to verify inbound webhook signatures."
+  type        = string
+  default     = ""
+}
+
+variable "bridge_sip_username" {
+  description = "SIP username the AMD bridge dials the agent leg at."
+  type        = string
+  default     = ""
 }

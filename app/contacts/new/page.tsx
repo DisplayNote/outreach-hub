@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth/session';
 import ContactForm from '@/components/contact-form';
 import { createContact } from '@/lib/actions/contacts';
 import type { CreateContactInput } from '@/lib/actions/contacts';
-import { createClient } from '@/lib/supabase/server';
-import { listCampaigns } from '@/lib/supabase/queries';
+import { listCampaigns } from '@/lib/db/queries';
 import type { ContactStatus } from '@/lib/types/domain';
 import { CONTACT_STATUSES } from '@/lib/types/domain';
 import { Card, EmptyState } from '@/components/ui';
@@ -40,12 +40,8 @@ function sequenceDay(formData: FormData): number | null {
 }
 
 export default async function NewContactPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

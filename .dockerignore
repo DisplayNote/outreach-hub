@@ -17,10 +17,6 @@ infra/.terraform.lock.hcl
 infra/*.tfstate
 infra/*.tfstate.*
 
-supabase/.branches
-supabase/.temp
-supabase/.env
-
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

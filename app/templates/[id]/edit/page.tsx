@@ -1,9 +1,9 @@
 import { notFound, redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth/session';
 import TemplateForm from '@/components/template-form';
 import { updateTemplate } from '@/lib/actions/templates';
 import type { UpdateTemplateInput } from '@/lib/actions/templates';
-import { createClient } from '@/lib/supabase/server';
-import { getTemplate } from '@/lib/supabase/queries';
+import { getTemplate } from '@/lib/db/queries';
 import { Card } from '@/components/ui';
 
 // Auth state + template data change per request; never prerender.
@@ -26,12 +26,8 @@ export default async function EditTemplatePage({
 }) {
   const { id } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

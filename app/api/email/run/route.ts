@@ -1,15 +1,15 @@
 /**
- * Scheduled send trigger (PHASE_5_SPEC §1). CRON_SECRET-gated; driven by Vercel
- * Cron in prod (scheduled in vercel.json — weekdays 09:15 UTC; Vercel sends
- * GET + `Authorization: Bearer $CRON_SECRET` when that env var is set). Runs the
- * sender for the single configured org (CRON_ORG_ID) via the service-role
- * client — one global driver/token is one mailbox, so this does NOT fan out
- * across orgs (no-op when CRON_ORG_ID is unset). Local dev uses the "Run sender
- * now" Server Action instead.
+ * Scheduled send trigger (PHASE_5_SPEC §1). CRON_SECRET-gated; driven by an
+ * Azure Container Apps Job (infra/azure_apps.tf) that POSTs this route at the
+ * env-internal ingress URL with `Authorization: Bearer $CRON_SECRET` on the
+ * `15 9 * * 1-5` schedule (curl -fsS, so a non-2xx fails the job loudly). Runs
+ * the sender for the single configured org (CRON_ORG_ID) via withServiceRls +
+ * the app-only Graph token — one mailbox, so this does NOT fan out across orgs.
+ * CRON_ORG_ID unset: no-op (returns 0 orgs) in dev; throws and fails the job in
+ * production. Local dev uses the "Run sender now" Server Action instead.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { getServerEnv } from '@/lib/env';
-import { createServiceClient } from '@/lib/supabase/service';
 import { runSenderAllOrgs } from '@/lib/email/cron';
 import { authorizeCron } from '@/lib/cron-auth';
 
@@ -21,11 +21,14 @@ async function handle(request: NextRequest): Promise<NextResponse> {
     return new NextResponse('unauthorized', { status: 401 });
   }
   try {
-    const result = await runSenderAllOrgs(createServiceClient());
+    const result = await runSenderAllOrgs();
     // Surface per-contact send failures as a non-2xx so monitoring alerts: a
     // deploy misconfiguration (e.g. a missing Graph token) can make every send
     // fail while the route would otherwise look healthy with { ok: true }.
-    const ok = result.errors === 0;
+    // A configured org that couldn't be sent for (no resolvable sender mailbox)
+    // is a deploy misconfiguration, not a healthy run — fail the job so it alerts
+    // (mirrors scan/route). `errors` covers per-contact send/persist failures.
+    const ok = result.errors === 0 && result.skipped === 0;
     return NextResponse.json({ ok, ...result }, { status: ok ? 200 : 500 });
   } catch (cause) {
     console.error('email run cron failed', cause);

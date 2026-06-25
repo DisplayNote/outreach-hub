@@ -4,8 +4,10 @@
  * detection) the one server-side auto-voicemail touchpoint (PHASE_4_SPEC §3/§4).
  *
  * Writes go through an injected {@link AmdStore} so the orchestration is unit-
- * testable with a fake; the real adapter ({@link supabaseAmdStore}) runs against
- * the service-role Supabase client (the only writer of call state — DECISION 4.1).
+ * testable with a fake; the real adapter (`drizzleAmdStore` in
+ * lib/dialler/amd/runtime.ts) writes via Drizzle under `withServiceRls(orgId)`,
+ * with the org-blind webhook discovery read using the `find_call_attempt`
+ * SECURITY DEFINER lookup (DECISION 4.1: trusted server code owns call state).
  * `now` is passed in (no `Date.now()` here) to keep the logic deterministic.
  *
  * Returns the reduce result plus the `hangup` / `bridge` actuations the caller

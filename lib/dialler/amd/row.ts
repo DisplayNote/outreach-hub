@@ -1,12 +1,16 @@
 /**
- * Shared `call_attempts` row shape + mapper. Pure (no Supabase/Node imports), so
- * it is safe to use from both the server store (`store.ts`) and the client
- * Realtime hook (`realtime.ts`), keeping one snake_case→camelCase mapping.
+ * Shared `call_attempts` row shapes + mappers.
+ *
+ * `CallAttemptRow` / `toCallAttempt` are the snake_case projection the runtime's
+ * hand-written Drizzle `select({...})` produces (it aliases columns to the
+ * Postgres names); `CallAttemptDrizzleRow` / `drizzleRowToCallAttempt` cover a
+ * plain `select()` of the table, which Drizzle already deserialises to
+ * camelCase. Both land on the one `CallAttempt` domain shape. Pure (no
+ * Supabase/Node imports) so any layer can use them.
  */
-import type { CallAttempt } from '@/lib/dialler/amd/types';
-
-export const CALL_ATTEMPT_SELECT =
-  'id, org_id, run_id, contact_id, to_number, from_number, provider, call_control_id, state, amd_result, disposition, hangup_cause, error, actuated_at, started_at, ended_at, created_at, updated_at';
+import type { InferSelectModel } from 'drizzle-orm';
+import type { callAttempts } from '@/lib/db/schema';
+import type { AmdResult, CallAttempt, CallDisposition } from '@/lib/dialler/amd/types';
 
 export interface CallAttemptRow {
   id: string;
@@ -49,5 +53,37 @@ export function toCallAttempt(row: CallAttemptRow): CallAttempt {
     endedAt: row.ended_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Drizzle `call_attempts` row. The schema already deserialises columns to
+ * camelCase (and timestamps as ISO strings via `mode: 'string'`), so this is a
+ * near-identity shim — its job is the narrowing of the two `text` columns
+ * (`amdResult` / `disposition`) the schema can only type as `string | null`
+ * back to their domain unions. The DB constraints guarantee the values.
+ */
+export type CallAttemptDrizzleRow = InferSelectModel<typeof callAttempts>;
+
+export function drizzleRowToCallAttempt(row: CallAttemptDrizzleRow): CallAttempt {
+  return {
+    id: row.id,
+    orgId: row.orgId,
+    runId: row.runId,
+    contactId: row.contactId,
+    toNumber: row.toNumber,
+    fromNumber: row.fromNumber,
+    provider: row.provider,
+    callControlId: row.callControlId,
+    state: row.state,
+    amdResult: row.amdResult as AmdResult | null,
+    disposition: row.disposition as CallDisposition | null,
+    hangupCause: row.hangupCause,
+    error: row.error,
+    actuatedAt: row.actuatedAt,
+    startedAt: row.startedAt,
+    endedAt: row.endedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }

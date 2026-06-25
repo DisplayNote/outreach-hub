@@ -3,8 +3,8 @@ import SettingsForm from '@/components/settings-form';
 import type { SettingsFormState } from '@/components/settings-form';
 import { updateUserSettings } from '@/lib/actions/user-settings';
 import type { UpdateUserSettingsInput } from '@/lib/actions/user-settings';
-import { createClient } from '@/lib/supabase/server';
-import { getUserSettings } from '@/lib/supabase/queries';
+import { getSession } from '@/lib/auth/session';
+import { getUserSettings } from '@/lib/db/queries';
 
 // Auth state + per-user settings change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
@@ -57,12 +57,8 @@ function snippetsField(formData: FormData): string[] {
 }
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

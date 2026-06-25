@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getAdminEmails } from '@/lib/env';
-import { isAdminEmail } from '@/lib/auth/admin';
+// Import from lib/env (pure) — NOT lib/auth/admin, which pulls the Auth.js /
+// next-auth chain (→ next/server) that can't load under vitest's node env.
+import { getAdminEmails, isAdminEmail } from '@/lib/env';
 
 describe('getAdminEmails', () => {
   it('returns [] when unset or blank', () => {

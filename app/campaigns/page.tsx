@@ -1,19 +1,15 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { listCampaigns } from '@/lib/supabase/queries';
+import { getSession } from '@/lib/auth/session';
+import { listCampaigns } from '@/lib/db/queries';
 import { Card, EmptyState, Icon } from '@/components/ui';
 
 // Auth state + the campaign list change per request; never prerender (ADR 004).
 export const dynamic = 'force-dynamic';
 
 export default async function CampaignsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getActivityFeed } from '@/lib/supabase/queries';
+import { getSession } from '@/lib/auth/session';
+import { getActivityFeed } from '@/lib/db/queries';
 import type { TouchpointChannel } from '@/lib/types/domain';
 import { Badge, Card, EmptyState } from '@/components/ui';
 
@@ -34,12 +34,8 @@ function formatTimestamp(iso: string): string {
 // --- Page --------------------------------------------------------------------
 
 export default async function ActivityPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

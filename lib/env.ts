@@ -1,22 +1,22 @@
 import { z } from 'zod';
 
-const publicEnvSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-});
-
 const emptyStringAsUndefined = (value: unknown) => (value === '' ? undefined : value);
 
-const serverEnvSchema = publicEnvSchema
-  .extend({
-    SUPABASE_INTERNAL_URL: z.preprocess(
-      emptyStringAsUndefined,
-      z.string().url().optional(),
-    ),
-    SUPABASE_SERVICE_ROLE_KEY: z.preprocess(
-      emptyStringAsUndefined,
-      z.string().min(1).optional(),
-    ),
+const serverEnvSchema = z
+  .object({
+    // Azure-native data layer connection string (role `app_user`, so RLS
+    // applies). Required at runtime; migrations use DATABASE_URL_ADMIN instead.
+    DATABASE_URL: z.string().url(),
+    // Auth.js (v5) + Microsoft Entra ID. AUTH_SECRET signs the session JWT;
+    // AZURE_AD_* drive the Entra OAuth provider. These replace the legacy
+    // Supabase-managed Azure provider config (MS_CLIENT_*). All four are
+    // OPTIONAL at the schema level so the unit suite + `next build` succeed
+    // without real credentials; the auth config supplies safe build-time
+    // fallbacks and only a live sign-in needs them populated.
+    AUTH_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    AZURE_AD_CLIENT_ID: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    AZURE_AD_CLIENT_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+    AZURE_AD_TENANT_ID: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
     EMAIL_DRIVER: z
       .enum(['mock', 'mailpit', 'graph-dev', 'graph-prod'])
       .default('mock'),
@@ -45,16 +45,15 @@ const serverEnvSchema = publicEnvSchema
     // than the DB precisely so a DB write can never grant admin. Empty/unset =>
     // nobody is an admin (the panel 404s for everyone).
     ADMIN_EMAIL_ALLOWLIST: z.preprocess(emptyStringAsUndefined, z.string().optional()),
-  })
-  // SUPABASE_SERVER_URL is NOT a required input — it is DERIVED here from
-  // SUPABASE_INTERNAL_URL (when set) else NEXT_PUBLIC_SUPABASE_URL. So
-  // parseServerEnv succeeds with only the public URL present (see env.test.ts).
-  .transform((env) => ({
-    ...env,
-    SUPABASE_SERVER_URL: env.SUPABASE_INTERNAL_URL ?? env.NEXT_PUBLIC_SUPABASE_URL,
-  }));
+    // Phase 5 — unsubscribe. APP_BASE_URL is the app's public origin, used to
+    // build absolute one-click unsubscribe links at send time (the sender has no
+    // request context). UNSUBSCRIBE_SECRET signs those links (HMAC). Both are
+    // optional, but BOTH must be set for the unsubscribe footer + List-Unsubscribe
+    // header to be added — production cold email should set them (compliance).
+    APP_BASE_URL: z.preprocess(emptyStringAsUndefined, z.string().url().optional()),
+    UNSUBSCRIBE_SECRET: z.preprocess(emptyStringAsUndefined, z.string().min(1).optional()),
+  });
 
-export type PublicEnv = z.infer<typeof publicEnvSchema>;
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 function formatEnvIssues(error: z.ZodError): string {
@@ -63,15 +62,6 @@ function formatEnvIssues(error: z.ZodError): string {
 
 type EnvRecord = Record<string, string | undefined>;
 
-export function parsePublicEnv(env: EnvRecord): PublicEnv {
-  const parsed = publicEnvSchema.safeParse(env);
-  if (!parsed.success) {
-    throw new Error(`Invalid public env: ${formatEnvIssues(parsed.error)}`);
-  }
-
-  return parsed.data;
-}
-
 export function parseServerEnv(env: EnvRecord): ServerEnv {
   const parsed = serverEnvSchema.safeParse(env);
   if (!parsed.success) {
@@ -79,16 +69,6 @@ export function parseServerEnv(env: EnvRecord): ServerEnv {
   }
 
   return parsed.data;
-}
-
-export function getPublicEnv(): PublicEnv {
-  // Read each NEXT_PUBLIC_* var directly so Next.js inlines its value into the
-  // client bundle at build time. Passing `process.env` wholesale would not be
-  // inlined and would be empty in the browser (see Next.js env handling).
-  return parsePublicEnv({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  });
 }
 
 export function getServerEnv(): ServerEnv {
@@ -111,18 +91,38 @@ export function getAdminEmails(env: EnvRecord = process.env): string[] {
 }
 
 /**
- * Loopback hosts that identify the local Supabase dev stack. Includes both the
- * bracketed and bare IPv6 loopback forms: the WHATWG URL parser used by Node
+ * True when `email` is in the `ADMIN_EMAIL_ALLOWLIST` (case-insensitive). Lives
+ * here (a pure module) rather than lib/auth/admin so it's unit-testable without
+ * importing the Auth.js/next-auth chain; lib/auth/admin re-exports it.
+ */
+export function isAdminEmail(email: string | null | undefined, env: EnvRecord = process.env): boolean {
+  if (!email) return false;
+  return getAdminEmails(env).includes(email.toLowerCase());
+}
+
+/**
+ * Loopback hosts that identify a local development environment. Includes both
+ * the bracketed and bare IPv6 loopback forms: the WHATWG URL parser used by Node
  * yields `[::1]` for `URL.hostname`, but bare `::1` is included too so the gate
  * holds regardless of the runtime's host-serialisation.
  */
-const LOCAL_SUPABASE_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
-/** True only when `url` points at the local Supabase dev stack (loopback host). */
-function isLocalSupabaseUrl(url: string | undefined): boolean {
-  if (!url) return false;
+/**
+ * True when the app is running locally, judged from APP_BASE_URL: it must be set
+ * AND point at a loopback host. This replaces the old Supabase-URL loopback check
+ * (the public Supabase client is gone). The dev mock backdoors below are pinned
+ * to this so they can never activate against a deployed origin — APP_BASE_URL on
+ * Azure is the public https origin, which is not loopback.
+ *
+ * Defaults to `http://localhost:3000` when unset so a bare local `next dev` (no
+ * APP_BASE_URL exported) still counts as local — production always sets a real
+ * APP_BASE_URL, and the NODE_ENV gate on each caller is the hard backstop.
+ */
+function isLocalHostEnv(env: EnvRecord): boolean {
+  const url = env.APP_BASE_URL ?? 'http://localhost:3000';
   try {
-    return LOCAL_SUPABASE_HOSTS.has(new URL(url).hostname);
+    return LOCAL_HOSTS.has(new URL(url).hostname);
   } catch {
     return false;
   }
@@ -132,11 +132,11 @@ function isLocalSupabaseUrl(url: string | undefined): boolean {
  * Dev-only mock authentication toggle. Triple-gated, so the `/auth/mock`
  * backdoor (which signs in a seeded user with a hard-coded password) can never
  * be activated against shared infrastructure:
- *   1. NODE_ENV must not be `production` (Vercel sets NODE_ENV=production),
+ *   1. NODE_ENV must not be `production` (the container sets NODE_ENV=production),
  *   2. `AUTH_MOCK_ENABLED` must be explicitly `true`, and
- *   3. NEXT_PUBLIC_SUPABASE_URL must point at the local stack (loopback host),
- *      so a staging/self-hosted deploy aimed at a remote Supabase project
- *      (e.g. `*.supabase.co`) cannot enable it even if the flag is set.
+ *   3. APP_BASE_URL must be a loopback host (see {@link isLocalHostEnv}), so a
+ *      staging/self-hosted deploy aimed at a real origin cannot enable it even
+ *      if the flag is set.
  * When true, `/login` offers a dev sign-in and `/auth/mock` establishes a
  * session for a seeded local test user — no Microsoft round-trip.
  */
@@ -144,7 +144,7 @@ export function isAuthMockEnabled(env: EnvRecord = process.env): boolean {
   return (
     env.NODE_ENV !== 'production' &&
     env.AUTH_MOCK_ENABLED === 'true' &&
-    isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
+    isLocalHostEnv(env)
   );
 }
 
@@ -155,7 +155,7 @@ export function isAuthMockEnabled(env: EnvRecord = process.env): boolean {
  * shared infrastructure:
  *   1. NODE_ENV must not be `production`,
  *   2. `DIALLER_MOCK_ENABLED` must be explicitly `true`, and
- *   3. NEXT_PUBLIC_SUPABASE_URL must point at the local stack (loopback host).
+ *   3. APP_BASE_URL must be a loopback host (see {@link isLocalHostEnv}).
  * When true, `createAmdRuntime()` selects the in-process MockTelnyxBackend and
  * the webhook route accepts mock-originated events without a Telnyx signature.
  */
@@ -163,7 +163,7 @@ export function isDiallerMockEnabled(env: EnvRecord = process.env): boolean {
   return (
     env.NODE_ENV !== 'production' &&
     env.DIALLER_MOCK_ENABLED === 'true' &&
-    isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
+    isLocalHostEnv(env)
   );
 }
 
@@ -186,6 +186,6 @@ export function isEmailMockEnabled(env: EnvRecord = process.env): boolean {
   return (
     env.NODE_ENV !== 'production' &&
     (env.EMAIL_DRIVER ?? 'mock') === 'mock' &&
-    isLocalSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL)
+    isLocalHostEnv(env)
   );
 }

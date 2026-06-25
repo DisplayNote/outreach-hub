@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
+import { getSession } from '@/lib/auth/session';
 import {
   getOrgSettings,
   getTodayContacts,
   getUserSettings,
   listCampaigns,
-} from '@/lib/supabase/queries';
+} from '@/lib/db/queries';
 import { pickDialNumber } from '@/lib/dialler/normalise';
 import { resolveDiallerPrefs } from '@/lib/dialler/prefs';
 import type { Contact } from '@/lib/types/domain';
@@ -41,12 +41,8 @@ interface DiallerPageProps {
  * The interactive run itself is delegated to the `DiallerRun` client component.
  */
 export default async function DiallerPage({ searchParams }: DiallerPageProps) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

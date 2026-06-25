@@ -1,9 +1,8 @@
-import type { NextRequest } from 'next/server';
-import { updateSession } from '@/lib/supabase/middleware';
-
-export async function middleware(request: NextRequest) {
-  return updateSession(request);
-}
+// Auth.js v5 middleware gate. The `authorized` callback in lib/auth/config.ts
+// decides access: it allows the hardened public-path allowlist (/login,
+// /api/auth/, /api/email/, /api/telnyx/, /api/unsubscribe — exact-or-subtree
+// match) and requires a session everywhere else, redirecting to /login.
+export { auth as middleware } from '@/lib/auth/config';
 
 export const config = {
   matcher: [

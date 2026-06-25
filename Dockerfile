@@ -14,11 +14,15 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 FROM base AS builder
-ARG NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
-
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+# Placeholder env so `next build` compiles without real credentials. getServerEnv()
+# is only evaluated at RUNTIME in the running container (ACA injects the real
+# values from Key Vault); these merely satisfy the env schema during the build's
+# static analysis / page data collection. They never reach a running container.
+ENV DATABASE_URL=postgres://app_user:placeholder@localhost:5432/outreach
+ENV AUTH_SECRET=build-placeholder
+ENV AZURE_AD_CLIENT_ID=build-placeholder
+ENV AZURE_AD_CLIENT_SECRET=build-placeholder
+ENV AZURE_AD_TENANT_ID=11111111-1111-1111-1111-111111111111
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { getContact, getContactTouchpoints, getOrgSettings } from '@/lib/supabase/queries';
+import { getSession } from '@/lib/auth/session';
+import { getContact, getContactTouchpoints, getOrgSettings } from '@/lib/db/queries';
 import type { Contact, Touchpoint, TouchpointChannel } from '@/lib/types/domain';
 import { CONTACT_STATUSES, TOUCHPOINT_CHANNELS } from '@/lib/types/domain';
 import { logTouchpointForm } from '@/app/contacts/[id]/actions';
@@ -110,12 +110,8 @@ export default async function ContactDetailPage({
 }) {
   const { id } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

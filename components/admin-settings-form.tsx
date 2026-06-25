@@ -48,10 +48,13 @@ export default function AdminSettingsForm({ action, settings }: AdminSettingsFor
   return (
     <form action={formAction}>
       <div className="col gap-6">
-        <Card title="Sequence sender (day-spread mode)">
+        <Card title="Sequence sender limits">
           <p className="sm tert" style={{ margin: '0 0 var(--space-6)' }}>
-            Account-wide limits for the scheduled email sender. Daily volume is
-            spread across the send window toward the recipient&apos;s local peaks.
+            Account-wide guardrails for the email sender. It sends up to the daily
+            cap per day, most-overdue first, only within the send window (UK time)
+            and never on skipped weekends. These limits apply to both the scheduled
+            run and &ldquo;Run sender now&rdquo;. Leave the window blank for no
+            time-of-day limit.
           </p>
           <div style={gridStyle}>
             <Field label="Daily send cap (max)" htmlFor="seqDailyCap">

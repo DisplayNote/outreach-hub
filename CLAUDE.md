@@ -20,13 +20,20 @@ execution plan and PHASE_0_STATUS.md, then act.
 DisplayNote's multi-user outreach platform. Migration target of the legacy
 single-file PWA at `legacy/PaulsOutreachHub.html`. Stack:
 
-- **Frontend:** Next.js 15 (App Router), TypeScript strict, Vercel hosting.
-- **Backend:** Supabase (Postgres + RLS + Auth + Realtime + Edge Functions + Vault + Storage).
-- **Auth:** Microsoft Entra ID via Supabase Auth (multi-tenant).
-- **Email:** `EmailDriver` abstraction → `mock` / `mailpit` / `graph-dev` / `graph-prod`.
-- **IaC:** Terraform in `infra/` (Supabase + Vercel). DNS is managed manually (outside Terraform).
-- **CI/CD:** GitHub Actions (`ci`, `infra`, `db-migrate`, `functions-deploy`).
+- **Frontend:** Next.js 15 (App Router, `output: 'standalone'`), TypeScript strict, hosted on **Azure Container Apps** (image in ACR).
+- **Backend:** **Azure Database for PostgreSQL Flexible Server**. Data access is `pg` + Drizzle behind `withRls(ctx, fn)` — a per-request tx that sets the `app.user_id`/`app.org_id` session GUCs the RLS policies read. Secrets in **Azure Key Vault**.
+- **Auth:** Microsoft Entra ID via **Auth.js v5** (`next-auth@beta`), tenant-pinned; the signed JWT feeds the RLS context.
+- **Email:** `EmailDriver` abstraction → `mock` / `mailpit` / `graph-dev` / `graph-prod`. Cron = **ACA Jobs** that curl the CRON_SECRET-gated routes.
+- **IaC:** Terraform `azurerm` (+ `random`) in `infra/`. DNS is managed manually (outside Terraform).
+- **CI/CD:** GitHub Actions (`ci`, `infra`, `deploy`, `db-migrate`) — Azure OIDC, no stored cloud creds.
 - **Tests:** Vitest (unit) + Playwright (e2e).
+
+> **Migration note (June 2026):** the platform moved off Supabase + Vercel onto
+> the Azure-native stack above (see `docs/superpowers/plans/2026-06-23-azure-migration.md`).
+> The app is supabase-js-free. The `supabase/migrations/` directory keeps its
+> name but is just plain SQL applied by `scripts/migrate.mjs`. The Phase-0
+> material below (and PHASE_0_STATUS.md) predates this and is stale where it
+> mentions Supabase/Vercel.
 
 ## Current status
 
@@ -92,36 +99,39 @@ From spec §7.1 and the four retroactive ADRs in [docs/adr/](docs/adr/):
 ```bash
 make help                              # list targets
 make bootstrap                         # LOCAL dev: populate .env.local from .env.bootstrap (needs only MS_* values)
-make bootstrap-prod                    # PROD: populate infra/envs/prod.tfvars from .env.bootstrap (needs cloud creds)
-make dev                               # boot Mailpit + Supabase + next dev
-make dev-stop                          # tear down
+make bootstrap-prod                    # PROD: populate infra/envs/prod.tfvars from .env.bootstrap (needs Azure creds)
+make dev                               # docker Postgres + Mailpit → migrate → next dev
+make dev-stop                          # tear down the local stack (to also wipe the DB: bash scripts/teardown.sh -v, or make db-reset)
 make typecheck                         # tsc --noEmit
 make lint                              # eslint .
 make test                              # vitest
 make test-e2e                          # playwright
 make build                             # next build (production)
-make db-reset                          # nuke local Supabase data
-make db-migration name=<slug>          # scaffold a new migration
+make db-migrate                        # apply SQL migrations (node scripts/migrate.mjs, DATABASE_URL_ADMIN)
+make db-reset                          # recreate the local pg volume + re-migrate
+make db-migration name=<slug>          # scaffold a new timestamped migration .sql
+make seed                              # seed the local dev DB with a full-coverage dataset
 ```
 
 ## Repo layout
 
 ```
 app/                  Next.js App Router (routes, layouts, server components)
-components/ui/        Reusable UI primitives (lands in Phase 1)
+components/           UI components
 lib/
-  env.ts              Zod-validated env access
-  supabase/           Browser + server clients, SSR middleware helper
-  email/              EmailDriver abstraction + mock/mailpit/graph implementations
-  auth/               (lands in Phase 1)
+  env.ts              Zod-validated env access (server-side)
+  db/                 pg pool + Drizzle (client), withRls / withServiceRls, schema, escapeLike
+  auth/               Auth.js config, session→RLS helpers, provisioning, admin allowlist, Graph tokens
+  email/              EmailDriver abstraction + mock/mailpit/graph implementations + cron cores
+  graph/              delegated + app-only (MSAL) Microsoft Graph tokens
 supabase/
-  migrations/         SQL migrations
-  functions/          Deno edge functions
-  config.toml         Local Supabase stack config
-infra/                Terraform (Supabase + Vercel; DNS is manual)
-.github/workflows/    CI/CD pipelines
+  migrations/         Plain SQL migrations (applied by scripts/migrate.mjs; legacy dir name)
+infra/                Terraform azurerm (RG, ACR, Postgres, Key Vault, Container App, cron Jobs; DNS is manual)
+.github/workflows/    CI/CD pipelines (ci, infra, deploy, db-migrate)
+docker-compose.dev.yml  Local Postgres 16 + Mailpit for `make dev`
+Dockerfile            Standalone Next.js production image (built in ACR by CI)
 tests/{unit,e2e}/     Vitest + Playwright tests
-scripts/              dev-bootstrap.sh, dev.sh, teardown.sh
+scripts/              dev-bootstrap.sh, dev.sh, teardown.sh, migrate.mjs, seed-dev.mjs
 docs/
   OUTREACH_HUB_EXECUTION_PLAN.md   Active spec (the source of truth for what to build)
   development.md                   Dev scenarios + troubleshooting

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
-import { getAdminEmails } from '@/lib/env';
-import { getCurrentUser, type CurrentUser } from '@/lib/supabase/org';
+import { isAdminEmail } from '@/lib/env';
+import { getCurrentUser, type CurrentUser } from '@/lib/auth/org';
 
 /**
  * Admin gating for the /admin panel.
@@ -9,13 +9,11 @@ import { getCurrentUser, type CurrentUser } from '@/lib/supabase/org';
  * — deliberately, so the set of admins is a deploy-time decision that a DB write
  * (or a compromised authenticated session) can never escalate into. Account-tier
  * settings and deployment config are only writable by an allowlisted email.
+ *
+ * The pure `isAdminEmail` predicate lives in lib/env (so it can be unit-tested
+ * without importing the Auth.js/next-auth chain); re-exported here for callers.
  */
-
-/** True when `email` is in the env allowlist (case-insensitive). */
-export function isAdminEmail(email: string | null | undefined): boolean {
-  if (!email) return false;
-  return getAdminEmails().includes(email.toLowerCase());
-}
+export { isAdminEmail } from '@/lib/env';
 
 /**
  * Resolve the signed-in user and assert they are an admin. Returns the user on

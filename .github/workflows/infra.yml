@@ -22,23 +22,44 @@ on:
           - plan
           - apply
 
+permissions:
+  id-token: write # azurerm provider authenticates via OIDC (azure/login)
+  contents: read
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      TF_VAR_supabase_access_token: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      TF_VAR_supabase_project_ref: ${{ secrets.SUPABASE_PROJECT_REF }}
-      TF_VAR_supabase_db_password: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      TF_VAR_vercel_token: ${{ secrets.VERCEL_TOKEN }}
-      TF_VAR_vercel_org_id: ${{ secrets.VERCEL_ORG_ID }}
-      TF_VAR_vercel_project_id: ${{ secrets.VERCEL_PROJECT_ID }}
-      TF_VAR_ms_client_id: ${{ secrets.MS_CLIENT_ID }}
-      TF_VAR_ms_client_secret: ${{ secrets.MS_CLIENT_SECRET }}
+      # azurerm provider auth via OIDC. azure/login exports ARM_* below; this
+      # flips the provider into OIDC mode (no client secret).
+      ARM_USE_OIDC: 'true'
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # Terraform input variables (infra/envs/prod.tfvars is operator-only and
+      # gitignored, so values come from repo secrets via TF_VAR_*).
+      TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+      TF_VAR_pg_admin_login: ${{ secrets.PG_ADMIN_LOGIN }}
+      TF_VAR_pg_admin_password: ${{ secrets.PG_ADMIN_PASSWORD }}
+      TF_VAR_azure_ad_client_id: ${{ secrets.AZURE_AD_CLIENT_ID }}
+      TF_VAR_azure_ad_client_secret: ${{ secrets.AZURE_AD_CLIENT_SECRET }}
+      TF_VAR_azure_ad_tenant_id: ${{ secrets.AZURE_AD_TENANT_ID }}
+      TF_VAR_cron_org_id: ${{ secrets.CRON_ORG_ID }}
+      TF_VAR_cron_sender_email: ${{ secrets.CRON_SENDER_EMAIL }}
+      TF_VAR_admin_email_allowlist: ${{ secrets.ADMIN_EMAIL_ALLOWLIST }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -57,12 +78,16 @@ jobs:
         working-directory: infra
         run: terraform validate
 
+      # Variables come from the TF_VAR_* env above (repo secrets), NOT a tfvars
+      # file — infra/envs/prod.tfvars is gitignored (operator-only), so it never
+      # exists in CI. Referencing it here previously failed every infra PR with
+      # "variables file does not exist".
       - name: Plan
         if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.action == 'plan')
         working-directory: infra
-        run: terraform plan -var-file=envs/prod.tfvars -no-color
+        run: terraform plan -no-color
 
       - name: Apply (manual gate)
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
         working-directory: infra
-        run: terraform apply -var-file=envs/prod.tfvars -auto-approve
+        run: terraform apply -auto-approve

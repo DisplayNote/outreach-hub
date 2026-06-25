@@ -3,106 +3,73 @@
 /**
  * Phase 2 write-layer Server Actions for contacts and touchpoints.
  *
- * All inputs are validated with zod and mapped from camelCase action shapes to
- * the snake_case Postgres columns. Mutations run through the RLS-scoped server
- * client (`@/lib/supabase/server`), so UPDATE/DELETE are implicitly org-filtered
- * — we target by `id` only. INSERTs set `org_id` explicitly (via
- * `getCurrentOrgId`) so the RLS WITH CHECK passes.
+ * All inputs are validated with zod and mapped from the camelCase action shapes
+ * to the Drizzle table columns. Mutations run inside `withRls`, scoped to the
+ * caller's session, so UPDATE/DELETE are implicitly org-filtered by RLS — we
+ * target by `id` only. INSERTs set `org_id` explicitly (via `getCurrentOrgId`)
+ * so the RLS WITH CHECK passes. RLS remains the multi-tenant boundary; there is
+ * no app-layer org filter standing in for it.
  *
  * After a successful mutation we revalidate every route that renders the
  * affected data so the App Router cache reflects the change.
  */
 import { revalidatePath } from 'next/cache';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/supabase/org';
+import { withRls } from '@/lib/db/rls';
+import { requireSession, rlsCtxFromSession } from '@/lib/auth/session';
+import { contacts, touchpoints } from '@/lib/db/schema';
+import { getCurrentOrgId } from '@/lib/auth/org';
 import type { Contact, Touchpoint } from '@/lib/types/domain';
 import { CONTACT_STATUSES, TOUCHPOINT_CHANNELS } from '@/lib/types/domain';
 
-// --- Raw row shapes (snake_case, exactly as returned by PostgREST) -----------
-
-interface ContactRow {
-  id: string;
-  org_id: string;
-  campaign_id: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  company: string | null;
-  phone: string | null;
-  mobile: string | null;
-  job_title: string | null;
-  seniority: string | null;
-  country: string | null;
-  linkedin: string | null;
-  status: Contact['status'];
-  sequence_day: number | null;
-  follow_up: string | null;
-  last_emailed_at: string | null;
-  notes: string | null;
-  legacy_id: number | null;
-  // jsonb NOT NULL DEFAULT '{}' (Phase 2 migration), so reads never return null.
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
-
-interface TouchpointRow {
-  id: string;
-  org_id: string;
-  contact_id: string;
-  channel: Touchpoint['channel'];
-  note: string | null;
-  occurred_at: string;
-  legacy_id: string | null;
-  created_at: string;
-}
-
-const CONTACT_SELECT =
-  'id, org_id, campaign_id, first_name, last_name, email, company, phone, mobile, job_title, seniority, country, linkedin, status, sequence_day, follow_up, last_emailed_at, notes, legacy_id, metadata, created_at, updated_at';
-
-const TOUCHPOINT_SELECT =
-  'id, org_id, contact_id, channel, note, occurred_at, legacy_id, created_at';
-
 // --- Row -> domain mappers ----------------------------------------------------
+//
+// The Drizzle column defs (lib/db/schema.ts) are typed so a selected row
+// deserialises straight to the domain field types (ISO timestamps as strings,
+// follow_up as 'YYYY-MM-DD', legacy_id as number|null, metadata as the map).
+// These mappers exist only to pin the explicit shape the actions return.
 
-function toContact(row: ContactRow): Contact {
+type ContactSelect = typeof contacts.$inferSelect;
+type TouchpointSelect = typeof touchpoints.$inferSelect;
+
+function toContact(row: ContactSelect): Contact {
   return {
     id: row.id,
-    orgId: row.org_id,
-    campaignId: row.campaign_id,
-    firstName: row.first_name,
-    lastName: row.last_name,
+    orgId: row.orgId,
+    campaignId: row.campaignId,
+    firstName: row.firstName,
+    lastName: row.lastName,
     email: row.email,
     company: row.company,
     phone: row.phone,
     mobile: row.mobile,
-    jobTitle: row.job_title,
+    jobTitle: row.jobTitle,
     seniority: row.seniority,
     country: row.country,
     linkedin: row.linkedin,
     status: row.status,
-    sequenceDay: row.sequence_day,
-    followUp: row.follow_up,
-    lastEmailedAt: row.last_emailed_at,
+    sequenceDay: row.sequenceDay,
+    followUp: row.followUp,
+    lastEmailedAt: row.lastEmailedAt,
     notes: row.notes,
-    legacyId: row.legacy_id,
+    legacyId: row.legacyId,
     metadata: row.metadata,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
-function toTouchpoint(row: TouchpointRow): Touchpoint {
+function toTouchpoint(row: TouchpointSelect): Touchpoint {
   return {
     id: row.id,
-    orgId: row.org_id,
-    contactId: row.contact_id,
+    orgId: row.orgId,
+    contactId: row.contactId,
     channel: row.channel,
     note: row.note,
-    occurredAt: row.occurred_at,
-    legacyId: row.legacy_id,
-    createdAt: row.created_at,
+    occurredAt: row.occurredAt,
+    legacyId: row.legacyId,
+    createdAt: row.createdAt,
   };
 }
 
@@ -208,40 +175,40 @@ export type LogTouchpointInput = z.input<typeof logTouchpointSchema>;
 export async function createContact(input: CreateContactInput): Promise<Contact> {
   const parsed = createContactSchema.parse(input);
   const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
+  const session = await requireSession();
 
-  const row: Record<string, unknown> = {
-    org_id: orgId,
-    campaign_id: parsed.campaignId,
-    first_name: parsed.firstName,
-    last_name: parsed.lastName,
+  // org_id is set explicitly so the RLS WITH CHECK passes; campaign_id carries
+  // the (composite-FK-safe) campaign reference. The DB default fills `status`
+  // ('none') when the caller omits it, so only set it when provided.
+  const values: typeof contacts.$inferInsert = {
+    orgId,
+    campaignId: parsed.campaignId,
+    firstName: parsed.firstName,
+    lastName: parsed.lastName,
     email: parsed.email,
     company: parsed.company,
     phone: parsed.phone,
     mobile: parsed.mobile,
-    job_title: parsed.jobTitle,
+    jobTitle: parsed.jobTitle,
     seniority: parsed.seniority,
     country: parsed.country,
     linkedin: parsed.linkedin,
-    sequence_day: parsed.sequenceDay,
-    follow_up: parsed.followUp,
+    sequenceDay: parsed.sequenceDay,
+    followUp: parsed.followUp,
     notes: parsed.notes,
   };
   if (parsed.status !== undefined) {
-    row['status'] = parsed.status;
+    values.status = parsed.status;
   }
 
-  const { data, error } = await supabase
-    .from('contacts')
-    .insert(row)
-    .select(CONTACT_SELECT)
-    .single();
+  const contact = await withRls(rlsCtxFromSession(session), async (tx) => {
+    const [row] = await tx.insert(contacts).values(values).returning();
+    if (!row) {
+      throw new Error('createContact: failed to insert contact: no row returned');
+    }
+    return toContact(row);
+  });
 
-  if (error) {
-    throw new Error(`createContact: failed to insert contact: ${error.message}`);
-  }
-
-  const contact = toContact(data as ContactRow);
   revalidateContactRoutes(contact.id);
   return contact;
 }
@@ -249,24 +216,25 @@ export async function createContact(input: CreateContactInput): Promise<Contact>
 export async function updateContact(id: string, input: UpdateContactInput): Promise<Contact> {
   const contactId = uuid.parse(id);
   const parsed = updateContactSchema.parse(input);
-  const supabase = await createClient();
+  const session = await requireSession();
 
-  // Map only the camelCase keys that were actually provided to their columns.
-  const columnByKey: Record<keyof UpdateContactInput, string> = {
-    campaignId: 'campaign_id',
-    firstName: 'first_name',
-    lastName: 'last_name',
+  // Map only the camelCase keys that were actually provided onto the matching
+  // Drizzle columns. The keys here are the schema's camelCase column names.
+  const columnByKey: Record<keyof UpdateContactInput, keyof typeof contacts.$inferInsert> = {
+    campaignId: 'campaignId',
+    firstName: 'firstName',
+    lastName: 'lastName',
     email: 'email',
     company: 'company',
     phone: 'phone',
     mobile: 'mobile',
-    jobTitle: 'job_title',
+    jobTitle: 'jobTitle',
     seniority: 'seniority',
     country: 'country',
     linkedin: 'linkedin',
     status: 'status',
-    sequenceDay: 'sequence_day',
-    followUp: 'follow_up',
+    sequenceDay: 'sequenceDay',
+    followUp: 'followUp',
     notes: 'notes',
   };
 
@@ -284,31 +252,42 @@ export async function updateContact(id: string, input: UpdateContactInput): Prom
     throw new Error('updateContact: no fields to update');
   }
 
-  const { data, error } = await supabase
-    .from('contacts')
-    .update(patch)
-    .eq('id', contactId)
-    .select(CONTACT_SELECT)
-    .single();
+  const contact = await withRls(rlsCtxFromSession(session), async (tx) => {
+    // Target by id only — RLS scopes the UPDATE to the caller's org.
+    const [row] = await tx
+      .update(contacts)
+      .set(patch as Partial<typeof contacts.$inferInsert>)
+      .where(eq(contacts.id, contactId))
+      .returning();
+    if (!row) {
+      throw new Error(
+        `updateContact: failed to update contact ${contactId}: not found (or not in your org).`,
+      );
+    }
+    return toContact(row);
+  });
 
-  if (error) {
-    throw new Error(`updateContact: failed to update contact ${contactId}: ${error.message}`);
-  }
-
-  const contact = toContact(data as ContactRow);
   revalidateContactRoutes(contact.id);
   return contact;
 }
 
 export async function deleteContact(id: string): Promise<{ id: string }> {
   const contactId = uuid.parse(id);
-  const supabase = await createClient();
+  const session = await requireSession();
 
-  const { error } = await supabase.from('contacts').delete().eq('id', contactId);
-
-  if (error) {
-    throw new Error(`deleteContact: failed to delete contact ${contactId}: ${error.message}`);
-  }
+  await withRls(rlsCtxFromSession(session), async (tx) => {
+    // Require a returned row: a delete that matches nothing (stale/unknown id, or
+    // a contact in another org filtered by RLS) raises no error, so without this
+    // the UI would falsely confirm a delete that didn't happen — and a successful
+    // "delete" of another org's id would confirm that resource exists.
+    const deleted = await tx
+      .delete(contacts)
+      .where(eq(contacts.id, contactId))
+      .returning({ id: contacts.id });
+    if (deleted.length === 0) {
+      throw new Error(`deleteContact: contact ${contactId} not found (or not in your org).`);
+    }
+  });
 
   revalidateContactRoutes(contactId);
   return { id: contactId };
@@ -320,22 +299,22 @@ export async function setContactStatus(
 ): Promise<Contact> {
   const contactId = uuid.parse(id);
   const nextStatus = contactStatusSchema.parse(status);
-  const supabase = await createClient();
+  const session = await requireSession();
 
-  const { data, error } = await supabase
-    .from('contacts')
-    .update({ status: nextStatus })
-    .eq('id', contactId)
-    .select(CONTACT_SELECT)
-    .single();
+  const contact = await withRls(rlsCtxFromSession(session), async (tx) => {
+    const [row] = await tx
+      .update(contacts)
+      .set({ status: nextStatus })
+      .where(eq(contacts.id, contactId))
+      .returning();
+    if (!row) {
+      throw new Error(
+        `setContactStatus: failed to set status on contact ${contactId}: not found (or not in your org).`,
+      );
+    }
+    return toContact(row);
+  });
 
-  if (error) {
-    throw new Error(
-      `setContactStatus: failed to set status on contact ${contactId}: ${error.message}`,
-    );
-  }
-
-  const contact = toContact(data as ContactRow);
   revalidateContactRoutes(contact.id);
   return contact;
 }
@@ -347,29 +326,26 @@ export async function logTouchpoint(
   const id = uuid.parse(contactId);
   const parsed = logTouchpointSchema.parse(input);
   const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
+  const session = await requireSession();
 
-  const row: Record<string, unknown> = {
-    org_id: orgId,
-    contact_id: id,
+  const values: typeof touchpoints.$inferInsert = {
+    orgId,
+    contactId: id,
     channel: parsed.channel,
     note: parsed.note ?? null,
-    occurred_at: parsed.occurredAt ?? new Date().toISOString(),
+    occurredAt: parsed.occurredAt ?? new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
-    .from('touchpoints')
-    .insert(row)
-    .select(TOUCHPOINT_SELECT)
-    .single();
+  const touchpoint = await withRls(rlsCtxFromSession(session), async (tx) => {
+    const [row] = await tx.insert(touchpoints).values(values).returning();
+    if (!row) {
+      throw new Error(
+        `logTouchpoint: failed to log touchpoint for contact ${id}: no row returned`,
+      );
+    }
+    return toTouchpoint(row);
+  });
 
-  if (error) {
-    throw new Error(
-      `logTouchpoint: failed to log touchpoint for contact ${id}: ${error.message}`,
-    );
-  }
-
-  const touchpoint = toTouchpoint(data as TouchpointRow);
   revalidateContactRoutes(id);
   return touchpoint;
 }

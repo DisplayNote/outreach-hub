@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth/session';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
-import { getSequenceWithSteps, listTemplates } from '@/lib/supabase/queries';
+import { getSequenceWithSteps, listTemplates } from '@/lib/db/queries';
 import {
   addSequenceStep,
   deleteSequence,
@@ -35,12 +35,8 @@ export default async function SequenceEditorPage({
 }) {
   const { id } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 

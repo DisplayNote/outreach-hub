@@ -27,18 +27,50 @@ const ANY_EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
  * parsing against a real tenant is a fast-follow; this handles the common case
  * where the failed address appears in the preview text.)
  */
-function parseFailedRecipient(text: string): string | undefined {
+function parseFailedRecipient(text: string, excludeFrom?: string): string | undefined {
   const dsn = DSN_RECIPIENT.exec(text);
   if (dsn?.[1]) return dsn[1].toLowerCase();
+  const exclude = excludeFrom?.toLowerCase();
   for (const addr of text.match(ANY_EMAIL) ?? []) {
-    if (!isSystemSender(addr)) return addr.toLowerCase();
+    const lower = addr.toLowerCase();
+    // Skip system mailers AND the NDR's OWN sender: a generic bounce mailbox
+    // (bounces@…, noreply@…) isn't a "system sender", so without this the
+    // fallback could latch onto the bounce sender instead of the prospect.
+    if (!isSystemSender(addr) && lower !== exclude) return lower;
   }
   return undefined;
+}
+
+function fromCodePoint(cp: number): string {
+  return Number.isFinite(cp) && cp >= 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : '';
+}
+
+/**
+ * Strip tags + decode the entities a DSN regex needs from an HTML NDR body.
+ * Numeric entities are decoded BEFORE `&amp;` so `&amp;#64;` stays the literal
+ * text `&#64;` rather than being double-decoded into `@`.
+ */
+function htmlToText(content: string): string {
+  return content
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#x([0-9a-f]+);/gi, (_m, hex: string) => fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_m, dec: string) => fromCodePoint(parseInt(dec, 10)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
 }
 
 interface GraphDriverOptions {
   /** Delegated access token (Mail.Send / Mail.Read). Deploy-time wiring. */
   accessToken?: string;
+  /**
+   * Target mailbox for an APP-ONLY (client-credentials) token, which has no
+   * user context: requests go to `/users/{mailbox}` instead of `/me`. Omit for
+   * a DELEGATED token (the signed-in user's own mailbox, addressed via `/me`).
+   */
+  mailbox?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -52,10 +84,13 @@ interface GraphMessage {
   toRecipients?: { emailAddress?: { address?: string } }[];
   receivedDateTime?: string;
   bodyPreview?: string;
+  body?: { contentType?: string; content?: string };
 }
 
 /**
- * Microsoft Graph email driver (PHASE_5_SPEC §9). `send` → `POST /me/sendMail`;
+ * Microsoft Graph email driver (PHASE_5_SPEC §9). `send` → `POST {base}/sendMail`
+ * where {base} is `/me` for a delegated token (manual path) or `/users/{mailbox}`
+ * for an app-only token (cron path, no user context — see base());
  * `fetchReplies` → a `receivedDateTime ge <since>` query on the Inbox. The
  * delegated token is injected (from the user's Supabase Azure session at
  * deploy time); this path is structurally complete but not exercised in
@@ -69,11 +104,13 @@ interface GraphMessage {
 export class GraphDriver implements EmailDriver {
   readonly name: GraphEnvironment;
   private readonly accessToken: string | undefined;
+  private readonly mailbox: string | undefined;
   private readonly fetchImpl: typeof fetch;
 
   constructor(env: GraphEnvironment, opts: GraphDriverOptions = {}) {
     this.name = env;
     this.accessToken = opts.accessToken;
+    this.mailbox = opts.mailbox;
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
@@ -84,18 +121,48 @@ export class GraphDriver implements EmailDriver {
     return this.accessToken;
   }
 
+  /**
+   * Graph resource root. An APP-ONLY token has no user context, so it must
+   * address a specific mailbox: `/users/{mailbox}`. A DELEGATED token acts as
+   * the signed-in user, addressed via `/me`. Set by whether a mailbox was given.
+   */
+  private base(): string {
+    return this.mailbox ? `/users/${encodeURIComponent(this.mailbox)}` : '/me';
+  }
+
   async send(message: OutboundMessage): Promise<SentRef> {
-    const payload = {
-      message: {
-        subject: message.subject,
-        body: { contentType: message.bodyHtml ? 'HTML' : 'Text', content: message.bodyHtml ?? message.bodyText ?? '' },
-        toRecipients: message.to.map((address) => ({ emailAddress: { address } })),
-        ccRecipients: (message.cc ?? []).map((address) => ({ emailAddress: { address } })),
-        bccRecipients: (message.bcc ?? []).map((address) => ({ emailAddress: { address } })),
-      },
-      saveToSentItems: true,
+    const internetMessageHeaders = Object.entries(message.headers ?? {}).map(([name, value]) => ({ name, value }));
+    const baseMessage = {
+      subject: message.subject,
+      body: { contentType: message.bodyHtml ? 'HTML' : 'Text', content: message.bodyHtml ?? message.bodyText ?? '' },
+      toRecipients: message.to.map((address) => ({ emailAddress: { address } })),
+      ccRecipients: (message.cc ?? []).map((address) => ({ emailAddress: { address } })),
+      bccRecipients: (message.bcc ?? []).map((address) => ({ emailAddress: { address } })),
     };
-    const resp = await this.call('POST', '/me/sendMail', payload);
+    const payload = (withHeaders: boolean) => ({
+      message:
+        withHeaders && internetMessageHeaders.length > 0 ? { ...baseMessage, internetMessageHeaders } : baseMessage,
+      saveToSentItems: true,
+    });
+
+    const unauthorized = () =>
+      new EmailDriverError(
+        'Microsoft sign-in expired or email access was revoked. Sign out and sign back in to ' +
+          're-grant Mail.Send / Mail.Read, then retry.',
+        undefined,
+        'GRAPH_UNAUTHORIZED',
+      );
+
+    let resp = await this.call('POST', `${this.base()}/sendMail`, payload(true));
+    if (resp.status === 401) throw unauthorized();
+    // Graceful degradation: some tenants reject non-`x-` internetMessageHeaders
+    // (e.g. List-Unsubscribe) with a 4xx. Retry once WITHOUT the headers so the
+    // email — including its visible footer unsubscribe link — still goes out,
+    // rather than failing the whole send over an optional header.
+    if (!resp.ok && internetMessageHeaders.length > 0) {
+      resp = await this.call('POST', `${this.base()}/sendMail`, payload(false));
+      if (resp.status === 401) throw unauthorized();
+    }
     if (!resp.ok) {
       throw new EmailDriverError(`Graph sendMail failed (${resp.status})`, undefined, 'GRAPH_SEND');
     }
@@ -118,16 +185,56 @@ export class GraphDriver implements EmailDriver {
     // would let the scanner advance its high-water mark while later pages (e.g.
     // many messages sharing one receivedDateTime) go unprocessed forever.
     const out: InboundMessage[] = [];
-    let resp = await this.call('GET', `/me/mailFolders/Inbox/messages?${params.toString()}`);
+    let resp = await this.call('GET', `${this.base()}/mailFolders/Inbox/messages?${params.toString()}`);
     for (;;) {
+      if (resp.status === 401) {
+        throw new EmailDriverError(
+          'Microsoft sign-in expired or email access was revoked. Sign out and sign back in to ' +
+            're-grant Mail.Send / Mail.Read, then retry.',
+          undefined,
+          'GRAPH_UNAUTHORIZED',
+        );
+      }
       if (!resp.ok) {
         throw new EmailDriverError(`Graph fetchReplies failed (${resp.status})`, undefined, 'GRAPH_FETCH');
       }
       const body = (await resp.json()) as { value?: GraphMessage[]; '@odata.nextLink'?: string };
-      for (const m of body.value ?? []) out.push(this.toInbound(m));
+      for (const m of body.value ?? []) {
+        const inbound = this.toInbound(m);
+        // For an NDR, the authoritative failed address lives in the
+        // `message/delivery-status` MIME part, not the human-readable body. Fetch
+        // the raw MIME and parse it; fall back to the body-derived guess on any
+        // error so a bounce is never dropped just because $value was unavailable.
+        if (m.id && (isSystemSender(inbound.from) || isNdrSubject(inbound.subject))) {
+          const recovered = await this.recoverFailedRecipientFromMime(m.id);
+          if (recovered) inbound.failedRecipient = recovered;
+        }
+        out.push(inbound);
+      }
       const next = body['@odata.nextLink'];
       if (!next) return out;
       resp = await this.callUrl('GET', next); // nextLink is an absolute Graph URL
+    }
+  }
+
+  /**
+   * Fetch a message's raw MIME (`/$value`) and recover the failed recipient from
+   * its RFC 3464 `message/delivery-status` part. Best-effort: returns undefined
+   * (not throws) on any failure, so the caller keeps its body-derived guess.
+   */
+  private async recoverFailedRecipientFromMime(messageId: string): Promise<string | undefined> {
+    try {
+      const resp = await this.call('GET', `${this.base()}/messages/${encodeURIComponent(messageId)}/$value`);
+      if (!resp.ok) return undefined;
+      // STRICT: trust only the authoritative RFC 3464 Final/Original-Recipient
+      // line here, NOT parseFailedRecipient's "first non-system address" fallback
+      // — raw MIME is full of other addresses (From, Reporting-MTA, the original
+      // headers) that the fallback would wrongly latch onto. No DSN line → leave
+      // the body-derived guess in place.
+      const dsn = DSN_RECIPIENT.exec(await resp.text());
+      return dsn?.[1] ? dsn[1].toLowerCase() : undefined;
+    } catch {
+      return undefined;
     }
   }
 
@@ -165,7 +272,11 @@ export class GraphDriver implements EmailDriver {
     // the prospect instead of the (wrong) sender.
     const subject = m.subject ?? '';
     if (isSystemSender(from) || isNdrSubject(subject)) {
-      const failed = parseFailedRecipient(`${subject}\n${m.bodyPreview ?? ''}`);
+      // Parse the FULL body (not just the preview) — the Final-Recipient DSN line
+      // is often past the preview cutoff. fetchReplies further upgrades this from
+      // the raw MIME delivery-status part when available.
+      const bodyText = m.body?.content ? htmlToText(m.body.content) : (m.bodyPreview ?? '');
+      const failed = parseFailedRecipient(`${subject}\n${bodyText}`, from);
       if (failed !== undefined) out.failedRecipient = failed;
     }
     return out;

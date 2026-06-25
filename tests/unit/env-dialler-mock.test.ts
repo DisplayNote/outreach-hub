@@ -2,23 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { isDiallerMockEnabled, parseServerEnv } from '@/lib/env';
 
 const baseEnv = {
-  NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321',
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: 'anon-key',
+  DATABASE_URL: 'postgres://app_user:apppw@localhost:5433/outreach',
 };
 
 describe('isDiallerMockEnabled', () => {
   const enabledEnv = {
     NODE_ENV: 'development',
     DIALLER_MOCK_ENABLED: 'true',
-    NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321',
+    APP_BASE_URL: 'http://127.0.0.1:3000',
   };
 
-  it('is true when non-prod, flag set, and Supabase URL is loopback', () => {
+  it('is true when non-prod, flag set, and APP_BASE_URL is loopback', () => {
     expect(isDiallerMockEnabled(enabledEnv)).toBe(true);
-    expect(isDiallerMockEnabled({ ...enabledEnv, NEXT_PUBLIC_SUPABASE_URL: 'http://localhost:54321' })).toBe(true);
-    // `new URL('http://[::1]:54321').hostname` === '[::1]' (brackets kept); both
-    // '[::1]' and bare '::1' are in LOCAL_SUPABASE_HOSTS, so either form matches.
-    expect(isDiallerMockEnabled({ ...enabledEnv, NEXT_PUBLIC_SUPABASE_URL: 'http://[::1]:54321' })).toBe(true);
+    expect(isDiallerMockEnabled({ ...enabledEnv, APP_BASE_URL: 'http://localhost:3000' })).toBe(true);
+    // `new URL('http://[::1]:3000').hostname` === '[::1]' (brackets kept); both
+    // '[::1]' and bare '::1' are in LOCAL_HOSTS, so either form matches.
+    expect(isDiallerMockEnabled({ ...enabledEnv, APP_BASE_URL: 'http://[::1]:3000' })).toBe(true);
   });
 
   it('is false in production even with the flag and a local URL', () => {
@@ -30,8 +29,8 @@ describe('isDiallerMockEnabled', () => {
     expect(isDiallerMockEnabled({ ...enabledEnv, DIALLER_MOCK_ENABLED: undefined })).toBe(false);
   });
 
-  it('is false when the Supabase URL is remote even with the flag set', () => {
-    expect(isDiallerMockEnabled({ ...enabledEnv, NEXT_PUBLIC_SUPABASE_URL: 'https://abcd.supabase.co' })).toBe(false);
+  it('is false when APP_BASE_URL is a deployed origin even with the flag set', () => {
+    expect(isDiallerMockEnabled({ ...enabledEnv, APP_BASE_URL: 'https://outreach.displaynote.com' })).toBe(false);
   });
 });
 

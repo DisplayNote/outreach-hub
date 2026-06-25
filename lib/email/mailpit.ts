@@ -47,6 +47,7 @@ export class MailpitDriver implements EmailDriver {
       html: message.bodyHtml,
       inReplyTo: message.inReplyTo,
       references: message.references,
+      headers: message.headers,
     });
 
     return {

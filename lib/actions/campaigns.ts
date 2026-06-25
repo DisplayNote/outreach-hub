@@ -4,41 +4,56 @@
  * Phase 2 write-layer Server Actions for campaigns.
  *
  * Inputs are zod-validated and mapped from camelCase to snake_case columns.
- * Mutations use the RLS-scoped server client: INSERT sets `org_id` explicitly
- * (so the WITH CHECK passes); UPDATE is implicitly org-filtered and targets by
- * `id`. Affected routes are revalidated after success.
+ * Mutations run inside withRls (the RLS GUCs scope every query to the caller's
+ * org): INSERT sets `org_id` explicitly (so the WITH CHECK passes); UPDATE is
+ * implicitly org-filtered and targets by `id`. Affected routes are revalidated
+ * after success.
  */
 import { revalidatePath } from 'next/cache';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
-import { getCurrentOrgId } from '@/lib/supabase/org';
+import { withRls } from '@/lib/db/rls';
+import type { DrizzleTx } from '@/lib/db/rls';
+import { rlsCtxFromSession, requireSession } from '@/lib/auth/session';
+import { campaigns, sequences } from '@/lib/db/schema';
+import { getCurrentOrgId } from '@/lib/auth/org';
 import type { Campaign } from '@/lib/types/domain';
 
-// --- Raw row shape (snake_case, exactly as returned by PostgREST) ------------
+// --- Row → domain mapping -----------------------------------------------------
 
-interface CampaignRow {
+/** The campaign columns we read back, selected explicitly to match CampaignRow. */
+const campaignColumns = {
+  id: campaigns.id,
+  orgId: campaigns.orgId,
+  name: campaigns.name,
+  sequence: campaigns.sequence,
+  sequenceId: campaigns.sequenceId,
+  legacyId: campaigns.legacyId,
+  createdAt: campaigns.createdAt,
+  updatedAt: campaigns.updatedAt,
+} as const;
+
+type CampaignRow = {
   id: string;
-  org_id: string;
+  orgId: string;
   name: string;
   sequence: string | null;
-  sequence_id: string | null;
-  legacy_id: number | null;
-  created_at: string;
-  updated_at: string;
-}
-
-const CAMPAIGN_SELECT = 'id, org_id, name, sequence, sequence_id, legacy_id, created_at, updated_at';
+  sequenceId: string | null;
+  legacyId: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 function toCampaign(row: CampaignRow): Campaign {
   return {
     id: row.id,
-    orgId: row.org_id,
+    orgId: row.orgId,
     name: row.name,
     sequence: row.sequence,
-    sequenceId: row.sequence_id,
-    legacyId: row.legacy_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    sequenceId: row.sequenceId,
+    legacyId: row.legacyId,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -86,22 +101,19 @@ export type UpdateCampaignInput = z.input<typeof updateCampaignSchema>;
  * `sequence_id` is the load-bearing link the email runner actually follows.
  */
 async function resolveSequenceLink(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  tx: DrizzleTx,
   sequenceId: string | null,
 ): Promise<{ id: string | null; name: string | null }> {
   if (sequenceId === null) return { id: null, name: null };
-  const { data, error } = await supabase
-    .from('sequences')
-    .select('id, name')
-    .eq('id', sequenceId)
-    .maybeSingle();
-  if (error) {
-    throw new Error(`failed to resolve sequence ${sequenceId}: ${error.message}`);
-  }
-  if (!data) {
+  const rows = await tx
+    .select({ id: sequences.id, name: sequences.name })
+    .from(sequences)
+    .where(eq(sequences.id, sequenceId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) {
     throw new Error('The selected sequence no longer exists — pick another sequence.');
   }
-  const row = data as { id: string; name: string };
   return { id: row.id, name: row.name };
 }
 
@@ -110,29 +122,29 @@ async function resolveSequenceLink(
 export async function createCampaign(input: CreateCampaignInput): Promise<Campaign> {
   const parsed = createCampaignSchema.parse(input);
   const orgId = await getCurrentOrgId();
-  const supabase = await createClient();
 
-  const row: Record<string, unknown> = {
-    org_id: orgId,
-    name: parsed.name,
-  };
-  if (parsed.sequenceId !== undefined) {
-    const link = await resolveSequenceLink(supabase, parsed.sequenceId);
-    row['sequence_id'] = link.id;
-    row['sequence'] = link.name;
-  }
+  const campaign = await withRls(
+    rlsCtxFromSession(await requireSession()),
+    async (tx) => {
+      const values: typeof campaigns.$inferInsert = {
+        orgId,
+        name: parsed.name,
+      };
+      if (parsed.sequenceId !== undefined) {
+        const link = await resolveSequenceLink(tx, parsed.sequenceId);
+        values.sequenceId = link.id;
+        values.sequence = link.name;
+      }
 
-  const { data, error } = await supabase
-    .from('campaigns')
-    .insert(row)
-    .select(CAMPAIGN_SELECT)
-    .single();
+      const rows = await tx.insert(campaigns).values(values).returning(campaignColumns);
+      const row = rows[0];
+      if (!row) {
+        throw new Error('createCampaign: failed to insert campaign: no row returned');
+      }
+      return toCampaign(row);
+    },
+  );
 
-  if (error) {
-    throw new Error(`createCampaign: failed to insert campaign: ${error.message}`);
-  }
-
-  const campaign = toCampaign(data as CampaignRow);
   revalidateCampaignRoutes();
   return campaign;
 }
@@ -143,47 +155,56 @@ export async function updateCampaign(
 ): Promise<Campaign> {
   const campaignId = uuid.parse(id);
   const parsed = updateCampaignSchema.parse(input);
-  const supabase = await createClient();
 
-  const patch: Record<string, unknown> = {};
-  if (parsed.name !== undefined) {
-    patch['name'] = parsed.name;
-  }
-  if (parsed.sequenceId !== undefined) {
-    const link = await resolveSequenceLink(supabase, parsed.sequenceId);
-    patch['sequence_id'] = link.id;
-    patch['sequence'] = link.name;
-  }
+  const campaign = await withRls(
+    rlsCtxFromSession(await requireSession()),
+    async (tx) => {
+      const patch: Partial<typeof campaigns.$inferInsert> = {};
+      if (parsed.name !== undefined) {
+        patch.name = parsed.name;
+      }
+      if (parsed.sequenceId !== undefined) {
+        const link = await resolveSequenceLink(tx, parsed.sequenceId);
+        patch.sequenceId = link.id;
+        patch.sequence = link.name;
+      }
 
-  if (Object.keys(patch).length === 0) {
-    throw new Error('updateCampaign: no fields to update');
-  }
+      if (Object.keys(patch).length === 0) {
+        throw new Error('updateCampaign: no fields to update');
+      }
 
-  const { data, error } = await supabase
-    .from('campaigns')
-    .update(patch)
-    .eq('id', campaignId)
-    .select(CAMPAIGN_SELECT)
-    .single();
+      const rows = await tx
+        .update(campaigns)
+        .set(patch)
+        .where(eq(campaigns.id, campaignId))
+        .returning(campaignColumns);
+      const row = rows[0];
+      if (!row) {
+        throw new Error(`updateCampaign: failed to update campaign ${campaignId}: no row`);
+      }
+      return toCampaign(row);
+    },
+  );
 
-  if (error) {
-    throw new Error(`updateCampaign: failed to update campaign ${campaignId}: ${error.message}`);
-  }
-
-  const campaign = toCampaign(data as CampaignRow);
   revalidateCampaignRoutes();
   return campaign;
 }
 
 export async function deleteCampaign(id: string): Promise<{ id: string }> {
   const campaignId = uuid.parse(id);
-  const supabase = await createClient();
 
-  const { error } = await supabase.from('campaigns').delete().eq('id', campaignId);
+  await withRls(rlsCtxFromSession(await requireSession()), async (tx) => {
+    // Require a returned row so a no-match (stale id, or another org's campaign
+    // hidden by RLS) is a clear error rather than a false success confirmation.
+    const rows = await tx
+      .delete(campaigns)
+      .where(eq(campaigns.id, campaignId))
+      .returning({ id: campaigns.id });
 
-  if (error) {
-    throw new Error(`deleteCampaign: failed to delete campaign ${campaignId}: ${error.message}`);
-  }
+    if (rows.length === 0) {
+      throw new Error(`deleteCampaign: campaign ${campaignId} not found (or not in your org).`);
+    }
+  });
 
   revalidateCampaignRoutes();
   return { id: campaignId };

@@ -2,9 +2,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # Generates infra/envs/prod.tfvars (the single cloud environment) from
-# .env.bootstrap. Idempotent. Run this only when deploying the prod cloud
+# .env.bootstrap. Idempotent. Run this only when deploying the prod Azure
 # infrastructure — local development (dev-bootstrap.ps1 + make dev) needs none
 # of these values.
+#
+# AUTH_SECRET / CRON_SECRET / UNSUBSCRIBE_SECRET are NOT generated here: Terraform
+# creates them (random_password) and stores them in Key Vault.
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Bootstrap = Join-Path $Root '.env.bootstrap'
@@ -25,16 +28,15 @@ function Require-BootstrapValue {
 }
 
 @(
-  'GITHUB_REPO',
-  'SUPABASE_ACCESS_TOKEN',
-  'SUPABASE_PROJECT_REF',
-  'SUPABASE_DB_PASSWORD',
-  'VERCEL_TOKEN',
-  'VERCEL_ORG_ID',
-  'VERCEL_PROJECT_ID',
-  'MS_CLIENT_ID',
-  'MS_CLIENT_SECRET',
-  'TF_STATE_KEY'
+  'AZURE_SUBSCRIPTION_ID',
+  'AZURE_TENANT_ID',
+  'PG_ADMIN_LOGIN',
+  'PG_ADMIN_PASSWORD',
+  'AZURE_AD_CLIENT_ID',
+  'AZURE_AD_CLIENT_SECRET',
+  'AZURE_AD_TENANT_ID',
+  'CRON_ORG_ID',
+  'CRON_SENDER_EMAIL'
 ) | ForEach-Object { Require-BootstrapValue $_ }
 
 function Write-Utf8NoBom {
@@ -48,22 +50,29 @@ function Write-Utf8NoBom {
 $EnvDir = Join-Path $Root 'infra/envs'
 New-Item -ItemType Directory -Force -Path $EnvDir | Out-Null
 
+$Location = if ($Vars.ContainsKey('AZURE_LOCATION') -and -not [string]::IsNullOrWhiteSpace($Vars['AZURE_LOCATION'])) { $Vars['AZURE_LOCATION'] } else { 'uksouth' }
+$Subdomain = if ($Vars.ContainsKey('APP_SUBDOMAIN') -and -not [string]::IsNullOrWhiteSpace($Vars['APP_SUBDOMAIN'])) { $Vars['APP_SUBDOMAIN'] } else { 'outreach' }
+$Allowlist = if ($Vars.ContainsKey('ADMIN_EMAIL_ALLOWLIST')) { $Vars['ADMIN_EMAIL_ALLOWLIST'] } else { '' }
+
 $ProdTfvars = @"
 env = "prod"
 
-supabase_access_token = "$($Vars['SUPABASE_ACCESS_TOKEN'])"
-supabase_project_ref  = "$($Vars['SUPABASE_PROJECT_REF'])"
-supabase_db_password  = "$($Vars['SUPABASE_DB_PASSWORD'])"
-supabase_region       = "eu-west-2"
+azure_subscription_id = "$($Vars['AZURE_SUBSCRIPTION_ID'])"
+azure_tenant_id       = "$($Vars['AZURE_TENANT_ID'])"
+azure_location        = "$Location"
 
-vercel_token      = "$($Vars['VERCEL_TOKEN'])"
-vercel_org_id     = "$($Vars['VERCEL_ORG_ID'])"
-vercel_project_id = "$($Vars['VERCEL_PROJECT_ID'])"
+pg_admin_login    = "$($Vars['PG_ADMIN_LOGIN'])"
+pg_admin_password = "$($Vars['PG_ADMIN_PASSWORD'])"
 
-app_subdomain = "outreach"
+app_subdomain = "$Subdomain"
 
-ms_client_id     = "$($Vars['MS_CLIENT_ID'])"
-ms_client_secret = "$($Vars['MS_CLIENT_SECRET'])"
+azure_ad_client_id     = "$($Vars['AZURE_AD_CLIENT_ID'])"
+azure_ad_client_secret = "$($Vars['AZURE_AD_CLIENT_SECRET'])"
+azure_ad_tenant_id     = "$($Vars['AZURE_AD_TENANT_ID'])"
+
+admin_email_allowlist = "$Allowlist"
+cron_org_id           = "$($Vars['CRON_ORG_ID'])"
+cron_sender_email     = "$($Vars['CRON_SENDER_EMAIL'])"
 "@
 
 Write-Utf8NoBom -Path (Join-Path $EnvDir 'prod.tfvars') -Content $ProdTfvars

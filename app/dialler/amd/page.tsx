@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
-import { getOrgSettings, getTodayContacts } from '@/lib/supabase/queries';
+import { getSession } from '@/lib/auth/session';
+import { getOrgSettings, getTodayContacts } from '@/lib/db/queries';
 import { pickDialNumber } from '@/lib/dialler/normalise';
 import { isDiallerMockEnabled } from '@/lib/env';
 import type { Contact } from '@/lib/types/domain';
@@ -30,11 +30,8 @@ interface AmdPageProps {
  * over Realtime. Statuses `notinterested` / `bounced` are excluded by default.
  */
 export default async function AmdPage({ searchParams }: AmdPageProps) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect('/login');
+  const session = await getSession();
+  if (!session) redirect('/login');
 
   const params = await searchParams;
   const rawCampaign = Array.isArray(params.campaign) ? params.campaign[0] : params.campaign;

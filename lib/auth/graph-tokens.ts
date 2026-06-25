@@ -1,0 +1,72 @@
+import { sql } from 'drizzle-orm';
+import { withRls, type RlsContext } from '@/lib/db/rls';
+
+/**
+ * Server-only storage for a user's delegated Microsoft Graph tokens. They live
+ * in `public.user_graph_tokens` (RLS-scoped to the owning user) and are NEVER
+ * projected onto the Auth.js Session or returned to the browser. Written at
+ * login by the jwt callback; read server-side by lib/graph/token.ts.
+ *
+ * We store the refresh token + expiry here so lib/graph/token.ts can refresh
+ * on expiry without a full re-auth round-trip.
+ */
+export async function storeGraphTokens(
+  ctx: RlsContext,
+  tokens: { accessToken?: string | null; refreshToken?: string | null; expiresAt?: number | null },
+): Promise<void> {
+  if (!ctx.userId) return;
+  const expiresAtIso = tokens.expiresAt ? new Date(tokens.expiresAt * 1000).toISOString() : null;
+  await withRls(ctx, async (tx) => {
+    await tx.execute(sql`
+      insert into public.user_graph_tokens (user_id, access_token, refresh_token, expires_at, updated_at)
+      values (${ctx.userId}, ${tokens.accessToken ?? null}, ${tokens.refreshToken ?? null}, ${expiresAtIso}, now())
+      on conflict (user_id) do update set
+        access_token  = excluded.access_token,
+        -- keep the prior refresh token when a refresh response omits it
+        refresh_token = coalesce(excluded.refresh_token, public.user_graph_tokens.refresh_token),
+        expires_at    = excluded.expires_at,
+        updated_at    = now()
+    `);
+  });
+}
+
+/** The user's current delegated access token, or null if absent/expired. */
+export async function readGraphAccessToken(ctx: RlsContext): Promise<string | null> {
+  if (!ctx.userId) return null;
+  return withRls(ctx, async (tx) => {
+    const result = await tx.execute(
+      sql`select access_token, expires_at from public.user_graph_tokens where user_id = ${ctx.userId}`,
+    );
+    const row = result.rows[0] as { access_token: string | null; expires_at: string | null } | undefined;
+    if (!row?.access_token) return null;
+    // Expired → treat as absent; lib/graph/token.ts will refresh via readGraphTokenRow.
+    if (row.expires_at && Date.parse(row.expires_at) <= Date.now()) return null;
+    return row.access_token;
+  });
+}
+
+/**
+ * The full stored token row (access + refresh + expiry), WITHOUT the expiry
+ * filter that {@link readGraphAccessToken} applies. lib/graph/token.ts uses
+ * this to obtain the refresh token when the access token is expired.
+ * Returns null when no row exists.
+ */
+export async function readGraphTokenRow(
+  ctx: RlsContext,
+): Promise<{ accessToken: string | null; refreshToken: string | null; expiresAtMs: number | null } | null> {
+  if (!ctx.userId) return null;
+  return withRls(ctx, async (tx) => {
+    const result = await tx.execute(
+      sql`select access_token, refresh_token, expires_at from public.user_graph_tokens where user_id = ${ctx.userId}`,
+    );
+    const row = result.rows[0] as
+      | { access_token: string | null; refresh_token: string | null; expires_at: string | null }
+      | undefined;
+    if (!row) return null;
+    return {
+      accessToken: row.access_token,
+      refreshToken: row.refresh_token,
+      expiresAtMs: row.expires_at ? Date.parse(row.expires_at) : null,
+    };
+  });
+}
